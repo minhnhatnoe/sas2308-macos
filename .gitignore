@@ -1,0 +1,10 @@
+ref/freebsd-src/
+test/mock_ioc_test
+*.log
+kext/build/
+*.o
+tools/sas2308ctl
+test/mps_port_test
+test/obj/
+test/kext_targets_test
+test/kext_glue_test
