@@ -158,6 +158,7 @@ mps_diag_reset(struct mps_softc *sc,int sleep_flag)
 	mps_dprint(sc, MPS_INIT, "sequence success, sending reset, reg= 0x%x\n",
 		reg);
 	mps_regwrite(sc, MPI2_HOST_DIAGNOSTIC_OFFSET, reg);
+	sc->xnu.stats.diag_resets++;	/* XNU */
 
 	/* Wait up to 300 seconds in 50ms intervals */
 	error = ETIMEDOUT;
@@ -1782,6 +1783,7 @@ mps_periodic(void *arg)
 		/* XNU: mps_reinit() sleeps; run it on the taskqueue */
 		mps_xnu_request_reinit(sc, "IOC fault");
 	}
+	mps_xnu_periodic(sc);	/* XNU: log summaries, statistics */
 
 	callout_reset_sbt(&sc->periodic, MPS_PERIODIC_DELAY * SBT_1S, 0,
 	    mps_periodic, sc, C_PREL(1));

@@ -679,8 +679,9 @@ mps_unlock(struct mps_softc *sc)
 #define mps_printf(sc, args...)				\
 	device_printf((sc)->mps_dev, ##args)
 
+/* XNU: field dumps are lines of their own, classed event|xinfo */
 #define mps_print_field(sc, msg, args...)		\
-	printf("\t" msg, ##args)
+	mps_compat_log((sc)->mps_dev, MPS_EVENT | MPS_XINFO, "\t" msg, ##args)
 
 #define mps_vprintf(sc, args...)			\
 do {							\
@@ -688,17 +689,17 @@ do {							\
 		mps_printf(sc, ##args);			\
 } while (0)
 
+/* XNU: the line keeps its classes (os_log category, see mps_xnu_category) */
 #define mps_dprint(sc, level, msg, args...)		\
 do {							\
 	if ((sc)->mps_debug & (level))			\
-		device_printf((sc)->mps_dev, msg, ##args);	\
+		mps_compat_log((sc)->mps_dev, (level), msg, ##args); \
 } while (0)
 
 #define MPS_PRINTFIELD_START(sc, tag...)	\
-	mps_printf((sc), ##tag);			\
-	mps_print_field((sc), ":\n")
+	mps_compat_log((sc)->mps_dev, MPS_EVENT | MPS_XINFO, tag ":\n")
 #define MPS_PRINTFIELD_END(sc, tag)		\
-	mps_printf((sc), tag "\n")
+	mps_compat_log((sc)->mps_dev, MPS_EVENT | MPS_XINFO, tag "\n")
 #define MPS_PRINTFIELD(sc, facts, attr, fmt)	\
 	mps_print_field((sc), #attr ": " #fmt "\n", (facts)->attr)
 

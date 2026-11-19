@@ -262,7 +262,8 @@ mpssas_log_command(struct mps_command *cm, u_int level, const char *fmt, ...)
 	sbuf_printf(&sb, "SMID %u ", cm->cm_desc.Default.SMID);
 	sbuf_vprintf(&sb, fmt, ap);
 	sbuf_finish(&sb);
-	mps_print_field(cm->cm_sc, "%s", sbuf_data(&sb));
+	/* XNU: keep the line's class (os_log category) */
+	mps_compat_log(cm->cm_sc->mps_dev, level, "%s", sbuf_data(&sb));
 
 	va_end(ap);
 }
@@ -910,6 +911,7 @@ mpssas_logical_unit_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 		}
 		return;
 	}
+	mps_xnu_tm_done(sc, tm);	/* XNU: statistics */
 
 	mps_dprint(sc, MPS_RECOVERY,
 	    "logical unit reset status 0x%x code 0x%x count %u\n",
@@ -945,6 +947,7 @@ mpssas_logical_unit_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 			    targ->tid);
 			mpssas_send_abort(sc, tm, cm);
 		} else {
+			sc->xnu.stats.recovered_lun_reset++;	/* XNU */
 			targ->tm = NULL;
 			mpssas_free_tm(sc, tm);
 		}
@@ -1006,6 +1009,7 @@ mpssas_target_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 		}
 		return;
 	}
+	mps_xnu_tm_done(sc, tm);	/* XNU: statistics */
 
 	mps_dprint(sc, MPS_RECOVERY,
 	    "target reset status 0x%x code 0x%x count %u\n",
@@ -1022,6 +1026,7 @@ mpssas_target_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 		mpssas_announce_reset(sc, AC_SENT_BDR, tm->cm_targ->tid,
 		    CAM_LUN_WILDCARD);
 
+		sc->xnu.stats.recovered_target_reset++;	/* XNU */
 		targ->tm = NULL;
 		mpssas_free_tm(sc, tm);
 	} else {
@@ -1063,6 +1068,7 @@ mpssas_send_reset(struct mps_softc *sc, struct mps_command *tm, uint8_t type)
 		/* XXX Need to handle invalid LUNs */
 		MPS_SET_LUN(req->LUN, tm->cm_lun);
 		tm->cm_targ->logical_unit_resets++;
+		sc->xnu.stats.lun_resets++;	/* XNU */
 		mps_dprint(sc, MPS_RECOVERY|MPS_INFO,
 		    "Sending logical unit reset to target %u lun %d\n",
 		    target->tid, tm->cm_lun);
@@ -1075,6 +1081,7 @@ mpssas_send_reset(struct mps_softc *sc, struct mps_command *tm, uint8_t type)
 		 */
 		req->MsgFlags = MPI2_SCSITASKMGMT_MSGFLAGS_LINK_RESET;
 		tm->cm_targ->target_resets++;
+		sc->xnu.stats.target_resets++;	/* XNU */
 		mps_dprint(sc, MPS_RECOVERY|MPS_INFO,
 		    "Sending target reset to target %u\n", target->tid);
 		tm->cm_complete = mpssas_target_reset_complete;
@@ -1144,6 +1151,7 @@ mpssas_abort_complete(struct mps_softc *sc, struct mps_command *tm)
 		}
 		return;
 	}
+	mps_xnu_tm_done(sc, tm);	/* XNU: statistics */
 
 	mps_dprint(sc, MPS_RECOVERY,
 	    "abort TaskMID %u status 0x%x code 0x%x count %u\n",
@@ -1160,6 +1168,7 @@ mpssas_abort_complete(struct mps_softc *sc, struct mps_command *tm)
 		mps_dprint(sc, MPS_INFO|MPS_RECOVERY,
 		    "Finished abort recovery for target %u\n", targ->tid);
 
+		sc->xnu.stats.recovered_abort++;	/* XNU */
 		targ->tm = NULL;
 		mpssas_free_tm(sc, tm);
 	} else if (le16toh(req->TaskMID) != cm->cm_desc.Default.SMID) {
@@ -1220,6 +1229,7 @@ mpssas_send_abort(struct mps_softc *sc, struct mps_command *tm, struct mps_comma
 	    mpssas_tm_timeout, tm);
 
 	targ->aborts++;
+	sc->xnu.stats.aborts++;	/* XNU */
 
 	mpssas_prepare_for_tm(sc, tm, targ, tm->cm_lun);
 
@@ -1269,6 +1279,7 @@ mpssas_scsiio_timeout(void *data)
 
 	targ = cm->cm_targ;
 	targ->timeouts++;
+	sc->xnu.stats.io_timeouts++;	/* XNU */
 
 	elapsed = now - ccb->ccb_h.qos.sim_data;
 	mpssas_log_command(cm, MPS_INFO|MPS_RECOVERY,
@@ -1300,6 +1311,7 @@ mpssas_scsiio_timeout(void *data)
 		    cm->cm_desc.Default.SMID);
 		mps_dprint(sc, MPS_RECOVERY, "timedout cm %p allocated tm %p\n",
 		    cm, targ->tm);
+		sc->xnu.stats.recoveries++;	/* XNU */
 
 		/* start recovery by aborting the first timedout command */
 		mpssas_send_abort(sc, targ->tm, cm);
@@ -1813,6 +1825,7 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 			ccb->ccb_h.status |= CAM_DEV_QFRZN;
 			xpt_freeze_devq(ccb->ccb_h.path, /*count*/ 1);
 		}
+		mps_xnu_io_done(sc, cm, ccb, NULL);	/* XNU: statistics */
 		mps_free_command(sc, cm);
 		xpt_done(ccb);
 		return;
@@ -1989,6 +2002,7 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 	}
 
 	mps_sc_failed_io_info(sc,csio,rep);
+	mps_xnu_io_done(sc, cm, ccb, rep);	/* XNU: statistics, error line */
 
 	if (sassc->flags & MPSSAS_QUEUE_FROZEN) {
 		ccb->ccb_h.status |= CAM_RELEASE_SIMQ;
@@ -2383,6 +2397,18 @@ mpssas_prepare_for_tm(struct mps_softc *sc, struct mps_command *tm,
 {
 	union ccb *ccb;
 	path_id_t path_id;
+
+	/* XNU: statistics, TM duration */
+	sc->xnu.stats.tm_sent[((MPI2_SCSI_TASK_MANAGE_REQUEST *)
+	    tm->cm_req)->TaskType & 15]++;
+	tm->cm_xnu_start_us = mps_os_uptime_us();
+	/*
+	 * XNU: an escalation (abort -> LUN reset -> target reset) reuses the
+	 * TM: keep its freeze and ccb (FreeBSD allocates a new ccb and leaks
+	 * the old one).
+	 */
+	if (tm->cm_ccb != NULL)
+		return;
 
 	ccb = xpt_alloc_ccb_nowait();
 	if (ccb) {
