@@ -2212,6 +2212,13 @@ mps_dispatch_event(struct mps_softc *sc, uintptr_t data,
 		mps_dprint(sc, MPS_EVENT, "Unhandled event 0x%x\n", le16toh(event));
 
 	/*
+	 * XNU: acknowledge events that ask for it (FreeBSD never sends
+	 * EVENT_ACK; M1-M4 did, as Linux mpt2sas does).
+	 */
+	sc->xnu.stats.events++;
+	mps_xnu_event_ack(sc, reply);
+
+	/*
 	 * This is the only place that the event/reply should be freed.
 	 * Anything wanting to hold onto the event data should have
 	 * already copied it into their own storage.
