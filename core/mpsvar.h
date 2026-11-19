@@ -241,6 +241,7 @@ struct mps_command {
 #define	MPS_CM_FLAGS_SATA_ID_TIMEOUT	(1 << 11)
 #define MPS_CM_FLAGS_ON_RECOVERY	(1 << 12)
 #define MPS_CM_FLAGS_TIMEDOUT		(1 << 13)
+#define MPS_CM_FLAGS_XNU_TM_TIMEDOUT	(1 << 14)	/* XNU: late reply */
 	u_int				cm_state;
 #define MPS_CM_STATE_FREE		0
 #define MPS_CM_STATE_BUSY		1
@@ -472,6 +473,11 @@ struct mps_softc {
 	char				exclude_ids[80];
 
 	struct timeval			lastfail;
+
+	/* XNU: mps_reinit() runs on a taskqueue, not in callout context */
+	struct taskqueue		*mps_tq;
+	struct task			mps_reinit_task;
+	struct mps_xnu			xnu;
 };
 
 struct mps_config_params {
@@ -778,6 +784,9 @@ void mpssas_realloc_targets(struct mps_softc *sc, int maxtargets);
 struct mps_command * mpssas_alloc_tm(struct mps_softc *sc);
 void mpssas_free_tm(struct mps_softc *sc, struct mps_command *tm);
 void mpssas_release_simq_reinit(struct mpssas_softc *sassc);
+/* XNU: OS task timeout, controller gone / detach */
+int mps_xnu_ccb_timeout(struct mps_softc *sc, union ccb *ccb);
+void mpssas_xnu_fail_all(struct mps_softc *sc);
 int mpssas_send_reset(struct mps_softc *sc, struct mps_command *tm,
     uint8_t type);
 

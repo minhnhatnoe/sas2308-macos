@@ -873,7 +873,7 @@ mpssas_logical_unit_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 	if (reply == NULL) {
 		mps_dprint(sc, MPS_RECOVERY, "NULL reset reply for tm %p\n",
 		    tm);
-		if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) != 0) {
+		if (MPS_XNU_RESETTING(sc)) {	/* XNU: or gone, detaching */
 			/* this completion was due to a reset, just cleanup */
 			mps_dprint(sc, MPS_RECOVERY, "Hardware undergoing "
 			    "reset, ignoring NULL LUN reset reply\n");
@@ -884,7 +884,7 @@ mpssas_logical_unit_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 			/* we should have gotten a reply. */
 			mps_dprint(sc, MPS_INFO|MPS_RECOVERY, "NULL reply on "
 			    "LUN reset attempt, resetting controller\n");
-			mps_reinit(sc);
+			mps_xnu_request_reinit(sc, "NULL LUN reset reply");	/* XNU */
 		}
 		return;
 	}
@@ -970,7 +970,7 @@ mpssas_target_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 		mps_dprint(sc, MPS_RECOVERY,
 		    "NULL target reset reply for tm %p TaskMID %u\n",
 		    tm, le16toh(req->TaskMID));
-		if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) != 0) {
+		if (MPS_XNU_RESETTING(sc)) {	/* XNU: or gone, detaching */
 			/* this completion was due to a reset, just cleanup */
 			mps_dprint(sc, MPS_RECOVERY, "Hardware undergoing "
 			    "reset, ignoring NULL target reset reply\n");
@@ -980,7 +980,7 @@ mpssas_target_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 			/* we should have gotten a reply. */
 			mps_dprint(sc, MPS_INFO|MPS_RECOVERY, "NULL reply on "
 			    "target reset attempt, resetting controller\n");
-			mps_reinit(sc);
+			mps_xnu_request_reinit(sc, "NULL target reset reply");	/* XNU */
 		}
 		return;
 	}
@@ -1012,7 +1012,8 @@ mpssas_target_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 		    "Target reset complete for target %u, but still have %u "
 		    "command(s), resetting controller\n", targ->tid,
 		    targ->outstanding);
-		mps_reinit(sc);
+		/* XNU: on the reinit taskqueue; the TM is freed by the reinit */
+		mps_xnu_request_reinit(sc, "target reset did not clear the target");
 	}
 }
 
@@ -1107,7 +1108,7 @@ mpssas_abort_complete(struct mps_softc *sc, struct mps_command *tm)
 		mps_dprint(sc, MPS_RECOVERY,
 		    "NULL abort reply for tm %p TaskMID %u\n",
 		    tm, le16toh(req->TaskMID));
-		if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) != 0) {
+		if (MPS_XNU_RESETTING(sc)) {	/* XNU: or gone, detaching */
 			/* this completion was due to a reset, just cleanup */
 			mps_dprint(sc, MPS_RECOVERY, "Hardware undergoing "
 			    "reset, ignoring NULL abort reply\n");
@@ -1117,7 +1118,7 @@ mpssas_abort_complete(struct mps_softc *sc, struct mps_command *tm)
 			/* we should have gotten a reply. */
 			mps_dprint(sc, MPS_INFO|MPS_RECOVERY, "NULL reply on "
 			    "abort attempt, resetting controller\n");
-			mps_reinit(sc);
+			mps_xnu_request_reinit(sc, "NULL abort reply");	/* XNU */
 		}
 		return;
 	}
@@ -1323,7 +1324,13 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 	targ = &sassc->targets[csio->ccb_h.target_id];
 	mps_dprint(sc, MPS_TRACE, "ccb %p target flag %x\n", ccb, targ->flags);
 	if (targ->handle == 0x0) {
-		if (targ->flags & MPSSAS_TARGET_INDIAGRESET) {
+		/*
+		 * XNU: requeue only while discovery still holds the SIM queue;
+		 * a target that did not come back after a reset is gone (the
+		 * thin CAM releases the freeze at once, FreeBSD's periph later).
+		 */
+		if ((targ->flags & MPSSAS_TARGET_INDIAGRESET) &&
+		    (sassc->flags & MPSSAS_IN_STARTUP)) {
 			mps_dprint(sc, MPS_ERROR,
 			    "%s NULL handle for target %u in diag reset freezing queue\n",
 			    __func__, csio->ccb_h.target_id);
@@ -1395,7 +1402,9 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 	}
 
 	cm = mps_alloc_command(sc);
-	if (cm == NULL || (sc->mps_flags & MPS_FLAGS_DIAGRESET)) {
+	/* XNU: also while a requested reinit has not started yet */
+	if (cm == NULL || (sc->mps_flags & MPS_FLAGS_DIAGRESET) ||
+	    sc->xnu.reinit_pending) {
 		if (cm != NULL) {
 			mps_free_command(sc, cm);
 		}

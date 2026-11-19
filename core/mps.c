@@ -451,8 +451,10 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 			    "IOC Facts with error %d, exit\n", error);
 			return (error);
 		} else {
-			panic("%s failed to get IOC Facts with error %d\n",
-			    __func__, error);
+			/* XNU: no panic, mps_reinit() retries */
+			mps_dprint(sc, MPS_INIT|MPS_FAULT, "%s failed to get "
+			    "IOC Facts with error %d\n", __func__, error);
+			return (error);
 		}
 	}
 
@@ -631,7 +633,8 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 	if (error) {
 		mps_dprint(sc, MPS_INIT|MPS_FAULT,
 		    "Failed to alloc queues with error %d\n", error);
-		mps_free(sc);
+		if (attaching)		/* XNU: not on a reinit */
+			mps_free(sc);
 		return (error);
 	}
 
@@ -648,7 +651,8 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 	if (error != 0) {
 		mps_dprint(sc, MPS_INIT|MPS_FAULT, "Failed to "
 		    "transition to operational with error %d\n", error);
-		mps_free(sc);
+		if (attaching)		/* XNU: not on a reinit */
+			mps_free(sc);
 		return (error);
 	}
 
@@ -790,6 +794,7 @@ mps_reinit(struct mps_softc *sc)
 {
 	int error;
 	struct mpssas_softc *sassc;
+	int attempt;			/* XNU */
 
 	sassc = sc->sassc;
 
@@ -802,6 +807,18 @@ mps_reinit(struct mps_softc *sc)
 		mps_dprint(sc, MPS_INIT, "Reset already in progress\n");
 		return 0;
 	}
+	sc->xnu.reinit_pending = 0;	/* XNU: mps_xnu_request_reinit */
+	/*
+	 * XNU: nothing to reset once gone, disabled or detaching; a
+	 * controller found gone is disabled here (everything completed).
+	 */
+	if (sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_SHUTDOWN)) {
+		if ((sc->mps_flags & MPS_FLAGS_XNU_GONE) && !sc->xnu.disabled)
+			mps_xnu_disable(sc, ENXIO);
+		return (ENXIO);
+	}
+	sc->xnu.stats.reinits++;
+	sc->xnu.reinit_start_us = mps_os_uptime_us();
 
 	/* make sure the completion callbacks can recognize they're getting
 	 * a NULL cm_reply due to a reset.
@@ -814,11 +831,49 @@ mps_reinit(struct mps_softc *sc)
 	mps_dprint(sc, MPS_INIT, "masking interrupts and resetting\n");
 	mps_mask_intr(sc);
 
-	error = mps_diag_reset(sc, CAN_SLEEP);
+	/*
+	 * XNU: no panic.  Every wait below drops mps_mtx (mps_intr_locked and
+	 * new IO see MPS_FLAGS_DIAGRESET meanwhile).  A failure, e.g. a fault
+	 * during the sequence, restarts it with a new diag reset, up to
+	 * MPS_XNU_REINIT_TRIES attempts; then the controller is disabled.
+	 */
+	for (attempt = 1; ; attempt++) {
+		error = mps_diag_reset(sc, CAN_SLEEP);
+		if (error != 0)
+			mps_dprint(sc, MPS_INIT|MPS_FAULT, "%s hard reset "
+			    "failed with error %d\n", __func__, error);
+
+		if (attempt == 1) {
+			/* Restore the PCI state, including the MSI-X registers */
+			mps_pci_restore(sc);
+
+			/* Give the I/O subsystem special priority to get itself prepared */
+			mpssas_handle_reinit(sc);
+		}
+
+		/*
+		 * Get IOC Facts and allocate all structures based on this information.
+		 * The attach function will also call mps_iocfacts_allocate at startup.
+		 * If relevant values have changed in IOC Facts, this function will free
+		 * all of the memory based on IOC Facts and reallocate that memory.
+		 */
+		if (error == 0 &&
+		    (error = mps_iocfacts_allocate(sc, FALSE)) != 0)
+			mps_dprint(sc, MPS_INIT|MPS_FAULT, "%s IOC Facts based "
+			    "allocation failed with error %d\n", __func__,
+			    error);
+		if (error == 0 || attempt >= MPS_XNU_REINIT_TRIES ||
+		    MPS_XNU_ABANDON(sc))
+			break;
+		sc->xnu.stats.reinit_failures++;
+		mps_dprint(sc, MPS_INIT|MPS_FAULT, "reinit attempt %d of %d "
+		    "failed, retrying\n", attempt, MPS_XNU_REINIT_TRIES);
+	}
 	if (error != 0) {
-		/* XXXSL No need to panic here */
-		panic("%s hard reset failed with error %d\n",
-		    __func__, error);
+		sc->xnu.stats.reinit_failures++;
+		sc->mps_flags &= ~MPS_FLAGS_DIAGRESET;
+		mps_xnu_disable(sc, error);
+		return (error);
 	}
 
 	/*
@@ -841,9 +896,24 @@ mps_reinit(struct mps_softc *sc)
 	    sc, sc->replypostindex, sc->replyfreeindex);
 
 	mpssas_release_simq_reinit(sassc);
+	mps_xnu_reinit_done(sc);	/* XNU: statistics */
 	mps_dprint(sc, MPS_INIT, "%s exit\n", __func__);
 
 	return 0;
+}
+
+/*
+ * XNU: mps_reinit() sleeps, so callouts (mps_periodic) queue this task
+ * instead of calling it.
+ */
+void
+mps_reinit_task(void *arg, int pending)
+{
+	struct mps_softc *sc = arg;
+
+	mps_lock(sc);
+	mps_reinit(sc);
+	mps_unlock(sc);
 }
 
 /* Wait for the chip to ACK a word that we've put into its FIFO 
@@ -1609,6 +1679,13 @@ mps_attach(struct mps_softc *sc)
 	TAILQ_INIT(&sc->event_list);
 	timevalclear(&sc->lastfail);
 
+	/* XNU: mps_reinit() runs on this taskqueue, see mps_periodic() */
+	TASK_INIT(&sc->mps_reinit_task, 0, mps_reinit_task, sc);
+	sc->mps_tq = taskqueue_create("mps_reinit", M_WAITOK | M_ZERO,
+	    taskqueue_thread_enqueue, &sc->mps_tq);
+	taskqueue_start_threads(&sc->mps_tq, 1, PRIBIO, "%s reinit",
+	    device_get_nameunit(sc->mps_dev));
+
 	if ((error = mps_transition_ready(sc)) != 0) {
 		mps_dprint(sc, MPS_INIT|MPS_FAULT, "failed to transition "
 		    "ready\n");
@@ -1697,9 +1774,13 @@ mps_periodic(void *arg)
 		return;
 
 	db = mps_regread(sc, MPI2_DOORBELL_OFFSET);
-	if ((db & MPI2_IOC_STATE_MASK) == MPI2_IOC_STATE_FAULT) {
+	if ((db & MPI2_IOC_STATE_MASK) == MPI2_IOC_STATE_FAULT &&
+	    (sc->mps_flags & MPS_FLAGS_DIAGRESET) == 0 &&	/* XNU */
+	    !sc->xnu.reinit_pending) {				/* XNU */
 		mps_dprint(sc, MPS_FAULT, "IOC Fault 0x%08x, Resetting\n", db);
-		mps_reinit(sc);
+		sc->xnu.stats.faults++;
+		/* XNU: mps_reinit() sleeps; run it on the taskqueue */
+		mps_xnu_request_reinit(sc, "IOC fault");
 	}
 
 	callout_reset_sbt(&sc->periodic, MPS_PERIODIC_DELAY * SBT_1S, 0,
@@ -1773,6 +1854,24 @@ mps_free(struct mps_softc *sc)
 	/* Lock must not be held for this */
 	callout_drain(&sc->periodic);
 	callout_drain(&sc->device_check_callout);
+
+	/* XNU: a reinit in progress gives up (MPS_FLAGS_SHUTDOWN); wait for it */
+	if (sc->mps_tq != NULL) {
+		taskqueue_free(sc->mps_tq);
+		sc->mps_tq = NULL;
+	}
+
+	/*
+	 * XNU: stop the IOC (message unit reset) before the outstanding
+	 * commands and held ccbs are completed, so no buffer goes back to the
+	 * OS while the IOC could still DMA into it; every ccb completes once.
+	 */
+	mps_lock(sc);
+	if ((sc->mps_flags & MPS_FLAGS_XNU_GONE) == 0 &&
+	    sc->mps_flags & MPS_FLAGS_ATTACH_DONE)
+		mps_transition_ready(sc);
+	mpssas_xnu_fail_all(sc);
+	mps_unlock(sc);
 
 	if (((error = mps_detach_log(sc)) != 0) ||
 	    ((error = mps_detach_sas(sc)) != 0)) {
