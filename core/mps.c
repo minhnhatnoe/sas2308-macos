@@ -2359,6 +2359,7 @@ mps_push_sge(struct mps_command *cm, void *sgep, size_t len, int segsleft)
 		 * Mark as last element in this chain if necessary.
 		 */
 		if (type == MPI2_SGE_FLAGS_SIMPLE_ELEMENT) {
+			/* XNU: unsigned: 0x80 << 24 overflows int (UBSan) */
 			sge->FlagsLength |= htole32(
 			    MPI2_SGE_FLAGS_LAST_ELEMENT << MPI2_SGE_FLAGS_SHIFT);
 		}

@@ -113,10 +113,8 @@ MALLOC_DECLARE(M_MPSSAS);
 static __inline int
 mpssas_set_lun(uint8_t *lun, u_int ccblun)
 {
-	uint64_t *newlun;
-
-	newlun = (uint64_t *)lun;
-	*newlun = 0;
+	/* XNU: the TM request's LUN is not 8-byte aligned (UBSan, arm64e) */
+	memset(lun, 0, 8);
 	if (ccblun <= 0xff) {
 		/* Peripheral device address method, LUN is 0 to 255 */
 		lun[1] = ccblun;
