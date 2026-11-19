@@ -386,6 +386,8 @@ mps_resize_queues(struct mps_softc *sc)
 	    sges_per_frame * reqcr;
 	if (sc->max_chains > 0 && sc->max_chains < sc->num_chains)
 		sc->num_chains = sc->max_chains;
+	if (sc->num_chains == 0)	/* XNU: MaxChainDepth 0: no 0-byte DMA */
+		sc->num_chains = 1;
 
 	/*
 	 * Figure out the number of MSIx-based queues.  If the firmware or
@@ -442,6 +444,18 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 			panic("%s failed to get IOC Facts with error %d\n",
 			    __func__, error);
 		}
+	}
+
+	/*
+	 * XNU: the SCSI IO SGL math ((32 - 24) * 4 bytes in the request
+	 * frame, mpssas_action_scsiio) assumes request frames of at least 128
+	 * bytes; refuse smaller ones instead of overrunning the frame.
+	 */
+	if (sc->facts->IOCRequestFrameSize < 32) {
+		mps_dprint(sc, MPS_INIT|MPS_FAULT, "IOCRequestFrameSize %u "
+		    "dwords too small (need 32)\n",
+		    sc->facts->IOCRequestFrameSize);
+		return (EINVAL);
 	}
 
 	MPS_DPRINT_PAGE(sc, MPS_XINFO, iocfacts, sc->facts);
@@ -1382,6 +1396,14 @@ mps_alloc_requests(struct mps_softc *sc)
 	    (uintmax_t)sc->sense_busaddr, rsize);
 
 	nsegs = (sc->maxio / PAGE_SIZE) + 1;
+	/*
+	 * XNU: mps_push_sge puts 1 SGE in the request frame and
+	 * reqframesz / 12 - 1 in each chain frame, so more than that times
+	 * IOCFacts MaxChainDepth, plus 1, would exceed the chain depth (the
+	 * "+ 1" above can, for a misaligned maximum-size transfer).
+	 */
+	nsegs = MIN(nsegs, (sc->reqframesz / sizeof(MPI2_SGE_SIMPLE64) - 1) *
+	    sc->facts->MaxChainDepth + 1);
 	bus_dma_template_init(&t, sc->mps_parent_dmat);
 	BUS_DMA_TEMPLATE_FILL(&t, BD_MAXSIZE(BUS_SPACE_MAXSIZE_32BIT),
 	    BD_NSEGMENTS(nsegs), BD_MAXSEGSIZE(BUS_SPACE_MAXSIZE_24BIT),
@@ -2361,7 +2383,7 @@ mps_push_sge(struct mps_command *cm, void *sgep, size_t len, int segsleft)
 		if (type == MPI2_SGE_FLAGS_SIMPLE_ELEMENT) {
 			/* XNU: unsigned: 0x80 << 24 overflows int (UBSan) */
 			sge->FlagsLength |= htole32(
-			    MPI2_SGE_FLAGS_LAST_ELEMENT << MPI2_SGE_FLAGS_SHIFT);
+			    (uint32_t)MPI2_SGE_FLAGS_LAST_ELEMENT << MPI2_SGE_FLAGS_SHIFT);
 		}
 
 		/*

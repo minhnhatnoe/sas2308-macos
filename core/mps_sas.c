@@ -1301,6 +1301,7 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 	struct mpssas_target *targ;
 	struct mps_command *cm;
 	uint32_t mpi_control;
+	int error;	/* XNU */
 
 	sc = sassc->sc;
 	MPS_FUNCTRACE(sc);
@@ -1507,7 +1508,28 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 	mpssas_log_command(cm, MPS_XINFO, "%s cm %p ccb %p outstanding %u\n",
 	    __func__, cm, ccb, targ->outstanding);
 
-	mps_map_command(sc, cm);
+	/*
+	 * XNU: the thin CAM refuses a segment list the tag cannot take
+	 * (EFBIG) or a non-CAM_DATA_SG_PADDR buffer (EINVAL) without calling
+	 * mps_data_cb, so the command never reached the IOC: undo and fail.
+	 */
+	error = mps_map_command(sc, cm);
+	if (error == EFBIG || error == EINVAL) {
+		callout_stop(&cm->cm_callout);
+		targ->issued--;
+		targ->outstanding--;
+		TAILQ_REMOVE(&targ->commands, cm, cm_link);
+		ccb->ccb_h.spriv_ptr1 = NULL;
+		mps_dprint(sc, MPS_ERROR, "%s: cannot map %u segments "
+		    "(error %d)\n", __func__, csio->sglist_cnt, error);
+		mps_free_command(sc, cm);
+		mpssas_set_ccbstatus(ccb, (error == EFBIG) ? CAM_REQ_TOO_BIG :
+		    CAM_REQ_INVALID);
+		xpt_done(ccb);
+		return;
+	}
+	if (cm->cm_ccb == ccb && cm->cm_state == MPS_CM_STATE_INQUEUE)
+		mps_xnu_io_start(sc, cm);	/* XNU: trace line */
 	return;
 }
 
