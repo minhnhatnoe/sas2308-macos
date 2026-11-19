@@ -15,7 +15,8 @@ PORT_CFLAGS := -std=gnu11 -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-c
 PORT_SRCS := ../core/compat/mps_compat.c ../core/compat/cam_compat.c ../core/mps.c \
 	../core/mps_sas.c ../core/mps_sas_lsi.c ../core/mps_table.c ../core/mps_xnu.c
 PORT_HDRS := ../core/compat/mps_compat.h ../core/compat/cam_compat.h ../core/compat/queue.h \
-	../core/mpsvar.h ../core/mps_sas.h ../core/mps_table.h ../core/mps_xnu.h ../core/mps_mpi.h
+	../core/mpsvar.h ../core/mps_sas.h ../core/mps_table.h ../core/mps_xnu.h ../core/mps_xnu_stats.h \
+	../core/mps_mpi.h
 PORT_OBJS := $(patsubst ../core/%.c,obj/%.o,$(PORT_SRCS))
 
 obj/%.o: ../core/%.c $(PORT_HDRS)

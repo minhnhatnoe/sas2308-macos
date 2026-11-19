@@ -79,8 +79,10 @@ typedef int64_t		sbintime_t;
 #undef MAX
 #define MIN(a, b)	(((a) < (b)) ? (a) : (b))
 #define MAX(a, b)	(((a) > (b)) ? (a) : (b))
+#if !defined(KERNEL)	/* Kernel.framework <libkern/libkern.h> has the same */
 static __inline u_int min(u_int a, u_int b) { return (a < b ? a : b); }
 static __inline u_int max(u_int a, u_int b) { return (a > b ? a : b); }
+#endif
 #undef roundup2
 #undef howmany
 #undef nitems

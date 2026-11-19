@@ -531,6 +531,9 @@ int main()
         CHECK(g.Go(bad) == kDone && bad->status == CAM_TID_INVALID);   /* no such target id */
         bad = g.NewIo(0, 0x1000000, CAM_DIR_IN, rd10, 10, seg2);
         CHECK(g.Go(bad) == kDone && bad->status == CAM_LUN_INVALID);   /* LUN not encodable */
+        bad = g.NewIo(0, 0, CAM_DIR_IN, rd10, 10, seg2);
+        bad->ccb->csio.cdb_len = IOCDBLEN + 1;
+        CHECK(g.Go(bad) == kDone && bad->status == CAM_REQ_INVALID);   /* CDB longer than cdb_bytes */
         CHECK(g.ChainsFree() == g.ChainsTotal() && g.sc->io_cmds_active == 0);
     }
 

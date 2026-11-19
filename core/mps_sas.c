@@ -1564,6 +1564,14 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 		return;
 	}
 
+	/* XNU: FreeBSD's CAM bounds cdb_len before the SIM sees it */
+	if (csio->cdb_len > ((csio->ccb_h.flags & CAM_CDB_POINTER) ?
+	    sizeof(req->CDB.CDB32) : IOCDBLEN)) {
+		mps_free_command(sc, cm);
+		mpssas_set_ccbstatus(ccb, CAM_REQ_INVALID);
+		xpt_done(ccb);
+		return;
+	}
 	if (csio->ccb_h.flags & CAM_CDB_POINTER)
 		bcopy(csio->cdb_io.cdb_ptr, &req->CDB.CDB32[0], csio->cdb_len);
 	else
@@ -2293,7 +2301,7 @@ mpssas_xnu_tm_complete(struct mps_softc *sc, struct mps_command *tm)
 			else
 				mpssas_set_ccbstatus(ccb, CAM_REQ_CMP_ERR);
 		}
-		if (ioc_status == MPI2_IOCSTATUS_SUCCESS && tm->cm_targ != NULL &&
+		if (ioc_status == MPI2_IOCSTATUS_SUCCESS &&
 		    (req->TaskType == MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET ||
 		    req->TaskType ==
 		    MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET))

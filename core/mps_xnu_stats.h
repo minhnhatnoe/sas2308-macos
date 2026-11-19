@@ -1,0 +1,55 @@
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * mps_xnu_stats.h - the M4 statistics (sc->xnu.stats).  Only <stdint.h>, so
+ * that the kext's IOKit translation unit (which cannot include the compat
+ * headers, see docs/design.md) can read a snapshot of them.
+ */
+#ifndef _MPS_XNU_STATS_H_
+#define _MPS_XNU_STATS_H_
+
+#include <stdint.h>
+
+/* ---- statistics (M4 MpsStats) -------------------------------------------- */
+
+struct mps_xnu_stats {
+	/* IO */
+	uint64_t	ios;		/* SCSI IOs completed (any status) */
+	uint64_t	read_bytes, write_bytes;
+	uint64_t	lat_sum_us;	/* post -> completion */
+	uint32_t	lat_max_us;
+	uint32_t	held;		/* IOs requeued/held during recovery */
+	uint32_t	held_timeouts;
+	/* errors by class */
+	uint32_t	err_check_condition;
+	uint32_t	err_scsi_status;
+	uint32_t	err_terminated;
+	uint32_t	err_device_gone;
+	uint32_t	err_transport;
+	uint32_t	io_timeouts;
+	/* task management */
+	uint32_t	tm_sent[16];	/* by MPI2 TaskType */
+	uint32_t	tm_timeouts;
+	uint32_t	tm_late_replies;
+	uint32_t	tm_failed;
+	uint32_t	aborts, lun_resets, target_resets;
+	uint32_t	recoveries;
+	uint32_t	recovered_abort, recovered_lun_reset,
+			recovered_target_reset;
+	/* controller */
+	uint32_t	faults;
+	uint32_t	diag_resets;
+	uint32_t	reinits;
+	uint32_t	reinit_failures;
+	uint32_t	reinit_max_ms;
+	/* replies / events */
+	uint32_t	stale_replies;	/* reply for an idle SMID */
+	uint32_t	bad_replies;	/* malformed descriptor dropped */
+	uint32_t	events;
+	uint32_t	event_ack_dropped;
+	/* chain pool (from sc->chain_alloc_fail / chain_free_lowwater) */
+	uint32_t	chain_alloc_fail;
+	uint32_t	chain_free_low;
+};
+
+#endif /* !_MPS_XNU_STATS_H_ */

@@ -363,8 +363,8 @@ mps_print_evt_sas(struct mps_softc *sc, MPI2_EVENT_NOTIFICATION_REPLY *event)
 		MPS_PRINTFIELD(sc, data, ASC, 0x%x);
 		MPS_PRINTFIELD(sc, data, ASCQ, 0x%x);
 		MPS_PRINTFIELD(sc, data, DevHandle, 0x%x);
-		mps_print_field(sc, "SASAddress: 0x%jx\n",
-		    mps_to_u64(&data->SASAddress));
+		mps_print_field(sc, "SASAddress: 0x%jx\n",	/* XNU: cast */
+		    (uintmax_t)mps_to_u64(&data->SASAddress));
 		break;
 	}
 	case MPI2_EVENT_SAS_BROADCAST_PRIMITIVE:
@@ -401,7 +401,7 @@ mps_print_sgl(struct mps_softc *sc, struct mps_command *cm, int offset)
 		flags = le32toh(sge->FlagsLength) >> MPI2_SGE_FLAGS_SHIFT;
 		printf("seg%d flags=0x%02x len=0x%06x addr=0x%016jx\n",
 		    i, flags, le32toh(sge->FlagsLength) & 0xffffff,
-		    mps_to_u64(&sge->Address));
+		    (uintmax_t)mps_to_u64(&sge->Address));	/* XNU: cast */
 		if (flags & (MPI2_SGE_FLAGS_END_OF_LIST |
 		    MPI2_SGE_FLAGS_END_OF_BUFFER))
 			break;
