@@ -1308,9 +1308,18 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 	mtx_assert(&sc->mps_mtx, MA_OWNED);
 
 	csio = &ccb->csio;
-	KASSERT(csio->ccb_h.target_id < sassc->maxtargets,
-	    ("Target %d out of bounds in XPT_SCSI_IO\n",
-	     csio->ccb_h.target_id));
+	/* XNU: unplugged or disabled: fail, don't touch the registers */
+	if (sc->mps_flags & MPS_FLAGS_XNU_GONE) {
+		mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
+		xpt_done(ccb);
+		return;
+	}
+	/* XNU: the OS may address any id: no KASSERT */
+	if (csio->ccb_h.target_id >= sassc->maxtargets) {
+		mpssas_set_ccbstatus(ccb, CAM_TID_INVALID);
+		xpt_done(ccb);
+		return;
+	}
 	targ = &sassc->targets[csio->ccb_h.target_id];
 	mps_dprint(sc, MPS_TRACE, "ccb %p target flag %x\n", ccb, targ->flags);
 	if (targ->handle == 0x0) {
@@ -1699,7 +1708,11 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 	/* Take the fast path to completion */
 	if (cm->cm_reply == NULL) {
 		if (mpssas_get_ccbstatus(ccb) == CAM_REQ_INPROG) {
-			if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) != 0)
+			/* XNU: unplugged, disabled or detaching */
+			if (sc->mps_flags & (MPS_FLAGS_XNU_GONE |
+			    MPS_FLAGS_SHUTDOWN))
+				mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
+			else if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) != 0)
 				mpssas_set_ccbstatus(ccb, CAM_SCSI_BUS_RESET);
 			else {
 				mpssas_set_ccbstatus(ccb, CAM_REQ_CMP);

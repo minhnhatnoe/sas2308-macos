@@ -127,6 +127,8 @@ mps_diag_reset(struct mps_softc *sc,int sleep_flag)
 	/* Push the magic sequence */
 	error = ETIMEDOUT;
 	while (tries++ < 20) {
+		if (MPS_XNU_ABANDON(sc))	/* XNU: gone, or detaching */
+			return (ENXIO);
 		for (i = 0; i < sizeof(mpt2_reset_magic); i++)
 			mps_regwrite(sc, MPI2_WRITE_SEQUENCE_OFFSET,
 			    mpt2_reset_magic[i]);
@@ -160,6 +162,10 @@ mps_diag_reset(struct mps_softc *sc,int sleep_flag)
 	/* Wait up to 300 seconds in 50ms intervals */
 	error = ETIMEDOUT;
 	for (i = 0; i < 6000; i++) {
+		if (MPS_XNU_ABANDON(sc)) {	/* XNU: gone, or detaching */
+			error = ENXIO;
+			break;
+		}
 		/*
 		 * Wait 50 msec. If this is the first time through, wait 256
 		 * msec to satisfy Diag Reset timing requirements.
@@ -244,6 +250,10 @@ mps_transition_ready(struct mps_softc *sc)
 	   __func__, sleep_flags);
 
 	while (tries++ < 1200) {
+		if (MPS_XNU_ABANDON(sc)) {	/* XNU: gone, or detaching */
+			error = ENXIO;
+			break;
+		}
 		reg = mps_regread(sc, MPI2_DOORBELL_OFFSET);
 		mps_dprint(sc, MPS_INIT, "  Doorbell= 0x%x\n", reg);
 
@@ -853,6 +863,8 @@ mps_wait_db_ack(struct mps_softc *sc, int timeout, int sleep_flag)
 	cntdn = (sleep_flag == CAN_SLEEP) ? 1000*timeout : 2000*timeout;
 	do {
 		int_status = mps_regread(sc, MPI2_HOST_INTERRUPT_STATUS_OFFSET);
+		if (MPS_XNU_ABANDON(sc))	/* XNU: gone, or detaching */
+			goto out;
 		if (!(int_status & MPI2_HIS_SYS2IOC_DB_STATUS)) {
 			mps_dprint(sc, MPS_TRACE, 
 			"%s: successful count(%d), timeout(%d)\n",
@@ -895,6 +907,8 @@ mps_wait_db_int(struct mps_softc *sc)
 	int retry;
 
 	for (retry = 0; retry < MPS_DB_MAX_WAIT; retry++) {
+		if (MPS_XNU_ABANDON(sc))	/* XNU: gone, or detaching */
+			return (ENXIO);
 		if ((mps_regread(sc, MPI2_HOST_INTERRUPT_STATUS_OFFSET) &
 		    MPI2_HIS_IOC2SYS_DB_STATUS) != 0)
 			return (0);
@@ -1679,6 +1693,8 @@ mps_periodic(void *arg)
 	sc = (struct mps_softc *)arg;
 	if (sc->mps_flags & MPS_FLAGS_SHUTDOWN)
 		return;
+	if (sc->mps_flags & MPS_FLAGS_XNU_GONE)	/* XNU: gone or disabled */
+		return;
 
 	db = mps_regread(sc, MPI2_DOORBELL_OFFSET);
 	if ((db & MPI2_IOC_STATE_MASK) == MPI2_IOC_STATE_FAULT) {
@@ -1767,7 +1783,8 @@ mps_free(struct mps_softc *sc)
 
 	/* Put the IOC back in the READY state. */
 	mps_lock(sc);
-	if ((error = mps_transition_ready(sc)) != 0) {
+	if ((error = mps_transition_ready(sc)) != 0 &&
+	    (sc->mps_flags & MPS_FLAGS_XNU_GONE) == 0) {	/* XNU: free anyway */
 		mps_unlock(sc);
 		return (error);
 	}

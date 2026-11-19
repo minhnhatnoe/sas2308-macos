@@ -298,6 +298,19 @@ struct mps_softc {
 #define	MPS_FLAGS_ATTACH_DONE	(1 << 5)
 #define	MPS_FLAGS_WD_AVAILABLE	(1 << 6)
 #define	MPS_FLAGS_REALLOCATED	(1 << 7)
+#define	MPS_FLAGS_XNU_GONE	(1 << 8)	/* XNU: all-ones reads / disabled */
+/* XNU: wait loops give up when the IOC is gone or a reinit is abandoned */
+#define	MPS_XNU_ABANDON(sc)						\
+	(((sc)->mps_flags & MPS_FLAGS_XNU_GONE) != 0 ||			\
+	((sc)->mps_flags & (MPS_FLAGS_SHUTDOWN | MPS_FLAGS_DIAGRESET)) ==	\
+	(MPS_FLAGS_SHUTDOWN | MPS_FLAGS_DIAGRESET))
+/*
+ * XNU: a completion without a reply frame is "due to a reset" (FreeBSD's
+ * MPS_FLAGS_DIAGRESET test) also when the IOC is gone or being detached.
+ */
+#define	MPS_XNU_RESETTING(sc)						\
+	(((sc)->mps_flags & (MPS_FLAGS_DIAGRESET | MPS_FLAGS_XNU_GONE |	\
+	MPS_FLAGS_SHUTDOWN)) != 0)
 	u_int				mps_debug;
 	u_int				msi_msgs;
 	u_int				reqframesz;
@@ -483,7 +496,13 @@ struct scsi_read_capacity_eedp
 static __inline uint32_t
 mps_regread(struct mps_softc *sc, uint32_t offset)
 {
-	return (bus_space_read_4(sc->mps_btag, sc->mps_bhandle, offset));
+	uint32_t val;
+
+	val = bus_space_read_4(sc->mps_btag, sc->mps_bhandle, offset);
+	/* XNU: all-ones = the device is gone (Thunderbolt unplug) */
+	if (__predict_false(val == 0xffffffff))
+		mps_xnu_gone(sc, offset);
+	return (val);
 }
 
 static __inline void
