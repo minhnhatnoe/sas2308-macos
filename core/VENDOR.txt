@@ -1,0 +1,39 @@
+FreeBSD sys/dev/mps, vendor import
+==================================
+
+Upstream:  https://github.com/freebsd/freebsd-src
+Commit:    8c9ce319fef765890ce518cab85d3a470b669849
+           (2025-06-06, "Update in preparation for 14.3-RELEASE",
+           tag release/14.3.0)
+License:   BSD-2-Clause (mps driver, LSI/Avago MPI2 headers)
+
+The branch vendor/freebsd-mps (tag vendor/freebsd-mps-8c9ce319) holds the
+upstream files below, unmodified, at our paths. Every change made for xnu
+is a later commit on master, so `git diff vendor/freebsd-mps master -- core/`
+is the whole port delta (tools/diff-vs-freebsd.sh shows it per file).
+
+Path map (upstream -> ours)
+---------------------------
+sys/dev/mps/mps.c                 -> core/mps.c
+sys/dev/mps/mps_config.c          -> core/mps_config.c
+sys/dev/mps/mps_sas.c             -> core/mps_sas.c
+sys/dev/mps/mps_sas.h             -> core/mps_sas.h
+sys/dev/mps/mps_sas_lsi.c         -> core/mps_sas_lsi.c
+sys/dev/mps/mps_table.c           -> core/mps_table.c
+sys/dev/mps/mps_table.h           -> core/mps_table.h
+sys/dev/mps/mpsvar.h              -> core/mpsvar.h
+sys/dev/mps/mpi/mpi2*.h           -> core/mpi/mpi2*.h  (12 files incl.
+sys/dev/mps/mpi/mpi2_history.txt  -> core/mpi/mpi2_history.txt  history)
+
+Upstream files not ported
+-------------------------
+sys/dev/mps/mps_pci.c       PCI attach, interrupts, BAR mapping: done by the
+                            kext (kext/SAS2308HBA*.cpp, kext/mps_xnu_os.cpp)
+sys/dev/mps/mps_user.c      /dev/mpsN ioctl and uio interface: not offered
+sys/dev/mps/mps_ioctl.h     its ioctl definitions
+sys/dev/mps/mps_mapping.c   persistent target-id mapping tables: replaced by
+sys/dev/mps/mps_mapping.h   the simple mapping in core/mps_xnu.c
+
+Updating: commit the new pristine files on vendor/freebsd-mps, then merge
+that branch into master; git applies upstream's changes 3-way to our
+modified copies.
