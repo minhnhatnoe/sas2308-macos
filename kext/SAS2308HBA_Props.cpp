@@ -1,0 +1,401 @@
+/*
+ * SAS2308HBA_Props.cpp - registry properties: logging control (personality,
+ * boot-args, setProperties from sas2308ctl), the controller characteristics
+ * the storage stack shows (System Information), and the statistics
+ * dictionary (SAS2308Statistics), published at most once a second.
+ */
+#include "SAS2308HBA.h"
+
+#include <IOKit/IOUserClient.h>
+#include <IOKit/storage/IOStorageControllerCharacteristics.h>
+#include <IOKit/storage/IOStorageDeviceCharacteristics.h>
+#include <kern/clock.h>
+#include <kern/task.h>
+#include <libkern/libkern.h>
+#include <pexpert/pexpert.h>
+#include <stdarg.h>
+
+#ifndef SAS2308_BUNDLE_ID
+#define SAS2308_BUNDLE_ID "org.sas2308.driver.SAS2308HBA"
+#endif
+
+/* MPI2_SCSITASKMGMT_TASKTYPE_* (core/mpi/mpi2_init.h) */
+enum : uint8_t {
+    kTmAbortTask    = 0x01,
+    kTmAbortTaskSet = 0x02,
+    kTmTargetReset  = 0x03,
+    kTmLunReset     = 0x05,
+    kTmClearTaskSet = 0x06,
+    kTmClearAca     = 0x08,
+};
+
+static uint64_t
+UptimeUs(void)
+{
+    uint64_t ns;
+    absolutetime_to_nanoseconds(mach_absolute_time(), &ns);
+    return ns / 1000;
+}
+
+#if 0
+#pragma mark -
+#pragma mark Logging control
+#endif
+
+//-----------------------------------------------------------------------------
+//	Klog - one line through mps_kext_log() (os_log per class, or IOLog).
+//																	[PRIVATE]
+//-----------------------------------------------------------------------------
+
+void
+SAS2308HBA::Klog(uint32_t cls, const char *fmt, ...)
+{
+    if (!(cls & fDebugMask))
+        return;
+    char line[320];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(line, sizeof(line), fmt, ap);
+    va_end(ap);
+    mps_kext_log(&fHost, cls, line);
+}
+
+/*
+ * Level: personality property SAS2308LogLevel (Info.plist, default 2 =
+ * info), overridden by boot-arg sas2308_log=N (0..4); class mask
+ * (FreeBSD hw.mps.N.debug_level): property SAS2308DebugMask or boot-arg
+ * sas2308_debug=0xMASK, which replaces the level's mask. Boot-arg
+ * sas2308_iolog=1 sends lines to IOLog (dmesg / panic log) instead of os_log.
+ */
+void
+SAS2308HBA::ApplyLogSettings(void)
+{
+    int level = MPSK_LEVEL_INFO;
+    if (OSNumber *n = OSDynamicCast(OSNumber, getProperty(kLogLevelKey)))
+        level = (int)n->unsigned32BitValue();
+    else if (OSString *s = OSDynamicCast(OSString, getProperty(kLogLevelKey)))
+        level = mps_kext_parse_level(s->getCStringNoCopy());
+    uint32_t v = 0;
+    if (PE_parse_boot_argn("sas2308_log", &v, sizeof(v)) && v <= (uint32_t)MPSK_LEVEL_TRACE)
+        level = (int)v;
+    if (level < 0 || level > MPSK_LEVEL_TRACE)
+        level = MPSK_LEVEL_INFO;
+    uint32_t mask = mps_kext_level_mask(level);
+    if (OSNumber *n = OSDynamicCast(OSNumber, getProperty(kDebugMaskKey)))
+        mask = n->unsigned32BitValue() & MPSK_DEBUG_ALL;
+    else if (OSString *s = OSDynamicCast(OSString, getProperty(kDebugMaskKey)))
+        mps_kext_parse_debug(s->getCStringNoCopy(), &mask);
+    if (PE_parse_boot_argn("sas2308_debug", &v, sizeof(v)))
+        mask = v & MPSK_DEBUG_ALL;
+    if (PE_parse_boot_argn("sas2308_iolog", &v, sizeof(v)))
+        fHost.use_iolog = v != 0;
+    else if (OSBoolean *b = OSDynamicCast(OSBoolean, getProperty(kIOLogKey)))
+        fHost.use_iolog = b->isTrue();
+    fDebugMask = mask;
+    if (fMps)
+        mps_kext_set_debug(fMps, mask);
+    setProperty(kLogLevelKey, (unsigned long long)level, 32);
+    setProperty(kDebugMaskKey, (unsigned long long)mask, 32);
+    char names[128];
+    mps_kext_describe_debug(mask, names, sizeof(names));
+    Klog(MPSK_INIT | MPSK_INFO, "log level %d (%s), debug mask 0x%x (%s), sink %s", level,
+         mps_kext_level_name(level), mask, names, fHost.use_iolog ? "IOLog" : "os_log subsystem " SAS2308_BUNDLE_ID);
+}
+
+/* sas2308ctl / IORegistryEntrySetCFProperties(): change the level at runtime. Admin only. */
+IOReturn
+SAS2308HBA::setProperties(OSObject *properties)
+{
+    OSDictionary *d = OSDynamicCast(OSDictionary, properties);
+    if (!d)
+        return kIOReturnBadArgument;
+    if (IOUserClient::clientHasPrivilege(current_task(), kIOClientPrivilegeAdministrator) != kIOReturnSuccess)
+        return kIOReturnNotPrivileged;
+
+    bool handled = false;
+    uint32_t mask = fDebugMask;
+    int level = -1;
+    if (OSObject *o = d->getObject(kLogLevelKey)) {
+        if (OSNumber *n = OSDynamicCast(OSNumber, o)) level = (int)n->unsigned32BitValue();
+        else if (OSString *s = OSDynamicCast(OSString, o)) level = mps_kext_parse_level(s->getCStringNoCopy());
+        if (level < 0 || level > MPSK_LEVEL_TRACE)
+            return kIOReturnBadArgument;
+        mask = mps_kext_level_mask(level);
+        handled = true;
+    }
+    if (OSObject *o = d->getObject(kDebugMaskKey)) {
+        if (OSNumber *n = OSDynamicCast(OSNumber, o))
+            mask = n->unsigned32BitValue() & MPSK_DEBUG_ALL;
+        else if (OSString *s = OSDynamicCast(OSString, o))
+            mps_kext_parse_debug(s->getCStringNoCopy(), &mask);   /* FreeBSD mps_parse_debug */
+        else
+            return kIOReturnBadArgument;
+        handled = true;
+    }
+    if (handled) {
+        const uint32_t old = fDebugMask;
+        fDebugMask = mask;
+        if (fMps)
+            mps_kext_set_debug(fMps, mask);
+        if (level >= 0)
+            setProperty(kLogLevelKey, (unsigned long long)level, 32);
+        setProperty(kDebugMaskKey, (unsigned long long)mask, 32);
+        char names[128];
+        mps_kext_describe_debug(mask, names, sizeof(names));
+        /* Logged at error class so the change itself is visible at every level. */
+        Klog(MPSK_ERROR | MPSK_INFO, "debug mask 0x%x -> 0x%x (%s), set from userland", old, mask, names);
+    }
+    if (OSBoolean *b = OSDynamicCast(OSBoolean, d->getObject(kIOLogKey))) {
+        fHost.use_iolog = b->isTrue();
+        setProperty(kIOLogKey, b->isTrue());
+        handled = true;
+    }
+    if (d->getObject(kResetStatsKey)) {
+        if (Enter()) {
+            mps_kext_reset_stats(fMps);
+            Leave();
+        }
+        if (fLock) {
+            IOLockLock(fLock);
+            fKStats = KStats();
+            IOLockUnlock(fLock);
+        }
+        Klog(MPSK_INFO, "statistics reset from userland");
+        PublishStats(true);
+        handled = true;
+    }
+    return handled ? kIOReturnSuccess : kIOReturnUnsupported;
+}
+
+#if 0
+#pragma mark -
+#pragma mark Controller characteristics
+#endif
+
+//-----------------------------------------------------------------------------
+//	PublishControllerCharacteristics - what System Information and the
+//	storage stack show for the HBA ("Controller Characteristics", through
+//	the family's SetHBAProperty): vendor, product, firmware revision, port
+//	speed and description.											[PRIVATE]
+//-----------------------------------------------------------------------------
+
+void
+SAS2308HBA::PublishControllerCharacteristics(void)
+{
+    struct mps_kext_controller_info ci;
+
+    if (!Enter())
+        return;
+    mps_kext_controller_info(fMps, &ci);
+    Leave();
+
+    const UInt16 subVendor = fPCI ? fPCI->configRead16(kIOPCIConfigSubSystemVendorID) : 0;
+    const UInt16 subDevice = fPCI ? fPCI->configRead16(kIOPCIConfigSubSystemID) : 0;
+    /* LSI subsystem IDs (Linux mpt3sas / LSI release notes): 0x3020 = SAS9207-8i, 0x3040 = SAS9207-8e */
+    const char *product = (subVendor == 0x1000 && subDevice == 0x3020) ? "SAS9207-8i" :
+                          (subVendor == 0x1000 && subDevice == 0x3040) ? "SAS9207-8e" : "SAS2308";
+    char desc[96];
+    snprintf(desc, sizeof(desc), "%u-port SAS2 HBA, MPI %s%s", ci.num_ports ? ci.num_ports : 8,
+             ci.msg_version[0] ? ci.msg_version : "2.0", fTunnelled ? ", Thunderbolt" : "");
+
+    struct { const char *key; const char *value; } props[] = {
+        { kIOPropertyVendorNameKey,           "LSI" },
+        { kIOPropertyProductNameKey,          product },
+        { kIOPropertyProductRevisionLevelKey, ci.fw_version[0] ? ci.fw_version : "unknown" },
+        { kIOPropertyPortSpeedKey,            kIOPropertyPortSpeed6GigabitKey },   /* SAS2: 6 Gb/s per PHY */
+        { kIOPropertyPortDescriptionKey,      desc },
+    };
+    for (size_t i = 0; i < sizeof(props) / sizeof(props[0]); i++) {
+        OSString *s = OSString::withCString(props[i].value);
+        if (!s)
+            continue;
+        if (!SetHBAProperty(props[i].key, s))
+            Klog(MPSK_ERROR | MPSK_INIT, "SetHBAProperty(%s) refused", props[i].key);
+        s->release();
+    }
+    Klog(MPSK_INIT | MPSK_INFO, "controller: LSI %s, firmware %s, MPI %s, product id 0x%04x", product,
+         ci.fw_version, ci.msg_version, ci.product_id);
+}
+
+#if 0
+#pragma mark -
+#pragma mark Statistics
+#endif
+
+void
+SAS2308HBA::SetNumber(OSDictionary *dict, const char *key, UInt64 value)
+{
+    OSNumber *n = OSNumber::withNumber(value, 64);
+    if (n) {
+        dict->setObject(key, n);
+        n->release();
+    }
+}
+
+static uint32_t TmSentTotal(const struct mps_xnu_stats &st)
+{
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < 16; i++) n += st.tm_sent[i];
+    return n;
+}
+
+/* The core's counters: under mps_mtx while attached, as they were left after mps_free. */
+bool
+SAS2308HBA::Snapshot(struct mps_kext_snapshot *snap)
+{
+    if (Enter()) {
+        mps_kext_snapshot(fMps, snap);
+        Leave();
+        return true;
+    }
+    if (!fLock || !fMps)
+        return false;
+    IOLockLock(fLock);
+    const bool detached = !fCoreAttached && !fBusy;
+    IOLockUnlock(fLock);
+    if (!detached)
+        return false;
+    mps_kext_snapshot(fMps, snap);
+    return true;
+}
+
+/*
+ * Copy the counters (struct copies), build the dictionary outside every
+ * lock. The IO path only increments plain integers; nothing is published
+ * per IO.
+ */
+void
+SAS2308HBA::PublishStats(bool force)
+{
+    if (!fLock)
+        return;
+    const uint64_t now = UptimeUs();
+    IOLockLock(fLock);
+    if (!force && now - fLastPublishUs < (uint64_t)kStatsPublishMs * 1000) {
+        IOLockUnlock(fLock);
+        return;
+    }
+    const KStats ks = fKStats;
+    IOLockUnlock(fLock);
+
+    struct mps_kext_snapshot snap;
+    if (!Snapshot(&snap))
+        return;
+    const struct mps_xnu_stats &st = snap.st;
+    const bool gone = snap.gone, resetting = snap.resetting;
+    const uint32_t mask = fDebugMask;
+    const uint64_t sig = st.ios + st.lat_sum_us + st.held + st.io_timeouts + TmSentTotal(st) + st.tm_timeouts +
+                         st.faults + st.reinits + st.reinit_failures + st.stale_replies + st.bad_replies + st.events +
+                         st.chain_alloc_fail + ks.tasks + ks.tasksRejected + ks.familyTimeouts + ks.tmRequests +
+                         snap.held + snap.tms_busy + (gone ? 1 : 0) + (resetting ? 2 : 0) + (fSuspended ? 4 : 0) + mask +
+                         st.suspends + st.resumes + st.config_reads;
+    IOLockLock(fLock);
+    if (!force && sig == fLastPublishedSig) {
+        IOLockUnlock(fLock);
+        return;
+    }
+    fLastPublishUs = now;
+    fLastPublishedSig = sig;
+    IOLockUnlock(fLock);
+
+    OSDictionary *d = OSDictionary::withCapacity(64);
+    if (!d)
+        return;
+    SetNumber(d, "IOs completed", st.ios);
+    SetNumber(d, "Read bytes", st.read_bytes);
+    SetNumber(d, "Write bytes", st.write_bytes);
+    SetNumber(d, "Latency avg us", st.ios ? st.lat_sum_us / st.ios : 0);
+    SetNumber(d, "Latency max us", st.lat_max_us);
+    SetNumber(d, "Tasks accepted", ks.tasks);
+    SetNumber(d, "Tasks held (recovery)", ks.tasksHeld);
+    SetNumber(d, "Tasks rejected", ks.tasksRejected);
+    SetNumber(d, "Held now", snap.held);
+    SetNumber(d, "Held total", st.held);
+    SetNumber(d, "Held timeouts", st.held_timeouts);
+    SetNumber(d, "Err check condition", st.err_check_condition);
+    SetNumber(d, "Err SCSI status", st.err_scsi_status);
+    SetNumber(d, "Err terminated", st.err_terminated);
+    SetNumber(d, "Err device gone", st.err_device_gone);
+    SetNumber(d, "Err transport", st.err_transport);
+    SetNumber(d, "IO timeouts", st.io_timeouts);
+    SetNumber(d, "Family timeouts", ks.familyTimeouts);
+    SetNumber(d, "TM abort task", st.tm_sent[kTmAbortTask]);
+    SetNumber(d, "TM abort task set", st.tm_sent[kTmAbortTaskSet]);
+    SetNumber(d, "TM clear task set", st.tm_sent[kTmClearTaskSet]);
+    SetNumber(d, "TM clear ACA", st.tm_sent[kTmClearAca]);
+    SetNumber(d, "TM LUN reset", st.tm_sent[kTmLunReset]);
+    SetNumber(d, "TM target reset", st.tm_sent[kTmTargetReset]);
+    SetNumber(d, "TM timeouts", st.tm_timeouts);
+    SetNumber(d, "TM late replies", st.tm_late_replies);
+    SetNumber(d, "TM failed", st.tm_failed);
+    SetNumber(d, "TM in flight", snap.tms_busy);
+    SetNumber(d, "TM requests from OS", ks.tmRequests);
+    SetNumber(d, "TM requests failed", ks.tmRequestsFailed);
+    SetNumber(d, "Recoveries", st.recoveries);
+    SetNumber(d, "Recovered by abort", st.recovered_abort);
+    SetNumber(d, "Recovered by LUN reset", st.recovered_lun_reset);
+    SetNumber(d, "Recovered by target reset", st.recovered_target_reset);
+    SetNumber(d, "IOC faults", st.faults);
+    SetNumber(d, "Diag resets", st.diag_resets);
+    SetNumber(d, "Reinits", st.reinits);
+    SetNumber(d, "Reinit failed attempts", st.reinit_failures);
+    SetNumber(d, "Reinit max ms", st.reinit_max_ms);
+    SetNumber(d, "Controller dead", ks.deadEvents);
+    SetNumber(d, "Stale replies", st.stale_replies);
+    SetNumber(d, "Bad replies", st.bad_replies);
+    SetNumber(d, "Events", st.events);
+    SetNumber(d, "Event acks dropped", st.event_ack_dropped);
+    SetNumber(d, "Chain alloc failures", st.chain_alloc_fail);
+    SetNumber(d, "Chain free low", st.chain_free_low);
+    SetNumber(d, "Suspends", st.suspends);
+    SetNumber(d, "Resumes", st.resumes);
+    SetNumber(d, "Suspend drain left", st.suspend_drain_left);
+    SetNumber(d, "Config page reads", st.config_reads);
+    SetNumber(d, "Config page failures", st.config_failures);
+    SetNumber(d, "Debug mask", mask);
+    OSString *state = OSString::withCString(gone ? "gone" : fSuspended ? "suspended" : resetting ? "resetting" : "operational");
+    if (state) {
+        d->setObject("State", state);
+        state->release();
+    }
+    setProperty(kStatsKey, d);
+    d->release();
+}
+
+void
+SAS2308HBA::LogCounters(const char *why)
+{
+    if (!fLock)
+        return;
+    struct mps_kext_snapshot snap;
+    if (!Snapshot(&snap))
+        return;
+    IOLockLock(fLock);
+    const KStats ks = fKStats;
+    IOLockUnlock(fLock);
+    const struct mps_xnu_stats &st = snap.st;
+    Klog(MPSK_INFO, "%s: %llu IOs (%llu B read, %llu B written), latency avg %llu us max %u us; errors: "
+         "check-condition %u, scsi-status %u, terminated %u, device-gone %u, transport %u",
+         why, st.ios, st.read_bytes, st.write_bytes, st.ios ? st.lat_sum_us / st.ios : 0, st.lat_max_us,
+         st.err_check_condition, st.err_scsi_status, st.err_terminated, st.err_device_gone, st.err_transport);
+    Klog(MPSK_INFO, "%s: timeouts %u (family %u), TMs %u (timeouts %u, late %u), recoveries %u, faults %u, "
+         "reinits %u (failed attempts %u, max %u ms), stale replies %u",
+         why, st.io_timeouts, ks.familyTimeouts, TmSentTotal(st), st.tm_timeouts, st.tm_late_replies, st.recoveries,
+         st.faults, st.reinits, st.reinit_failures, st.reinit_max_ms, st.stale_replies);
+}
+
+void
+SAS2308HBA::StatsTimerFired(OSObject *owner, IOTimerEventSource *sender)
+{
+    SAS2308HBA *self = OSDynamicCast(SAS2308HBA, owner);
+    if (!self || !self->fLock)
+        return;
+    IOLockLock(self->fLock);
+    const bool run = self->fStarted && !self->fStopping;
+    IOLockUnlock(self->fLock);
+    if (!run)
+        return;
+    self->DeliverCompletions();                     /* belt and braces: nothing should wait here */
+    self->PublishStats(false);
+    sender->setTimeoutMS(kStatsPublishMs);
+}

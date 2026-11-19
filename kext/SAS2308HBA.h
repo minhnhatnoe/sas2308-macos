@@ -1,15 +1,24 @@
 /*
- * SAS2308HBA - IOKit kernel extension for the LSI/Broadcom SAS2308
- * (SAS 9207-8i, PCI 1000:0087, MPI2 IT firmware).
+ * SAS2308HBA.h - IOKit driver for the LSI/Broadcom SAS2308 SAS HBA
+ * (SAS 9207-8i, PCI 1000:0087, MPI 2.0 IT firmware).
  *
- * This file is only the IOKit glue: PCI resources, interrupt wiring, data
- * buffer mapping and the translation between SCSIParallelTask and the
- * FreeBSD-shaped core (core/mps*.c), which it reaches through
- * mps_xnu_os.{h,cpp} (ccbs, the mps_os_* hooks). All MPI2 protocol logic
- * is in the core.
+ * The class is an IOSCSIParallelInterfaceController. The MPI2 protocol is
+ * the FreeBSD mps(4) driver (core/), reached only through mps_xnu_os.h
+ * (plain C types; mps_xnu_os.cpp has the core's mps_os_* hooks on xnu).
+ *
+ * Source layout (IntelMausi / itlwm style, one file per concern):
+ *   SAS2308HBA.cpp          IOService life cycle, SCSI family callbacks
+ *                           (capabilities, interrupts, IO, task management)
+ *   SAS2308HBA_PM.cpp       power management, systemWillShutdown
+ *   SAS2308HBA_Hotplug.cpp  target creation / destruction, per-target
+ *                           properties, termination of the targets
+ *   SAS2308HBA_Props.cpp    registry properties: logging control,
+ *                           controller characteristics, statistics
+ *   SAS2308HBA_Targets.h    the target table (no IOKit, host-tested)
+ *   mps_xnu_os.{h,cpp}      the core's platform hooks (mps_pci.c's role)
  */
-#ifndef SAS2308HBA_H
-#define SAS2308HBA_H
+#ifndef _SAS2308HBA_H
+#define _SAS2308HBA_H
 
 #include <IOKit/IOLib.h>
 #include <IOKit/IOLocks.h>
@@ -25,6 +34,7 @@
 #include <os/log.h>
 
 #include "mps_xnu_os.h"
+#include "SAS2308HBA_Targets.h"
 
 class SAS2308HBA : public IOSCSIParallelInterfaceController
 {
@@ -34,27 +44,34 @@ public:
     static constexpr uint32_t kMaxTargets = MPSK_MAX_TARGETS;   /* target IDs 0..63 */
     static constexpr uint32_t kMaxTasks = MPSK_MAX_TASKS;       /* ReportMaximumTaskCount */
     static constexpr uint32_t kMaxLun = 255;                    /* peripheral LUN addressing */
-    static constexpr uint32_t kWatchdogMs = 1000;               /* statistics publication */
-    static constexpr uint32_t kStatsPublishMs = 1000;
+    static constexpr uint32_t kStatsPublishMs = 1000;           /* statistics timer */
+    static constexpr uint32_t kSleepDrainMs = 10000;            /* system sleep: IO drain bound */
+    static constexpr uint32_t kShutdownDrainMs = 2000;          /* restart / power off */
 
     /* Registry keys (personality default, boot-args, setProperties). */
-    static constexpr const char *kLogLevelKey  = "SAS2308LogLevel";    /* 0..4 or error/warn/info/debug/trace */
-    static constexpr const char *kDebugMaskKey = "SAS2308DebugMask";   /* FreeBSD mps_debug mask or class list */
-    static constexpr const char *kIOLogKey     = "SAS2308LogToIOLog";  /* bool: IOLog instead of os_log */
+    static constexpr const char *kLogLevelKey   = "SAS2308LogLevel";    /* 0..4 or error/warn/info/debug/trace */
+    static constexpr const char *kDebugMaskKey  = "SAS2308DebugMask";   /* FreeBSD mps_debug mask or class list */
+    static constexpr const char *kIOLogKey      = "SAS2308LogToIOLog";  /* bool: IOLog instead of os_log */
     static constexpr const char *kResetStatsKey = "SAS2308ResetStats";
-    static constexpr const char *kStatsKey     = "SAS2308Statistics";
+    static constexpr const char *kStatsKey      = "SAS2308Statistics";
 
-    /* Runtime control (sas2308ctl / IORegistryEntrySetCFProperties). Admin only. */
-    virtual IOReturn setProperties(OSObject *properties) APPLE_KEXT_OVERRIDE;
+    /* IOService (start/stop belong to the family: "shall not be overridden") */
+    virtual IOReturn    setPowerState(unsigned long powerStateOrdinal, IOService *whatDevice) APPLE_KEXT_OVERRIDE;
+    virtual void        systemWillShutdown(IOOptionBits specifier) APPLE_KEXT_OVERRIDE;
+    virtual IOReturn    setProperties(OSObject *properties) APPLE_KEXT_OVERRIDE;
 
 protected:
-    /* ---- controller life cycle ---- */
+    /* IOService, as the family allows ("should call the superclass implementation") */
+    virtual bool willTerminate(IOService *provider, IOOptionBits options) APPLE_KEXT_OVERRIDE;
+    virtual void free(void) APPLE_KEXT_OVERRIDE;
+
+    /* IOSCSIParallelInterfaceController: controller life cycle */
     virtual bool InitializeController(void) APPLE_KEXT_OVERRIDE;
     virtual bool StartController(void) APPLE_KEXT_OVERRIDE;
     virtual void StopController(void) APPLE_KEXT_OVERRIDE;
     virtual void TerminateController(void) APPLE_KEXT_OVERRIDE;
 
-    /* ---- capabilities ---- */
+    /* capabilities */
     virtual SCSIInitiatorIdentifier ReportInitiatorIdentifier(void) APPLE_KEXT_OVERRIDE;
     virtual SCSIDeviceIdentifier ReportHighestSupportedDeviceID(void) APPLE_KEXT_OVERRIDE;
     virtual SCSILogicalUnitNumber ReportHBAHighestLogicalUnitNumber(void) APPLE_KEXT_OVERRIDE;
@@ -68,7 +85,7 @@ protected:
     virtual bool InitializeDMASpecification(IODMACommand *command) APPLE_KEXT_OVERRIDE;
     virtual bool InitializeTargetForID(SCSITargetIdentifier targetID) APPLE_KEXT_OVERRIDE;
 
-    /* ---- interrupts ---- */
+    /* interrupts */
     virtual IOInterruptEventSource *CreateDeviceInterrupt(
         IOInterruptEventSource::Action action,
         IOFilterInterruptEventSource::Filter filter,
@@ -76,11 +93,11 @@ protected:
     virtual bool FilterInterruptRequest(void) APPLE_KEXT_OVERRIDE;
     virtual void HandleInterruptRequest(void) APPLE_KEXT_OVERRIDE;
 
-    /* ---- IO ---- */
+    /* IO */
     virtual SCSIServiceResponse ProcessParallelTask(SCSIParallelTaskIdentifier parallelRequest) APPLE_KEXT_OVERRIDE;
     virtual void HandleTimeout(SCSIParallelTaskIdentifier parallelRequest) APPLE_KEXT_OVERRIDE;
 
-    /* ---- task management (XPT_XNU_TM ccbs; asynchronous in the core, the family API waits) ---- */
+    /* task management (XPT_XNU_TM ccbs: asynchronous in the core, the family API waits) */
     virtual SCSIServiceResponse AbortTaskRequest(SCSITargetIdentifier theT, SCSILogicalUnitNumber theL,
                                                  SCSITaggedTaskIdentifier theQ) APPLE_KEXT_OVERRIDE;
     virtual SCSIServiceResponse AbortTaskSetRequest(SCSITargetIdentifier theT, SCSILogicalUnitNumber theL) APPLE_KEXT_OVERRIDE;
@@ -92,7 +109,7 @@ protected:
 private:
     struct KStats {                     /* glue-level counters (core counters: struct mps_xnu_stats) */
         uint64_t tasks;                 /* ProcessParallelTask accepted */
-        uint32_t tasksHeld;             /* ... of which the thin CAM held (recovery) */
+        uint32_t tasksHeld;             /* ... of which the thin CAM held (recovery, sleep) */
         uint32_t tasksRejected;         /* not accepted (mapping, invalid, gone) */
         uint32_t familyTimeouts;        /* HandleTimeout calls */
         uint32_t tmRequests, tmRequestsFailed;
@@ -105,39 +122,51 @@ private:
         uint64_t    lun;
         SCSITaggedTaskIdentifier tag;
     };
-    struct Target {
-        bool     created;               /* CreateTargetForID() done */
-        bool     wantCreate, wantDestroy;
-    };
+    enum { kPowerStateOff = 0, kPowerStateOn, kPowerStateCount };
 
-    /* mps_kext_host callbacks (mps_mtx may be held: no family calls, no mps_kext_* calls) */
+    /* ---- SAS2308HBA.cpp: core callbacks (mps_mtx may be held: no family or mps_kext_* calls) */
     static int  HostSetupInterrupts(void *hba);
     static void HostFreeInterrupts(void *hba);
     static int  HostPciRestore(void *hba);
     static void HostControllerDead(void *hba);
     static void HostDoneKick(void *hba);
-    static void HostAsync(void *hba, int event, uint64_t tids, uint64_t present);
 
-    bool Enter();                       /* gate around mps_kext_* calls; false once stopping */
-    void Leave();
-    void StopCore();                    /* stop new calls, wait for the running ones, mps_free */
-    void ReleaseResources();
-    void DeliverCompletions();          /* no lock held: CompleteParallelTask for queued ccbs */
+    bool Enter(void);                   /* gate around mps_kext_* calls; false once stopping */
+    void Leave(void);
+    void StopCore(void);                /* stop new calls, wait for the running ones, mps_free */
+    void ReleaseResources(void);        /* idempotent */
+    void DeliverCompletions(void);      /* no lock held: CompleteParallelTask for queued ccbs */
     static void DoneThread(thread_call_param_t self, thread_call_param_t);
-    void ScheduleDone();                /* fLock held */
-    void QuiesceDone();                 /* fLock not held; may sleep */
-    void ApplyLogSettings();
+    void ScheduleDone(void);            /* fLock held */
+    void QuiesceDone(void);             /* fLock not held; may sleep */
+    SCSIServiceResponse SendTaskMgmt(uint8_t taskType, SCSITargetIdentifier theT,
+                                     SCSILogicalUnitNumber theL, SCSITaggedTaskIdentifier theQ);
+
+    /* ---- SAS2308HBA_PM.cpp */
+    void InitializePowerManagement(IOService *provider);
+    void StopPowerManagement(void);
+    bool QuiesceController(uint32_t drainMs, const char *why);   /* sleep / shutdown */
+    void ResumeController(void);                                  /* wake */
+
+    /* ---- SAS2308HBA_Hotplug.cpp */
+    static void HostAsync(void *hba, int event, uint64_t tids, uint64_t present);
+    static void HotplugThread(thread_call_param_t self, thread_call_param_t);
+    void Hotplug(void);
+    void ScheduleHotplug(void);         /* fLock held */
+    void QuiesceHotplug(void);          /* fLock not held; may sleep */
+    OSDictionary *CopyTargetProperties(SCSITargetIdentifier targetID);
+    void PublishTargetCharacteristics(SCSITargetIdentifier targetID);
+    void TerminateTargets(void);        /* willTerminate, after the family's loop */
+
+    /* ---- SAS2308HBA_Props.cpp */
     void Klog(uint32_t cls, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
+    void ApplyLogSettings(void);
+    void PublishControllerCharacteristics(void);
     bool Snapshot(struct mps_kext_snapshot *snap);
     void PublishStats(bool force);
     void LogCounters(const char *why);
-    SCSIServiceResponse SendTaskMgmt(uint8_t taskType, SCSITargetIdentifier theT,
-                                     SCSILogicalUnitNumber theL, SCSITaggedTaskIdentifier theQ);
-    static void WatchdogFired(OSObject *owner, IOTimerEventSource *sender);
-    static void HotplugThread(thread_call_param_t self, thread_call_param_t);
-    void Hotplug();
-    void ScheduleHotplug();             /* fLock held */
-    void QuiesceHotplug();              /* fLock not held; may sleep */
+    static void StatsTimerFired(OSObject *owner, IOTimerEventSource *sender);
+    static void SetNumber(OSDictionary *dict, const char *key, UInt64 value);
 
     IOPCIDevice   *fPCI   = nullptr;
     IOMemoryMap   *fMap   = nullptr;
@@ -145,17 +174,24 @@ private:
     IOLock        *fLock  = nullptr;    /* class state below; a leaf under mps_mtx */
     thread_call_t  fHotplugCall = nullptr;
     thread_call_t  fDoneCall = nullptr; /* delivers completions queued by callouts / the reinit task */
-    IOTimerEventSource *fWatchdog = nullptr;
+    IOTimerEventSource *fStatsTimer = nullptr;
     bool           fBusLeadOff = false;     /* bus mastering cut after the IOC died */
     bool           fStarted = false;
     bool           fStopping = false;       /* no new mps_kext_* calls */
     bool           fCoreAttached = false;   /* mps_attach done, mps_free not yet */
     bool           fHotplugStop = false;    /* no new hotplug calls */
     bool           fDoneStop = false;
+    bool           fTunnelled = false;      /* IOPCITunnelled: behind Thunderbolt */
     uint32_t       fHotplugPending = 0;     /* thread calls queued or running */
     uint32_t       fDonePending = 0;
     uint32_t       fBusy = 0;               /* threads inside Enter()/Leave() */
     uint32_t       fMaxSegs = 0;            /* per IO, from the core's buffer_dmat */
+
+    /* power management (SAS2308HBA_PM.cpp) */
+    bool           fPMInitialized = false;
+    bool           fSuspended = false;      /* IOC stopped for sleep / shutdown */
+    bool           fShutdown = false;       /* systemWillShutdown ran: stays stopped */
+    unsigned long  fPowerState = kPowerStateOn;
 
     /* the core */
     struct mps_kext      *fMps = nullptr;
@@ -166,10 +202,10 @@ private:
     uint32_t       fUnit = 0;
     KStats         fKStats = {};
     uint64_t       fLastPublishUs = 0;
-    uint64_t       fLastPublishedIos = ~0ull;
+    uint64_t       fLastPublishedSig = ~0ull;
 
-    Slot    fSlots[kMaxTasks] = {};
-    Target  fTargets[kMaxTargets] = {};
+    Slot               fSlots[kMaxTasks] = {};
+    SAS2308TargetTable fTargets;            /* under fLock */
 };
 
-#endif /* SAS2308HBA_H */
+#endif /* _SAS2308HBA_H */

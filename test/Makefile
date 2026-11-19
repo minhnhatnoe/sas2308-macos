@@ -2,6 +2,7 @@
 #   mock_ioc_test   the M1-M4 scenarios (IO, chains, recovery, logging) against the
 #                   FreeBSD-shaped core (core/mps*.c, core/compat) and the IOC model
 #   mps_port_test   attach/discovery/thin CAM/reinit smoke test of the same core
+#   kext_targets_test  the kext's target table (kext/SAS2308HBA_Targets.h, no IOKit)
 #   freestanding    compile the ported C core like the kext does (-nostdinc,
 #                   only stdint/stddef/stdarg/string/libkern; test/kernhdr stands in
 #                   for Kernel.framework's string.h and libkern.h)
@@ -29,6 +30,9 @@ mock_ioc_test: mock_ioc_test.cpp mps_host_os.cpp mps_host_os.h mock_ioc.h $(PORT
 mps_port_test: mps_port_test.cpp mps_host_os.cpp mps_host_os.h mock_ioc.h $(PORT_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ mps_port_test.cpp mps_host_os.cpp $(PORT_OBJS)
 
+kext_targets_test: kext_targets_test.cpp ../kext/SAS2308HBA_Targets.h
+	$(CXX) $(CXXFLAGS) -o $@ kext_targets_test.cpp
+
 FREESTANDING_INC := $(shell $(CC) -print-file-name=include)
 freestanding: $(PORT_SRCS) $(PORT_HDRS)
 	@for f in $(PORT_SRCS); do \
@@ -39,11 +43,12 @@ freestanding: $(PORT_SRCS) $(PORT_HDRS)
 		    -c -o /dev/null $$f || exit 1; \
 	done
 
-test: mock_ioc_test mps_port_test freestanding
+test: mock_ioc_test mps_port_test kext_targets_test freestanding
 	./mock_ioc_test
 	./mps_port_test
+	./kext_targets_test
 
 clean:
-	rm -rf mock_ioc_test mps_port_test obj
+	rm -rf mock_ioc_test mps_port_test kext_targets_test obj
 
 .PHONY: test clean freestanding

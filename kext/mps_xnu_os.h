@@ -141,9 +141,46 @@ int	 mps_kext_tm(struct mps_kext *k, uint8_t type, uint32_t tid,
 	    uint64_t lun, void *abort_td, void *abort_task, uint64_t abort_tag,
 	    char *why, size_t whylen);
 
+/*
+ * Termination: read the doorbell now, so a surprise removal (all-ones) is
+ * noticed before the targets are torn down and IO to it fails at once.
+ * Returns 0 if the controller is gone or disabled.
+ */
+int	 mps_kext_check_present(struct mps_kext *k);
+
+/* ---- system sleep / shutdown (mps_xnu_suspend, mps_xnu_resume) ---------- */
+
+/* hold new IO, drain up to drain_ms, MUR, no register access until resume */
+int	 mps_kext_suspend(struct mps_kext *k, uint32_t drain_ms);
+/* reinit on the core's taskqueue; IO held until the rediscovery is done */
+int	 mps_kext_resume(struct mps_kext *k);
+
 /* ---- targets, statistics, logging -------------------------------------- */
 
 int	 mps_kext_target_present(struct mps_kext *k, uint32_t tid);
+
+/* SAS Device Page 0 as read by mpssas_add_device (0: no such target) */
+struct mps_kext_target_info {
+	uint64_t	sas_address;	/* host order */
+	uint32_t	device_info;	/* MPI2_SAS_DEVICE_INFO_* */
+	uint8_t		link_rate;	/* MPI2_SAS_NEG_LINK_RATE_* */
+};
+int	 mps_kext_target_info(struct mps_kext *k, uint32_t tid,
+	    struct mps_kext_target_info *info);
+#define	MPSK_DEVINFO_SSP_TARGET	0x00000400u	/* MPI2_SAS_DEVICE_INFO_SSP_TARGET */
+#define	MPSK_DEVINFO_STP_TARGET	0x00000200u	/* MPI2_SAS_DEVICE_INFO_STP_TARGET */
+#define	MPSK_DEVINFO_SATA_DEVICE 0x00000080u	/* MPI2_SAS_DEVICE_INFO_SATA_DEVICE */
+
+/* IOCFacts as read at attach: for the Controller Characteristics */
+struct mps_kext_controller_info {
+	char		fw_version[16];	/* "20.00.07.00" (sc->fw_version) */
+	char		msg_version[8];	/* MPI "2.0" */
+	uint16_t	product_id;	/* IOCFacts.ProductID */
+	uint8_t		num_ports;	/* IOCFacts.NumberOfPorts */
+	uint8_t		max_link_rate;	/* best negotiated rate seen, 0 = none */
+};
+void	 mps_kext_controller_info(struct mps_kext *k,
+	    struct mps_kext_controller_info *info);
 
 struct mps_kext_snapshot {
 	struct mps_xnu_stats st;

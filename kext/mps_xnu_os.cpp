@@ -61,6 +61,9 @@ static_assert(MPSK_INFO == MPS_INFO && MPSK_FAULT == MPS_FAULT && MPSK_EVENT == 
               MPSK_RECOVERY == MPS_RECOVERY && MPSK_ERROR == MPS_ERROR && MPSK_INIT == MPS_INIT &&
               MPSK_XINFO == MPS_XINFO && MPSK_USER == MPS_USER && MPSK_MAPPING == MPS_MAPPING &&
               MPSK_DEBUG_ALL == MPS_DEBUG_ALL, "mps_dprint classes");
+static_assert(MPSK_DEVINFO_SSP_TARGET == MPI2_SAS_DEVICE_INFO_SSP_TARGET &&
+              MPSK_DEVINFO_STP_TARGET == MPI2_SAS_DEVICE_INFO_STP_TARGET &&
+              MPSK_DEVINFO_SATA_DEVICE == MPI2_SAS_DEVICE_INFO_SATA_DEVICE, "device info bits");
 static_assert(MPSK_LEVEL_INFO == MPS_LEVEL_INFO && MPSK_LEVEL_TRACE == MPS_LEVEL_TRACE, "levels");
 static_assert(MPSK_MAX_TARGETS == MPS_XNU_MAX_TARGETS && MPSK_MAX_TASKS == MPS_XNU_IO_CMDS, "sizes");
 static_assert(sizeof(struct mps_kext_seg) == sizeof(bus_dma_segment_t) &&
@@ -70,7 +73,11 @@ static_assert(sizeof(struct mps_kext_seg) == sizeof(bus_dma_segment_t) &&
  * Logging: one os_log handle per FreeBSD debug class (= category), M4.
  * ==================================================================== */
 
-static const char *const kLogSubsystem = "org.sas2308.driver";
+/* os_log subsystem = the bundle identifier (Makefile: SAS2308_BUNDLE_ID = CFBundleIdentifier) */
+#ifndef SAS2308_BUNDLE_ID
+#define SAS2308_BUNDLE_ID "org.sas2308.driver.SAS2308HBA"
+#endif
+static const char *const kLogSubsystem = SAS2308_BUNDLE_ID;
 static const char *const kLogCats[] = {
     "info", "fault", "event", "log", "recovery", "error", "init", "xinfo", "user", "mapping", "trace",
 };
@@ -1042,6 +1049,83 @@ int mps_kext_tm(struct mps_kext *k, uint8_t type, uint32_t tid, uint64_t lun, vo
     if (w)
         IOFree(w, sizeof(*w));
     return result;
+}
+
+int mps_kext_check_present(struct mps_kext *k)
+{
+    struct mps_softc *sc = &k->sc;
+    int present;
+
+    if (!k->attached)
+        return 0;
+    mps_lock(sc);
+    if ((sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) == 0)
+        (void)mps_regread(sc, MPI2_DOORBELL_OFFSET);     /* all-ones: mps_xnu_gone */
+    present = (sc->mps_flags & MPS_FLAGS_XNU_GONE) == 0;
+    mps_unlock(sc);
+    return present;
+}
+
+int mps_kext_suspend(struct mps_kext *k, uint32_t drain_ms)
+{
+    struct mps_softc *sc = &k->sc;
+    int error;
+
+    if (!k->attached)
+        return ENXIO;
+    mps_lock(sc);
+    error = mps_xnu_suspend(sc, drain_ms);
+    mps_unlock(sc);
+    return error;
+}
+
+int mps_kext_resume(struct mps_kext *k)
+{
+    struct mps_softc *sc = &k->sc;
+    int error;
+
+    if (!k->attached)
+        return ENXIO;
+    mps_lock(sc);
+    error = mps_xnu_resume(sc);
+    mps_unlock(sc);
+    return error;
+}
+
+int mps_kext_target_info(struct mps_kext *k, uint32_t tid, struct mps_kext_target_info *info)
+{
+    struct mps_softc *sc = &k->sc;
+    int found;
+
+    bzero(info, sizeof(*info));
+    if (!k->attached)
+        return 0;
+    mps_lock(sc);
+    found = mps_xnu_target_info(sc, tid, &info->sas_address, &info->device_info, &info->link_rate);
+    mps_unlock(sc);
+    return found;
+}
+
+void mps_kext_controller_info(struct mps_kext *k, struct mps_kext_controller_info *info)
+{
+    struct mps_softc *sc = &k->sc;
+
+    bzero(info, sizeof(*info));
+    if (!k->attached)
+        return;
+    mps_lock(sc);
+    strlcpy(info->fw_version, sc->fw_version, sizeof(info->fw_version));
+    strlcpy(info->msg_version, sc->msg_version, sizeof(info->msg_version));
+    if (sc->facts != NULL) {
+        info->product_id = le16toh(sc->facts->ProductID);
+        info->num_ports = sc->facts->NumberOfPorts;
+    }
+    if (sc->sassc != NULL) {
+        for (u_int i = 0; i < sc->sassc->maxtargets; i++)
+            if (sc->sassc->targets[i].handle != 0 && sc->sassc->targets[i].linkrate > info->max_link_rate)
+                info->max_link_rate = (uint8_t)sc->sassc->targets[i].linkrate;
+    }
+    mps_unlock(sc);
 }
 
 int mps_kext_target_present(struct mps_kext *k, uint32_t tid)

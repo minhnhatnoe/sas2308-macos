@@ -46,13 +46,17 @@
 			     overrides it, sas2308ctl changes it at runtime (docs/design.md "Logging") -->
 			<key>SAS2308LogLevel</key>
 			<integer>2</integer>
-			<key>Protocol Characteristics</key>
-			<dict>
-				<key>Physical Interconnect</key>
-				<string>SAS</string>
-				<key>Physical Interconnect Location</key>
-				<string>External</string>
-			</dict>
+			<!-- as Apple's AppleLSIFusionMPT (AppleLSIFusionSAS personality): the family copies
+			     Physical Interconnect / Location into the HBA's Protocol Characteristics; the
+			     kext copies them and the timeouts (ms) into every target nub's -->
+			<key>Physical Interconnect</key>
+			<string>SAS</string>
+			<key>Physical Interconnect Location</key>
+			<string>External</string>
+			<key>Read Time Out Duration</key>
+			<integer>30000</integer>
+			<key>Write Time Out Duration</key>
+			<integer>30000</integer>
 		</dict>
 	</dict>
 	<key>OSBundleLibraries</key>
