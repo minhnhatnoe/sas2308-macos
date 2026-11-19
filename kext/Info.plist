@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>SAS2308HBA</string>
+	<key>CFBundleIdentifier</key>
+	<string>org.sas2308.driver.SAS2308HBA</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>SAS2308HBA</string>
+	<key>CFBundlePackageType</key>
+	<string>KEXT</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>MacOSX</string>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>0.1.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>27.0</string>
+	<key>IOKitPersonalities</key>
+	<dict>
+		<key>SAS2308</key>
+		<dict>
+			<key>CFBundleIdentifier</key>
+			<string>org.sas2308.driver.SAS2308HBA</string>
+			<key>IOClass</key>
+			<string>SAS2308HBA</string>
+			<key>IOProviderClass</key>
+			<string>IOPCIDevice</string>
+			<!-- device 0x0087, vendor 0x1000: SAS2308_2 (SAS 9207-8i) -->
+			<key>IOPCIMatch</key>
+			<string>0x00871000</string>
+			<!-- required for a device behind a Thunderbolt PCIe tunnel -->
+			<key>IOPCITunnelCompatible</key>
+			<true/>
+			<key>IOProbeScore</key>
+			<integer>1000</integer>
+			<!-- log level 0 error, 1 warn, 2 info, 3 debug, 4 trace; boot-arg sas2308_log=N
+			     overrides it, sas2308ctl changes it at runtime (docs/design.md "Logging") -->
+			<key>SAS2308LogLevel</key>
+			<integer>2</integer>
+			<key>Protocol Characteristics</key>
+			<dict>
+				<key>Physical Interconnect</key>
+				<string>SAS</string>
+				<key>Physical Interconnect Location</key>
+				<string>External</string>
+			</dict>
+		</dict>
+	</dict>
+	<key>OSBundleLibraries</key>
+	<dict>
+		<key>com.apple.iokit.IOPCIFamily</key>
+		<string>2.9</string>
+		<key>com.apple.iokit.IOSCSIArchitectureModelFamily</key>
+		<string>1.0</string>
+		<key>com.apple.iokit.IOSCSIParallelFamily</key>
+		<string>3.0.0</string>
+		<key>com.apple.kpi.bsd</key>
+		<string>20.0</string>
+		<key>com.apple.kpi.iokit</key>
+		<string>20.0</string>
+		<key>com.apple.kpi.libkern</key>
+		<string>20.0</string>
+		<key>com.apple.kpi.mach</key>
+		<string>20.0</string>
+	</dict>
+</dict>
+</plist>
