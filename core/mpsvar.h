@@ -253,6 +253,7 @@ struct mps_command {
 	uint32_t			cm_sense_busaddr;
 	struct callout			cm_callout;
 	mps_command_callback_t		*cm_timeout_handler;
+	uint64_t			cm_xnu_start_us;	/* XNU: TM sent */
 };
 
 struct mps_column_map {

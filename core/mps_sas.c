@@ -59,6 +59,10 @@ static void mpssas_action_scsiio(struct mpssas_softc *, union ccb *);
 static void mpssas_scsiio_complete(struct mps_softc *, struct mps_command *);
 static void mpssas_action_resetdev(struct mpssas_softc *, union ccb *);
 static void mpssas_resetdev_complete(struct mps_softc *, struct mps_command *);
+/* XNU: OS task management, queued recoveries */
+static void mpssas_action_xnu_tm(struct mpssas_softc *, union ccb *);
+static void mpssas_xnu_tm_complete(struct mps_softc *, struct mps_command *);
+static void mpssas_xnu_retry_recovery(struct mps_softc *);
 static int mpssas_send_portenable(struct mps_softc *sc);
 static void mpssas_portenable_complete(struct mps_softc *sc,
     struct mps_command *cm);
@@ -177,6 +181,7 @@ mpssas_free_tm(struct mps_softc *sc, struct mps_command *tm)
 	}
 
 	mps_free_high_priority_command(sc, tm);
+	mpssas_xnu_retry_recovery(sc);	/* XNU: a queued recovery may start */
 }
 
 void
@@ -695,6 +700,8 @@ mpssas_action(struct cam_sim *sim, union ccb *ccb)
 	case XPT_SCSI_IO:
 		mpssas_action_scsiio(sassc, ccb);
 		return;
+	case XPT_XNU_TM:	/* XNU: OS-requested task management */
+		mpssas_action_xnu_tm(sassc, ccb);
 		return;
 	default:
 		mpssas_set_ccbstatus(ccb, CAM_FUNC_NOTAVAIL);
@@ -830,6 +837,7 @@ mpssas_tm_timeout(void *data)
 {
 	struct mps_command *tm = data;
 	struct mps_softc *sc = tm->cm_sc;
+	union ccb *ccb;		/* XNU */
 
 	mtx_assert(&sc->mps_mtx, MA_OWNED);
 
@@ -840,7 +848,21 @@ mpssas_tm_timeout(void *data)
 	    ("command not inqueue, state = %u\n", tm->cm_state));
 
 	tm->cm_state = MPS_CM_STATE_BUSY;
-	mps_reinit(sc);
+	/*
+	 * XNU: the IOC still owns the TM until the reinit: a reply that
+	 * arrives meanwhile is counted as late and ignored (mps_intr_locked).
+	 * An OS-requested TM completes its ccb now; the reinit frees the TM.
+	 * mps_reinit() sleeps, so it runs on the reinit taskqueue.
+	 */
+	tm->cm_flags |= MPS_CM_FLAGS_XNU_TM_TIMEDOUT;
+	sc->xnu.stats.tm_timeouts++;
+	if (tm->cm_complete == mpssas_xnu_tm_complete &&
+	    (ccb = tm->cm_complete_data) != NULL) {
+		tm->cm_complete_data = NULL;
+		mpssas_set_ccbstatus(ccb, CAM_CMD_TIMEOUT);
+		xpt_done(ccb);
+	}
+	mps_xnu_request_reinit(sc, "task management timeout");
 }
 
 static void
@@ -1261,6 +1283,10 @@ mpssas_scsiio_timeout(void *data)
 	cm->cm_flags |= MPS_CM_FLAGS_ON_RECOVERY | MPS_CM_FLAGS_TIMEDOUT;
 	TAILQ_INSERT_TAIL(&targ->timedout_commands, cm, cm_recovery);
 
+	/* XNU: no TM into a reset in progress; the reinit completes the IO */
+	if (sc->mps_flags & (MPS_FLAGS_DIAGRESET | MPS_FLAGS_XNU_GONE))
+		return;
+
 	if (targ->tm != NULL) {
 		/* target already in recovery, just queue up another
 		 * timedout command to be processed later.
@@ -1286,11 +1312,50 @@ mpssas_scsiio_timeout(void *data)
 		 * Isilon: don't worry about this for now, since we have
 		 * more credits than disks in an enclosure, and limit
 		 * ourselves to one TM per target for recovery.
+		 *
+		 * XNU: queued: mpssas_free_tm() starts it when a TM frees
+		 * (mpssas_xnu_retry_recovery).
 		 */
 		mps_dprint(sc, MPS_ERROR|MPS_RECOVERY,
 		    "timedout cm %p failed to allocate a tm\n", cm);
 	}
 
+}
+
+/*
+ * XNU: the OS timer of a task fired (IOSCSIParallelFamily HandleTimeout).
+ * A ccb still held by the thin CAM never reached the IOC: complete it with
+ * CAM_CMD_TIMEOUT.  A posted one goes through mpssas_scsiio_timeout (the
+ * recovery completes it later).  ENOENT: not ours (already completed).
+ */
+int
+mps_xnu_ccb_timeout(struct mps_softc *sc, union ccb *ccb)
+{
+	struct mps_command *cm;
+
+	mtx_assert(&sc->mps_mtx, MA_OWNED);
+	if (cam_xnu_cancel_held(sc->sassc->sim, ccb, CAM_CMD_TIMEOUT)) {
+		sc->xnu.stats.held_timeouts++;
+		mps_dprint(sc, MPS_RECOVERY, "held IO for target %u lun %ju "
+		    "timed out before it was sent\n", ccb->ccb_h.target_id,
+		    (uintmax_t)ccb->ccb_h.target_lun);
+		return (0);
+	}
+	cm = ccb->ccb_h.spriv_ptr1;
+	if (cm == NULL || cm->cm_ccb != ccb ||
+	    cm->cm_state == MPS_CM_STATE_FREE)
+		return (ENOENT);
+	/* a completion may be waiting on the reply queue */
+	mps_intr_locked(sc);
+	if (cm->cm_ccb != ccb || cm->cm_state == MPS_CM_STATE_FREE) {
+		mps_dprint(sc, MPS_XINFO|MPS_RECOVERY, "IO for target %u "
+		    "completed just before its timeout\n",
+		    ccb->ccb_h.target_id);
+		return (0);
+	}
+	callout_stop(&cm->cm_callout);
+	mpssas_scsiio_timeout(cm);
+	return (0);
 }
 
 static void
@@ -1511,12 +1576,15 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 	cm->cm_targ = targ;
 	cm->cm_lun = csio->ccb_h.target_lun;
 	cm->cm_ccb = ccb;
+	ccb->ccb_h.spriv_ptr1 = cm;	/* XNU: mps_xnu_ccb_timeout */
 
 	/* XNU: no WarpDrive (direct drive IO) */
 
 	csio->ccb_h.qos.sim_data = sbinuptime();
-	callout_reset_sbt(&cm->cm_callout, SBT_1MS * ccb->ccb_h.timeout, 0,
-	    mpssas_scsiio_timeout, cm, 0);
+	/* XNU: timeout 0: the OS times the task (mps_xnu_ccb_timeout) */
+	if (ccb->ccb_h.timeout != 0)
+		callout_reset_sbt(&cm->cm_callout, SBT_1MS * ccb->ccb_h.timeout,
+		    0, mpssas_scsiio_timeout, cm, 0);
 
 	targ->issued++;
 	targ->outstanding++;
@@ -1642,11 +1710,7 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 	cm->cm_targ->outstanding--;
 	TAILQ_REMOVE(&cm->cm_targ->commands, cm, cm_link);
 	ccb->ccb_h.status &= ~(CAM_STATUS_MASK | CAM_SIM_QUEUED);
-
-#if defined(BUF_TRACKING) || defined(FULL_BUF_TRACKING)
-	if (ccb->csio.bio != NULL)
-		biotrack(ccb->csio.bio, __func__);
-#endif
+	ccb->ccb_h.spriv_ptr1 = NULL;	/* XNU */
 
 	if (cm->cm_flags & MPS_CM_FLAGS_ON_RECOVERY) {
 		TAILQ_REMOVE(&cm->cm_targ->timedout_commands, cm, cm_recovery);
@@ -2030,6 +2094,16 @@ mpssas_resetdev_complete(struct mps_softc *sc, struct mps_command *tm)
 		goto bailout;
 	}
 
+	/* XNU: no reply frame (reset, or the IOC answered without one) */
+	if (resp == NULL) {
+		mpssas_set_ccbstatus(ccb, MPS_XNU_RESETTING(sc) ?
+		    CAM_REQ_ABORTED : CAM_REQ_CMP_ERR);
+		if (!MPS_XNU_RESETTING(sc))
+			mps_xnu_request_reinit(sc, "NULL target reset reply");
+		goto bailout;
+	}
+	mps_xnu_tm_done(sc, tm);	/* XNU: statistics */
+
 	mps_dprint(sc, MPS_XINFO,
 	    "%s: IOCStatus = 0x%x ResponseCode = 0x%x\n", __func__,
 	    le16toh(resp->IOCStatus), le32toh(resp->ResponseCode));
@@ -2046,6 +2120,232 @@ bailout:
 
 	mpssas_free_tm(sc, tm);
 	xpt_done(ccb);
+}
+
+/*
+ * XNU: task management requested by the OS (XPT_XNU_TM): abort task, abort
+ * task set, clear task set, clear ACA, LUN reset, target reset.  Built like
+ * mpssas_action_resetdev; completes the ccb when the IOC answers, with
+ * CAM_CMD_TIMEOUT if it does not within the FreeBSD TM timeouts (the TM is
+ * then reclaimed by the reinit mpssas_tm_timeout requests).  An abort of a
+ * ccb still held by the thin CAM completes it without involving the IOC.
+ */
+static void
+mpssas_action_xnu_tm(struct mpssas_softc *sassc, union ccb *ccb)
+{
+	MPI2_SCSI_TASK_MANAGE_REQUEST *req;
+	struct ccb_xnu_tm *xtm = &ccb->xtm;
+	struct mps_softc *sc = sassc->sc;
+	struct mps_command *tm, *cm = NULL;
+	struct mpssas_target *targ;
+	uint8_t type = xtm->task_type;
+
+	mtx_assert(&sc->mps_mtx, MA_OWNED);
+	xtm->ioc_status = 0;
+	xtm->response_code = 0;
+	xtm->termination_count = 0;
+
+	if (type != MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK &&
+	    type != MPI2_SCSITASKMGMT_TASKTYPE_ABRT_TASK_SET &&
+	    type != MPI2_SCSITASKMGMT_TASKTYPE_CLEAR_TASK_SET &&
+	    type != MPI2_SCSITASKMGMT_TASKTYPE_CLR_ACA &&
+	    type != MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET &&
+	    type != MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET) {
+		mpssas_set_ccbstatus(ccb, CAM_REQ_INVALID);
+		xpt_done(ccb);
+		return;
+	}
+	if (ccb->ccb_h.target_id >= sassc->maxtargets ||
+	    (sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_SHUTDOWN))) {
+		mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
+		xpt_done(ccb);
+		return;
+	}
+	targ = &sassc->targets[ccb->ccb_h.target_id];
+	if (type == MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK) {
+		if (xtm->abort_ccb == NULL) {
+			mpssas_set_ccbstatus(ccb, CAM_REQ_INVALID);
+			xpt_done(ccb);
+			return;
+		}
+		if (cam_xnu_cancel_held(sassc->sim, xtm->abort_ccb,
+		    CAM_REQ_ABORTED)) {
+			mps_dprint(sc, MPS_USER|MPS_RECOVERY, "abort of a held "
+			    "IO for target %u: completed without the IOC\n",
+			    targ->tid);
+			xtm->response_code = MPI2_SCSITASKMGMT_RSP_TM_COMPLETE;
+			xtm->termination_count = 1;
+			mpssas_set_ccbstatus(ccb, CAM_REQ_CMP);
+			xpt_done(ccb);
+			return;
+		}
+		cm = xtm->abort_ccb->ccb_h.spriv_ptr1;
+		if (cm == NULL || cm->cm_ccb != xtm->abort_ccb ||
+		    cm->cm_state != MPS_CM_STATE_INQUEUE) {
+			mpssas_set_ccbstatus(ccb, CAM_REQ_INVALID);
+			xpt_done(ccb);
+			return;
+		}
+	}
+	if (targ->handle == 0) {
+		mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
+		xpt_done(ccb);
+		return;
+	}
+	if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) || sc->xnu.reinit_pending) {
+		mpssas_set_ccbstatus(ccb, CAM_BUSY);
+		xpt_done(ccb);
+		return;
+	}
+	tm = mpssas_alloc_tm(sc);
+	if (tm == NULL) {
+		mps_dprint(sc, MPS_ERROR,
+		    "command alloc failure in mpssas_action_xnu_tm\n");
+		mpssas_set_ccbstatus(ccb, CAM_RESRC_UNAVAIL);
+		xpt_done(ccb);
+		return;
+	}
+
+	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)tm->cm_req;
+	req->DevHandle = htole16(targ->handle);
+	req->TaskType = type;
+	tm->cm_lun = ccb->ccb_h.target_lun;
+	if (type == MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET) {
+		/* SAS Hard Link Reset / SATA Link Reset */
+		req->MsgFlags = MPI2_SCSITASKMGMT_MSGFLAGS_LINK_RESET;
+	} else if (MPS_SET_LUN(req->LUN, ccb->ccb_h.target_lun) != 0) {
+		mpssas_free_tm(sc, tm);
+		mpssas_set_ccbstatus(ccb, CAM_LUN_INVALID);
+		xpt_done(ccb);
+		return;
+	}
+	if (cm != NULL)
+		req->TaskMID = htole16(cm->cm_desc.Default.SMID);
+
+	tm->cm_data = NULL;
+	tm->cm_complete = mpssas_xnu_tm_complete;
+	tm->cm_complete_data = ccb;
+	tm->cm_targ = targ;
+
+	mps_dprint(sc, MPS_USER|MPS_RECOVERY, "OS requested %s for target %u "
+	    "lun %ju (SMID %u%s)\n", mps_xnu_tm_type_str(type), targ->tid,
+	    (uintmax_t)ccb->ccb_h.target_lun, tm->cm_desc.Default.SMID,
+	    cm != NULL ? ", aborting an IO" : "");
+	callout_reset(&tm->cm_callout, ((type ==
+	    MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK) ? MPS_ABORT_TIMEOUT :
+	    MPS_RESET_TIMEOUT) * hz, mpssas_tm_timeout, tm);
+	mpssas_prepare_for_tm(sc, tm, targ,
+	    (type == MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET) ?
+	    CAM_LUN_WILDCARD : ccb->ccb_h.target_lun);
+	mps_map_command(sc, tm);
+}
+
+static void
+mpssas_xnu_tm_complete(struct mps_softc *sc, struct mps_command *tm)
+{
+	MPI2_SCSI_TASK_MANAGE_REPLY *resp;
+	MPI2_SCSI_TASK_MANAGE_REQUEST *req;
+	union ccb *ccb;
+	uint16_t ioc_status;
+
+	mtx_assert(&sc->mps_mtx, MA_OWNED);
+	callout_stop(&tm->cm_callout);
+	resp = (MPI2_SCSI_TASK_MANAGE_REPLY *)tm->cm_reply;
+	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)tm->cm_req;
+	ccb = tm->cm_complete_data;	/* NULL: timed out, completed */
+
+	if (resp == NULL) {
+		if (ccb != NULL)
+			mpssas_set_ccbstatus(ccb, (sc->mps_flags &
+			    (MPS_FLAGS_XNU_GONE | MPS_FLAGS_SHUTDOWN)) ?
+			    CAM_DEV_NOT_THERE : MPS_XNU_RESETTING(sc) ?
+			    CAM_REQ_ABORTED : CAM_REQ_CMP_ERR);
+		if (!MPS_XNU_RESETTING(sc))
+			mps_xnu_request_reinit(sc, "NULL task management reply");
+	} else {
+		mps_xnu_tm_done(sc, tm);
+		ioc_status = le16toh(resp->IOCStatus) & MPI2_IOCSTATUS_MASK;
+		if (ccb != NULL) {
+			ccb->xtm.ioc_status = ioc_status;
+			ccb->xtm.response_code = resp->ResponseCode;
+			ccb->xtm.termination_count =
+			    le32toh(resp->TerminationCount);
+			if (ioc_status == MPI2_IOCSTATUS_SUCCESS &&
+			    (resp->ResponseCode ==
+			    MPI2_SCSITASKMGMT_RSP_TM_COMPLETE ||
+			    resp->ResponseCode ==
+			    MPI2_SCSITASKMGMT_RSP_TM_SUCCEEDED))
+				mpssas_set_ccbstatus(ccb, CAM_REQ_CMP);
+			else
+				mpssas_set_ccbstatus(ccb, CAM_REQ_CMP_ERR);
+		}
+		if (ioc_status == MPI2_IOCSTATUS_SUCCESS && tm->cm_targ != NULL &&
+		    (req->TaskType == MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET ||
+		    req->TaskType ==
+		    MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET))
+			mpssas_announce_reset(sc, AC_SENT_BDR,
+			    tm->cm_targ->tid, req->TaskType ==
+			    MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET ?
+			    CAM_LUN_WILDCARD : tm->cm_lun);
+	}
+	mpssas_free_tm(sc, tm);
+	if (ccb != NULL)
+		xpt_done(ccb);
+}
+
+/*
+ * XNU: a recovery that found no free high-priority command (FreeBSD: "XXX
+ * queue this target up") starts when one frees: mpssas_free_tm.
+ */
+static void
+mpssas_xnu_retry_recovery(struct mps_softc *sc)
+{
+	struct mpssas_softc *sassc = sc->sassc;
+	struct mpssas_target *targ;
+	struct mps_command *cm;
+	u_int i;
+
+	if (sassc == NULL || MPS_XNU_RESETTING(sc))
+		return;
+	for (i = 0; i < sassc->maxtargets; i++) {
+		targ = &sassc->targets[i];
+		if (targ->tm != NULL || targ->handle == 0 ||
+		    (cm = TAILQ_FIRST(&targ->timedout_commands)) == NULL)
+			continue;
+		if ((targ->tm = mpssas_alloc_tm(sc)) == NULL)
+			return;
+		mps_dprint(sc, MPS_RECOVERY|MPS_INFO,
+		    "Sending abort to target %u for SMID %d (TM freed)\n",
+		    targ->tid, cm->cm_desc.Default.SMID);
+		sc->xnu.stats.recoveries++;
+		mpssas_send_abort(sc, targ->tm, cm);
+	}
+}
+
+/*
+ * XNU: the controller is gone, disabled or being detached (after the IOC
+ * was stopped): complete every command and every held ccb, once.
+ */
+void
+mpssas_xnu_fail_all(struct mps_softc *sc)
+{
+
+	mtx_assert(&sc->mps_mtx, MA_OWNED);
+	if (sc->sassc == NULL || sc->commands == NULL)
+		return;
+	mpssas_complete_all_commands(sc);
+	if (sc->sassc->sim == NULL)
+		return;
+	/*
+	 * Nothing will release the SIM queue now (discovery after a reset,
+	 * a completion after a requeue): drop the freezes so new IO reaches
+	 * mpssas_action_scsiio and fails there, and fail what is held.
+	 */
+	sc->sassc->flags &= ~(MPSSAS_IN_STARTUP | MPSSAS_QUEUE_FROZEN);
+	sc->sassc->startup_refcount = 0;
+	while (sc->sassc->sim->freeze > 0)
+		xpt_release_simq(sc->sassc->sim, 1);
+	cam_xnu_flush_held(sc->sassc->sim, CAM_DEV_NOT_THERE);
 }
 
 static void
@@ -2087,19 +2387,23 @@ mpssas_prepare_for_tm(struct mps_softc *sc, struct mps_command *tm,
 	ccb = xpt_alloc_ccb_nowait();
 	if (ccb) {
 		path_id = cam_sim_path(sc->sassc->sim);
+		/*
+		 * XNU: freeze the whole target, not just lun_id: the thin CAM
+		 * releases a requeued ccb's own freeze at once, so this one
+		 * must hold every IO that would see MPSSAS_TARGET_INRESET.
+		 */
 		if (xpt_create_path(&ccb->ccb_h.path, xpt_periph, path_id,
-		    target->tid, lun_id) != CAM_REQ_CMP) {
+		    target->tid, CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
 			xpt_free_ccb(ccb);
 		} else {
 			tm->cm_ccb = ccb;
 			tm->cm_targ = target;
-			if ((target->flags & MPSSAS_TARGET_INRESET) == 0) {
-				mps_dprint(sc, MPS_XINFO | MPS_RECOVERY,
-				    "%s: Freezing devq for target ID %d\n",
-				    __func__, target->tid);
-				xpt_freeze_devq(ccb->ccb_h.path, 1);
-				target->flags |= MPSSAS_TARGET_INRESET;
-			}
+			/* XNU: one freeze per TM, released by mpssas_free_tm */
+			mps_dprint(sc, MPS_XINFO | MPS_RECOVERY,
+			    "%s: Freezing devq for target ID %d\n",
+			    __func__, target->tid);
+			xpt_freeze_devq(ccb->ccb_h.path, 1);
+			target->flags |= MPSSAS_TARGET_INRESET;
 		}
 	}
 }
