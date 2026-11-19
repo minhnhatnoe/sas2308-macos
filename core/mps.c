@@ -2041,6 +2041,38 @@ mps_intr_msi(void *data)
 }
 
 /*
+ * XNU: reply-descriptor hardening.  A SMID out of range, or one whose
+ * command is not posted (a duplicate or stale completion), is logged,
+ * counted and ignored instead of completing a free command.
+ */
+static int
+mps_xnu_bad_smid(struct mps_softc *sc, u_int smid)
+{
+
+	if (smid == 0 || smid >= (u_int)sc->num_reqs) {
+		mps_dprint(sc, MPS_ERROR, "reply for invalid SMID %u "
+		    "(%d commands), dropped\n", smid, sc->num_reqs);
+		sc->xnu.stats.bad_replies++;
+		return (1);
+	}
+	if (sc->commands[smid].cm_state != MPS_CM_STATE_INQUEUE &&
+	    (sc->commands[smid].cm_flags & MPS_CM_FLAGS_XNU_TM_TIMEDOUT)) {
+		mps_dprint(sc, MPS_RECOVERY, "late reply for timed-out task "
+		    "management SMID %u ignored (reinit pending)\n", smid);
+		sc->xnu.stats.tm_late_replies++;
+		return (1);
+	}
+	if (sc->commands[smid].cm_state != MPS_CM_STATE_INQUEUE) {
+		mps_dprint(sc, MPS_ERROR|MPS_RECOVERY, "stale reply for idle "
+		    "SMID %u (state %u), ignored\n", smid,
+		    sc->commands[smid].cm_state);
+		sc->xnu.stats.stale_replies++;
+		return (1);
+	}
+	return (0);
+}
+
+/*
  * The locking is overly broad and simplistic, but easy to deal with for now.
  */
 void
@@ -2056,6 +2088,10 @@ mps_intr_locked(void *data)
 	u_int pq;
 
 	sc = (struct mps_softc *)data;
+
+	/* XNU: the queues are being reset, or the controller is gone */
+	if (sc->mps_flags & (MPS_FLAGS_DIAGRESET | MPS_FLAGS_XNU_GONE))
+		return;
 
 	pq = sc->replypostindex;
 	mps_dprint(sc, MPS_TRACE,
@@ -2094,6 +2130,9 @@ mps_intr_locked(void *data)
 
 		switch (flags) {
 		case MPI2_RPY_DESCRIPT_FLAGS_SCSI_IO_SUCCESS:
+			if (mps_xnu_bad_smid(sc,	/* XNU */
+			    le16toh(desc->SCSIIOSuccess.SMID)))
+				break;
 			cm = &sc->commands[le16toh(desc->SCSIIOSuccess.SMID)];
 			cm->cm_reply = NULL;
 			break;
@@ -2112,6 +2151,25 @@ mps_intr_locked(void *data)
 			 * (sc->reply_frames).
 			 */
 			baddr = le32toh(desc->AddressReply.ReplyFrameAddress);
+			/*
+			 * Make sure the reply we got back is in a valid
+			 * range.  XNU: and on a frame boundary; if not, log,
+			 * count and drop it instead of panicking (the frame
+			 * cannot be given back to the free queue).
+			 */
+			if ((baddr - (uint32_t)sc->reply_busaddr) >=
+			    (uint32_t)(sc->fqdepth * sc->replyframesz) ||
+			    (baddr - (uint32_t)sc->reply_busaddr) %
+			    sc->replyframesz != 0) {
+				mps_dprint(sc, MPS_ERROR, "%s: reply address "
+				    "%#x out of range (frames %#x, %d x %d), "
+				    "SMID %u dropped\n", __func__, baddr,
+				    (uint32_t)sc->reply_busaddr, sc->fqdepth,
+				    sc->replyframesz,
+				    le16toh(desc->AddressReply.SMID));
+				sc->xnu.stats.bad_replies++;
+				break;
+			}
 			reply = sc->reply_frames +
 				(baddr - ((uint32_t)sc->reply_busaddr));
 			if (le16toh(desc->AddressReply.SMID) == 0) {
@@ -2142,6 +2200,9 @@ mps_intr_locked(void *data)
 					mps_dispatch_event(sc, baddr,
 					    (MPI2_EVENT_NOTIFICATION_REPLY *)
 					    reply);
+			} else if (mps_xnu_bad_smid(sc,	/* XNU */
+			    le16toh(desc->AddressReply.SMID))) {
+				mps_free_reply(sc, baddr);
 			} else {
 				/*
 				 * Ignore commands not in INQUEUE state
@@ -2182,6 +2243,10 @@ mps_intr_locked(void *data)
 			mps_complete_command(sc, cm);
 		}
 	}
+
+	/* XNU: M2-M4 doorbell check when an interrupt finds nothing */
+	if (pq == sc->replypostindex)
+		mps_xnu_check_fault(sc);
 
 	if (pq != sc->replypostindex) {
 		mps_dprint(sc, MPS_TRACE, "%s sc %p writing postindex %d\n",
