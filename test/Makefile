@@ -12,7 +12,7 @@ CXXFLAGS ?= -std=gnu++20 -O1 -g -Wall -Wextra -fno-exceptions -fno-rtti $(SAN)
 PORT_CFLAGS := -std=gnu11 -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare $(SAN)
 
 
-PORT_SRCS := ../core/compat/mps_compat.c ../core/compat/cam_compat.c ../core/mps.c \
+PORT_SRCS := ../core/compat/mps_compat.c ../core/compat/cam_compat.c ../core/mps.c ../core/mps_config.c \
 	../core/mps_sas.c ../core/mps_sas_lsi.c ../core/mps_table.c ../core/mps_xnu.c
 PORT_HDRS := ../core/compat/mps_compat.h ../core/compat/cam_compat.h ../core/compat/queue.h \
 	../core/mpsvar.h ../core/mps_sas.h ../core/mps_table.h ../core/mps_xnu.h ../core/mps_xnu_stats.h \

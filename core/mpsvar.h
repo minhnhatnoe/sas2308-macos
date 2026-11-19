@@ -301,9 +301,13 @@ struct mps_softc {
 #define	MPS_FLAGS_WD_AVAILABLE	(1 << 6)
 #define	MPS_FLAGS_REALLOCATED	(1 << 7)
 #define	MPS_FLAGS_XNU_GONE	(1 << 8)	/* XNU: all-ones reads / disabled */
-/* XNU: wait loops give up when the IOC is gone or a reinit is abandoned */
+#define	MPS_FLAGS_XNU_SUSPENDED	(1 << 9)	/* XNU: stopped for sleep, no register access */
+/*
+ * XNU: wait loops give up when the IOC is gone, suspended or a reinit is
+ * abandoned
+ */
 #define	MPS_XNU_ABANDON(sc)						\
-	(((sc)->mps_flags & MPS_FLAGS_XNU_GONE) != 0 ||			\
+	(((sc)->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) != 0 || \
 	((sc)->mps_flags & (MPS_FLAGS_SHUTDOWN | MPS_FLAGS_DIAGRESET)) ==	\
 	(MPS_FLAGS_SHUTDOWN | MPS_FLAGS_DIAGRESET))
 /*
@@ -505,6 +509,9 @@ mps_regread(struct mps_softc *sc, uint32_t offset)
 {
 	uint32_t val;
 
+	/* XNU: stopped for system sleep: the device may be powered off */
+	if (__predict_false(sc->mps_flags & MPS_FLAGS_XNU_SUSPENDED))
+		return (mps_xnu_suspended_access(sc, offset));
 	val = bus_space_read_4(sc->mps_btag, sc->mps_bhandle, offset);
 	/* XNU: all-ones = the device is gone (Thunderbolt unplug) */
 	if (__predict_false(val == 0xffffffff))
@@ -515,6 +522,10 @@ mps_regread(struct mps_softc *sc, uint32_t offset)
 static __inline void
 mps_regwrite(struct mps_softc *sc, uint32_t offset, uint32_t val)
 {
+	if (__predict_false(sc->mps_flags & MPS_FLAGS_XNU_SUSPENDED)) {
+		(void)mps_xnu_suspended_access(sc, offset);	/* XNU */
+		return;
+	}
 	bus_space_write_4(sc->mps_btag, sc->mps_bhandle, offset, val);
 }
 
@@ -757,6 +768,8 @@ int mps_register_events(struct mps_softc *, u32 *, mps_evt_callback_t *,
     void *, struct mps_event_handle **);
 int mps_restart(struct mps_softc *);
 int mps_update_events(struct mps_softc *, struct mps_event_handle *, u32 *);
+int mps_config_get_sas_device_pg0(struct mps_softc *, Mpi2ConfigReply_t *,
+    Mpi2SasDevicePage0_t *, u32 , u16 );
 void mps_deregister_events(struct mps_softc *, struct mps_event_handle *);
 int mps_push_sge(struct mps_command *, void *, size_t, int);
 int mps_add_dmaseg(struct mps_command *, vm_paddr_t, size_t, u_int, int);
@@ -773,7 +786,7 @@ int mps_wait_command(struct mps_softc *sc, struct mps_command **cm, int timeout,
 int mps_reinit(struct mps_softc *sc);
 void mpssas_handle_reinit(struct mps_softc *sc);
 
-/* XNU: no config pages, no mps_mapping.c (simple target ids, mps_xnu.c) */
+/* XNU: SAS Device Page 0 only, no mps_mapping.c (simple target ids, mps_xnu.c) */
 void mps_parse_debug(struct mps_softc *sc, char *list);	/* XNU: kext */
 void mps_reinit_task(void *arg, int pending);			/* XNU */
 
@@ -789,6 +802,10 @@ void mpssas_release_simq_reinit(struct mpssas_softc *sassc);
 /* XNU: OS task timeout, controller gone / detach */
 int mps_xnu_ccb_timeout(struct mps_softc *sc, union ccb *ccb);
 void mpssas_xnu_fail_all(struct mps_softc *sc);
+/* XNU: system sleep / shutdown (mps_xnu_suspend, mps_xnu_resume) */
+int mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms);
+int mps_xnu_resume(struct mps_softc *sc);
+void mpssas_xnu_suspend(struct mps_softc *sc);
 int mpssas_send_reset(struct mps_softc *sc, struct mps_command *tm,
     uint8_t type);
 

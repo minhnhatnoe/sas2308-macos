@@ -511,7 +511,8 @@ msleep(void *chan, struct mtx *mtx, int pri, const char *wmesg, int timo)
 	error = mps_os_sleep(mtx->mtx_os, chan,
 	    timo > 0 ? (uint64_t)timo * 1000 : 0);
 	mtx->mtx_owner = self;
-	return (error);
+	/* the hook's errno space may differ (Linux host EWOULDBLOCK = 11) */
+	return (error != 0 ? EWOULDBLOCK : 0);
 }
 
 void
@@ -834,6 +835,7 @@ struct bus_dmamap {
 	void		*dm_cookie;	/* mps_os_dmamem_alloc(), NULL otherwise */
 	void		*dm_vaddr;
 	int		 dm_loaded;
+	bus_dmamap_t	 dm_lent;	/* bus_dmamap_xnu_lend() memory, until unload */
 };
 
 static long mps_compat_dmamems;
@@ -1012,7 +1014,9 @@ bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
     int flags)
 {
 	bus_dma_segment_t *segs;
-	int error, maxsegs, nsegs = 0;
+	bus_dmamap_t mem;
+	bus_size_t left;
+	int error, i, maxsegs, nsegs = 0;
 
 	(void)flags;
 	maxsegs = dmat->dt_nsegments;
@@ -1022,25 +1026,50 @@ bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 	    M_NOWAIT | M_ZERO);
 	if (segs == NULL)
 		return (ENOMEM);
-	if (map->dm_cookie == NULL || buf != map->dm_vaddr ||
+	mem = (map->dm_lent != NULL) ? map->dm_lent : map;
+	if (mem->dm_cookie == NULL || buf != mem->dm_vaddr ||
 	    buflen > dmat->dt_maxsize)
 		error = EINVAL;		/* XNU: only bus_dmamem_alloc() memory */
 	else
-		error = mps_os_dmamem_load(dmat, map->dm_cookie, segs, maxsegs,
+		error = mps_os_dmamem_load(dmat, mem->dm_cookie, segs, maxsegs,
 		    &nsegs);
-	if (error == 0)
+	if (error == 0) {
+		/* the list covers the allocation: cut it to `buflen' */
+		for (i = 0, left = buflen; i < nsegs && left > 0; i++) {
+			if (segs[i].ds_len > left)
+				segs[i].ds_len = left;
+			left -= segs[i].ds_len;
+		}
+		nsegs = i;
 		map->dm_loaded = 1;
-	else
+	} else
 		nsegs = 0;
 	callback(callback_arg, segs, nsegs, error);
 	mps_compat_free(segs, NULL);
 	return (error);
 }
 
+/*
+ * XNU: lend `mem' (from bus_dmamem_alloc()) to `map' until map's next
+ * bus_dmamap_unload(), so bus_dmamap_load(map, mem's buffer) works on a
+ * command's own map.  FreeBSD loads any kernel buffer; here only
+ * bus_dmamem_alloc() memory has a bus address (mps_config.c uses this).
+ */
+void
+bus_dmamap_xnu_lend(bus_dmamap_t map, bus_dmamap_t mem)
+{
+	KASSERT(map->dm_lent == NULL && mem->dm_cookie != NULL,
+	    ("bus_dmamap_xnu_lend: map busy or not dmamem"));
+	map->dm_lent = mem;
+}
+
 void
 bus_dmamap_unload(bus_dma_tag_t dmat, bus_dmamap_t map)
 {
-	if (map->dm_cookie != NULL && map->dm_loaded)
-		mps_os_dmamem_unload(dmat, map->dm_cookie);
+	bus_dmamap_t mem = (map->dm_lent != NULL) ? map->dm_lent : map;
+
+	if (mem->dm_cookie != NULL && map->dm_loaded)
+		mps_os_dmamem_unload(dmat, mem->dm_cookie);
 	map->dm_loaded = 0;
+	map->dm_lent = NULL;
 }

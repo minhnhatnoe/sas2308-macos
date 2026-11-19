@@ -50,6 +50,12 @@ struct mps_xnu_stats {
 	/* chain pool (from sc->chain_alloc_fail / chain_free_lowwater) */
 	uint32_t	chain_alloc_fail;
 	uint32_t	chain_free_low;
+	/* system sleep / shutdown (mps_xnu_suspend) */
+	uint32_t	suspends, resumes;
+	uint32_t	suspend_drain_left;	/* commands still owned by the IOC at the MUR */
+	uint32_t	suspended_access;	/* register accesses refused while suspended */
+	/* SAS Device Page 0 reads (mpssas_add_device) */
+	uint32_t	config_reads, config_failures;
 };
 
 #endif /* !_MPS_XNU_STATS_H_ */

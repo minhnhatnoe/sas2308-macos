@@ -457,6 +457,8 @@ static uint64_t Fast(uint16_t smid)
 
 static void AsyncTests();
 static void LoggingTests();
+static void ConfigTests();
+static void SleepTests();
 
 int main()
 {
@@ -995,6 +997,8 @@ int main()
 
     AsyncTests();
     LoggingTests();
+    ConfigTests();
+    SleepTests();
     printf("PASS (%llu SGLs walked, %zu log lines checked)\n", (unsigned long long)ioc.sglChecked, gHost.log.size());
     return 0;
 }
@@ -1465,5 +1469,250 @@ static void LoggingTests()
         CHECK(LogMark() == mark && g.Faulted());                     /* mask 0: silent, still detected */
         memset(&g.sc->xnu.stats, 0, sizeof(g.sc->xnu.stats));       /* sas2308ctl reset-stats */
         CHECK(g.sc->xnu.stats.ios == 0 && g.sc->xnu.stats.faults == 0);
+    }
+}
+
+/* ---- SAS Device Page 0 (mps_config.c, mpssas_add_device) ------------------- */
+
+static void ConfigTests()
+{
+    printf("config: SAS Device Page 0 for each discovered device and its parent (the HBA)\n");
+    {
+        Rig g;
+        MockIocModel &m = g.ioc;
+        CHECK(g.Present(g.Tid(0x0009), 0x0009) && g.Present(g.Tid(0x000A), 0x000A));
+        CHECK(m.configHeaders == 4 && m.configReads == 4);       /* device + parent, header + page each */
+        CHECK(m.configChained == 4);                             /* FreeBSD: the SGE goes in a chain frame */
+        for (uint16_t h : {0x0009, 0x000A}) {
+            struct mpssas_target *t = g.Targ(h);
+            CHECK(t->sasaddr == MockIocModel::SasAddrOf(h));
+            CHECK(t->parent_sasaddr == MockIocModel::kHostSasAddr);
+            CHECK(t->devinfo == (MPI2_SAS_DEVICE_INFO_SSP_TARGET | MPI2_SAS_DEVICE_INFO_END_DEVICE));
+            CHECK(t->parent_handle == MockIocModel::kHostHandle);
+            CHECK(t->devname == ((0x5000C500ull << 32) | (0xABC00000u + h)));
+            uint64_t a = 0; uint32_t di = 0; uint8_t lr = 0;
+            mps_lock(g.sc);
+            CHECK(mps_xnu_target_info(g.sc, t->tid, &a, &di, &lr) == 1);
+            mps_unlock(g.sc);
+            CHECK(a == MockIocModel::SasAddrOf(h) && di == t->devinfo && lr == 0xA);   /* 6.0 Gbit/s */
+        }
+        uint64_t a = 0; uint32_t di = 0; uint8_t lr = 0;
+        CHECK(mps_xnu_target_info(g.sc, 40, &a, &di, &lr) == 0);
+        CHECK(g.Stats().config_reads == 4 && g.Stats().config_failures == 0);
+        CHECK(g.ChainsFree() == g.ChainsTotal() && g.sc->io_cmds_active == 0);
+        CHECK(!g.sc->xnu.cfg_busy && g.sc->xnu.cfg_page != nullptr);
+
+        printf("config: hot-added device gets its page read from the event task\n");
+        size_t mark = LogMark();
+        m.devices.push_back(0x000B);
+        m.PostTopologyEvent({0x000B});
+        HostRunPending();
+        CHECK(g.Present(g.Tid(0x000B), 0x000B));
+        CHECK(g.Targ(0x000B)->sasaddr == MockIocModel::SasAddrOf(0x000B));
+        CHECK(m.lastConfigHandle == MockIocModel::kHostHandle && m.configReads == 6);
+        CHECK(HasLog(mark, "Handle 0x000b SAS Address from SAS device page0 = 5000c5001234000b"));
+        Io *io = g.Read(0x000B);
+        CHECK(g.Go(io) == kPosted);
+        g.Pump();
+        CHECK(io->status == CAM_REQ_CMP);
+    }
+
+    printf("config: page read fails -> that device is not added (FreeBSD)\n");
+    {
+        size_t mark = LogMark();
+        Rig g({0x0009, 0x000A}, [](Rig &r) { r.ioc.configFailHandle = 0x000A; });
+        CHECK(g.Targ(0x0009) != nullptr && g.Targ(0x000A) == nullptr);
+        CHECK(g.Stats().config_failures == 1);
+        CHECK(HasLog(mark, "Error reading SAS device 0xa page0, iocstatus= 0x22"));
+        CHECK(HasLog(mark, "page read with error; iocstatus = 0x22"));
+        CHECK(!g.sc->xnu.cfg_busy && g.ChainsFree() == g.ChainsTotal());
+    }
+
+    printf("config: parent page read fails -> device added without a parent address\n");
+    {
+        size_t mark = LogMark();
+        Rig g({0x0009}, [](Rig &r) { r.ioc.configFailHandle = MockIocModel::kHostHandle; });
+        CHECK(g.Targ(0x0009) != nullptr && g.Targ(0x0009)->parent_sasaddr == 0);
+        CHECK(g.Targ(0x0009)->sasaddr == MockIocModel::SasAddrOf(0x0009));
+        CHECK(HasLog(mark, "Error reading parent SAS device 0x1 page0"));
+        CHECK(g.Stats().config_failures == 0);
+    }
+
+    printf("config: an IOC that loses the reply -> mps_wait_command timeout -> reinit, device found again\n");
+    {
+        Rig g({0x0009});
+        MockIocModel &m = g.ioc;
+        const uint32_t reinits = g.Stats().reinits;
+        m.devices.push_back(0x000B);
+        m.dropConfigOnce = true;
+        m.PostTopologyEvent({0x000B});
+        HostRunPending();                        /* waits 60 s (virtual), mps_reinit, rediscovery */
+        CHECK(g.Stats().reinits == reinits + 1);
+        CHECK(g.Present(g.Tid(0x0009), 0x0009) && g.Present(g.Tid(0x000B), 0x000B));
+        CHECK(!g.sc->xnu.cfg_busy && g.ChainsFree() == g.ChainsTotal());
+    }
+}
+
+/* ---- system sleep and shutdown (mps_xnu_suspend / mps_xnu_resume) ------------ */
+
+static int Suspend(Rig &g, u_int drainMs)
+{
+    mps_lock(g.sc);
+    int rc = mps_xnu_suspend(g.sc, drainMs);
+    mps_unlock(g.sc);
+    return rc;
+}
+
+static int Resume(Rig &g)
+{
+    mps_lock(g.sc);
+    int rc = mps_xnu_resume(g.sc);
+    mps_unlock(g.sc);
+    HostRunPending();                           /* the reinit task, rediscovery */
+    return rc;
+}
+
+static void SleepTests()
+{
+    printf("sleep: idle suspend -> MUR, interrupts masked, no register access; resume -> reinit, same targets\n");
+    {
+        Rig g;
+        MockIocModel &m = g.ioc;
+        const size_t mark = LogMark();
+        const target_id_t t9 = g.Tid(0x0009), tA = g.Tid(0x000A);
+        const int murs = m.murCount, resets = m.diagResetCount, pe = m.portEnables;
+        CHECK(Suspend(g, 1000) == 0);
+        CHECK(m.murCount == murs + 1 && m.state == MPI2_IOC_STATE_READY);
+        CHECK(m.him & MPI2_HIM_RIM);
+        CHECK(g.sc->mps_flags & MPS_FLAGS_XNU_SUSPENDED);
+        CHECK(HasLog(mark, "suspending: 0 commands outstanding") && HasLog(mark, "suspended: IOC stopped"));
+        CHECK(Suspend(g, 1000) == 0 && m.murCount == murs + 1);        /* twice: no-op */
+        HostAdvance(5000);                                            /* periodic stopped: no doorbell reads */
+        CHECK(g.Stats().suspended_access == 0 && !HasLog(mark, "accessed while suspended"));
+        CHECK(g.Present(t9, 0x0009) && g.Present(tA, 0x000A));       /* targets kept while asleep */
+        CHECK(Resume(g) == 0);
+        CHECK(!(g.sc->mps_flags & (MPS_FLAGS_XNU_SUSPENDED | MPS_FLAGS_DIAGRESET)) && !g.ReinitQueued());
+        CHECK(m.diagResetCount == resets + 1 && m.portEnables == pe + 1);   /* Linux scsih_resume: hard reset */
+        CHECK(m.state == MPI2_IOC_STATE_OPERATIONAL && !(m.him & MPI2_HIM_RIM));
+        CHECK(g.Tid(0x0009) == t9 && g.Tid(0x000A) == tA);           /* same ids after the rediscovery */
+        CHECK(g.Stats().suspends == 1 && g.Stats().resumes == 1 && g.Stats().suspend_drain_left == 0);
+        CHECK(Resume(g) == 0 && g.Stats().resumes == 1);               /* not suspended: no-op */
+        Io *io = g.Read(0x0009);
+        CHECK(g.Go(io) == kPosted);
+        g.Pump();
+        CHECK(io->status == CAM_REQ_CMP);
+        HostAdvance(3000);                                            /* periodic running again */
+        CHECK(!g.Gone() && g.Stats().suspended_access == 0);
+    }
+
+    printf("sleep: IO completing during the drain completes normally\n");
+    {
+        Rig g;
+        MockIocModel &m = g.ioc;
+        m.holdIo = true;
+        Io *a = g.Read(0x0009, 0, 1), *b = g.Read(0x000A, 0, 2);
+        CHECK(g.Go(a) == kPosted && g.Go(b) == kPosted);
+        const uint64_t t0 = m.nowUs;
+        gHost.onOtherThreads = [&m, t0]() { if (m.nowUs > t0 + 50000 && !m.pending.empty()) m.ReleasePending(); };
+        CHECK(Suspend(g, 2000) == 0);
+        gHost.onOtherThreads = nullptr;
+        CHECK(a->done && a->status == CAM_REQ_CMP && b->done && b->status == CAM_REQ_CMP);
+        CHECK(g.Stats().suspend_drain_left == 0 && g.sc->io_cmds_active == 0);
+        m.holdIo = false;
+        CHECK(Resume(g) == 0);
+    }
+
+    printf("sleep: IO still in flight after the drain -> MUR, completed as a reset (retried, held), resumes after wake\n");
+    {
+        Rig g;
+        MockIocModel &m = g.ioc;
+        const size_t mark = LogMark();
+        m.holdIo = true;
+        Io *a = g.Read(0x0009, 0, 3);
+        CHECK(g.Go(a) == kPosted);
+        const uint64_t t0 = m.nowUs;
+        CHECK(Suspend(g, 200) == 0);
+        CHECK(m.nowUs - t0 >= 200000 && m.nowUs - t0 < 1000000);     /* waited the drain time, not more */
+        CHECK(a->done && a->status == CAM_SCSI_BUS_RESET);            /* kext: DeliveryFailure, retried */
+        CHECK(m.pending.empty() && g.ChainsFree() == g.ChainsTotal());
+        CHECK(g.Stats().suspend_drain_left == 1);
+        CHECK(HasLog(mark, "suspend: 1 commands still outstanding after 200 ms, stopping the IOC"));
+        m.holdIo = false;
+        /* the retry and new IO while asleep: held, not posted */
+        const int posted = (int)m.sglChecked;
+        Io *r = g.Read(0x0009, 0, 3), *n = g.Read(0x000A, 0, 4), *t = g.Read(0x000A, 0, 5);
+        CHECK(g.Go(r) == kHeld && g.Go(n) == kHeld && g.Go(t) == kHeld && g.HeldCount() == 3);
+        CHECK(g.Timeout(t) == 0 && t->done && t->status == CAM_CMD_TIMEOUT && g.HeldCount() == 2);
+        Io *tm = g.Tm(MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET, g.Tid(0x0009), 0);
+        CHECK(tm->done && tm->status == CAM_BUSY);                    /* no TMs while asleep */
+        g.Pump(); HostAdvance(2000);
+        CHECK(!r->done && !n->done && (int)m.sglChecked == posted && g.Stats().suspended_access == 0);
+        CHECK(Resume(g) == 0);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP && n->done && n->status == CAM_REQ_CMP);
+        CHECK(g.HeldCount() == 0 && g.sc->io_cmds_active == 0);
+    }
+
+    printf("sleep: a reinit pending at suspend finishes first\n");
+    {
+        Rig g;
+        MockIocModel &m = g.ioc;
+        const uint32_t reinits = g.Stats().reinits;
+        m.Fault(0x2100);
+        m.nowUs += 1100000;
+        g.Callouts();
+        CHECK(g.Faulted());
+        CHECK(Suspend(g, 5000) == 0);
+        CHECK(g.Stats().reinits == reinits + 1 && g.Stats().suspend_drain_left == 0);
+        CHECK(m.state == MPI2_IOC_STATE_READY && !g.Gone());
+        CHECK(Resume(g) == 0 && g.Stats().reinits == reinits + 2);
+        CHECK(g.Present(g.Tid(0x0009), 0x0009));
+    }
+
+    printf("sleep: TM in flight at suspend completes (aborted), recovery state cleared\n");
+    {
+        Rig g;
+        MockIocModel &m = g.ioc;
+        m.holdDev = 0x0009; m.tmIgnoreMask = 1u << kAbortT;
+        Io *a = g.Read(0x0009, 0, 6);
+        CHECK(g.Go(a) == kPosted);
+        Io *tm = g.Tm(kAbortT, g.Tid(0x0009), 0, a);
+        CHECK(!tm->done && g.TmsBusy() == 1);
+        CHECK(Suspend(g, 100) == 0);
+        CHECK(tm->done && tm->status == CAM_REQ_ABORTED);
+        CHECK(a->done && a->status == CAM_SCSI_BUS_RESET && g.TmsBusy() == 0);
+        m.holdDev = 0; m.tmIgnoreMask = 0;
+        CHECK(Resume(g) == 0);
+        Io *b = g.Read(0x0009, 0, 7);
+        CHECK(g.Go(b) == kPosted);
+        g.Pump();
+        CHECK(b->status == CAM_REQ_CMP && !g.Recovering(0x0009));
+    }
+
+    printf("sleep: device removed while asleep -> resume finds it gone, held IO failed, targets dropped\n");
+    {
+        Rig g;
+        MockIocModel &m = g.ioc;
+        CHECK(Suspend(g, 100) == 0);
+        Io *r = g.Read(0x0009, 0, 1);
+        CHECK(g.Go(r) == kHeld);
+        m.dead = true;
+        CHECK(Resume(g) == 0);
+        CHECK(g.Gone() && r->done && r->status == CAM_DEV_NOT_THERE);
+        CHECK(!g.Present(0, 0x0009) && g.AsyncCount(AC_XNU_SCAN) >= 1);
+    }
+
+    printf("shutdown: suspend (MUR), then detach without resume frees everything, no register access\n");
+    {
+        Rig g;
+        MockIocModel &m = g.ioc;
+        const size_t mark = LogMark();
+        const int murs = m.murCount;
+        CHECK(Suspend(g, 100) == 0);
+        Io *r = g.Read(0x000A, 0, 1);
+        CHECK(g.Go(r) == kHeld);
+        g.Detach();                              /* mps_free: held IO failed, DMA freed */
+        CHECK(r->done && r->status == CAM_DEV_NOT_THERE);
+        CHECK(m.murCount == murs + 1 && !HasLog(mark, "accessed while suspended"));
     }
 }

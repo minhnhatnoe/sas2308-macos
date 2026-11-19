@@ -34,7 +34,7 @@ LDFLAGS  := -arch $(ARCH) -mmacosx-version-min=$(MINOS) -isysroot $(SDK) \
             -L$(SDK)/usr/lib -lkmodc++ -lkmod
 
 # The FreeBSD-shaped core (plain C, kext flags) and its compat layer.
-CORE_SRCS := ../core/compat/mps_compat.c ../core/compat/cam_compat.c ../core/mps.c \
+CORE_SRCS := ../core/compat/mps_compat.c ../core/compat/cam_compat.c ../core/mps.c ../core/mps_config.c \
              ../core/mps_sas.c ../core/mps_sas_lsi.c ../core/mps_table.c ../core/mps_xnu.c
 CORE_HDRS := ../core/compat/mps_compat.h ../core/compat/cam_compat.h ../core/compat/queue.h \
              ../core/mpsvar.h ../core/mps_sas.h ../core/mps_table.h ../core/mps_xnu.h \

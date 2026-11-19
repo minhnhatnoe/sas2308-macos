@@ -544,6 +544,8 @@ int	bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 	    bus_size_t buflen, bus_dmamap_callback_t *callback,
 	    void *callback_arg, int flags);
 void	bus_dmamap_unload(bus_dma_tag_t dmat, bus_dmamap_t map);
+/* XNU: lend bus_dmamem_alloc() memory to a map until its next unload */
+void	bus_dmamap_xnu_lend(bus_dmamap_t map, bus_dmamap_t mem);
 /* XNU: PCIe DMA on Apple silicon (DART) is coherent; nothing to do. */
 static __inline void
 bus_dmamap_sync(bus_dma_tag_t dmat, bus_dmamap_t map, int op)

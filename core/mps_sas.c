@@ -1479,9 +1479,9 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 	}
 
 	cm = mps_alloc_command(sc);
-	/* XNU: also while a requested reinit has not started yet */
+	/* XNU: also while a requested reinit has not started yet, or asleep */
 	if (cm == NULL || (sc->mps_flags & MPS_FLAGS_DIAGRESET) ||
-	    sc->xnu.reinit_pending) {
+	    sc->xnu.reinit_pending || sc->xnu.suspending) {
 		if (cm != NULL) {
 			mps_free_command(sc, cm);
 		}
@@ -2214,7 +2214,8 @@ mpssas_action_xnu_tm(struct mpssas_softc *sassc, union ccb *ccb)
 		xpt_done(ccb);
 		return;
 	}
-	if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) || sc->xnu.reinit_pending) {
+	if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) || sc->xnu.reinit_pending ||
+	    sc->xnu.suspending) {
 		mpssas_set_ccbstatus(ccb, CAM_BUSY);
 		xpt_done(ccb);
 		return;
@@ -2368,6 +2369,22 @@ mpssas_xnu_fail_all(struct mps_softc *sc)
 	while (sc->sassc->sim->freeze > 0)
 		xpt_release_simq(sc->sassc->sim, 1);
 	cam_xnu_flush_held(sc->sassc->sim, CAM_DEV_NOT_THERE);
+}
+
+/*
+ * XNU: system sleep (mps_xnu_suspend): the IOC was stopped by a message unit
+ * reset with MPS_FLAGS_DIAGRESET set; complete what it still owned as a diag
+ * reset does (IO: CAM_SCSI_BUS_RESET, retried by the OS and held).  The
+ * targets keep their handles until the reinit at resume rediscovers them.
+ */
+void
+mpssas_xnu_suspend(struct mps_softc *sc)
+{
+
+	mtx_assert(&sc->mps_mtx, MA_OWNED);
+	if (sc->sassc == NULL || sc->commands == NULL)
+		return;
+	mpssas_complete_all_commands(sc);
 }
 
 static void

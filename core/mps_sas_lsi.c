@@ -271,7 +271,9 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
 	char devstring[80];
 	struct mpssas_softc *sassc;
 	struct mpssas_target *targ;
+	Mpi2ConfigReply_t mpi_reply;
 	Mpi2SasDevicePage0_t config_page;
+	uint64_t sas_address;
 	uint64_t parent_sas_address = 0;
 	u32 device_info, parent_devinfo = 0;
 	unsigned int id;
@@ -281,15 +283,50 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
 
 	sassc = sc->sassc;
 	mpssas_startup_increment(sassc);
+	if (mps_config_get_sas_device_pg0(sc, &mpi_reply, &config_page,
+	    MPI2_SAS_DEVICE_PGAD_FORM_HANDLE, handle) != 0) {
+		mps_dprint(sc, MPS_INFO|MPS_MAPPING|MPS_FAULT,
+		    "Error reading SAS device %#x page0, iocstatus= 0x%x\n",
+		    handle, mpi_reply.IOCStatus);
+		sc->xnu.stats.config_failures++;	/* XNU */
+		error = ENXIO;
+		goto out;
+	}
+
+	device_info = le32toh(config_page.DeviceInfo);
+
+	if (((device_info & MPI2_SAS_DEVICE_INFO_SMP_TARGET) == 0)
+	 && (le16toh(config_page.ParentDevHandle) != 0)) {
+		Mpi2ConfigReply_t tmp_mpi_reply;
+		Mpi2SasDevicePage0_t parent_config_page;
+
+		if (mps_config_get_sas_device_pg0(sc, &tmp_mpi_reply,
+		    &parent_config_page, MPI2_SAS_DEVICE_PGAD_FORM_HANDLE,
+		    le16toh(config_page.ParentDevHandle)) != 0) {
+			mps_dprint(sc, MPS_MAPPING|MPS_FAULT,
+			    "Error reading parent SAS device %#x page0, "
+			    "iocstatus= 0x%x\n",
+			    le16toh(config_page.ParentDevHandle),
+			    tmp_mpi_reply.IOCStatus);
+		} else {
+			parent_sas_address = parent_config_page.SASAddress.High;
+			parent_sas_address = (parent_sas_address << 32) |
+				parent_config_page.SASAddress.Low;
+			parent_devinfo = le32toh(parent_config_page.DeviceInfo);
+		}
+	}
+	/* TODO Check proper endianness */
+	sas_address = config_page.SASAddress.High;
+	sas_address = (sas_address << 32) | config_page.SASAddress.Low;
+        mps_dprint(sc, MPS_MAPPING, "Handle 0x%04x SAS Address from SAS device "
+            "page0 = %jx\n", handle, (uintmax_t)sas_address);
 
 	/*
-	 * XNU: SAS Device Page 0 is not read (no config pages), so there is
-	 * no SAS address, device info, enclosure or parent, and SATA devices
-	 * are not identified.  The target id comes from mps_xnu_get_tid()
+	 * XNU: no SATA identify (mpssas_get_sas_address_for_sata_disk), so a
+	 * SATA disk keeps the SAS address the IOC made up for it and is not
+	 * told apart as an SSD.  The target id comes from mps_xnu_get_tid()
 	 * (firmware handle based) instead of mps_mapping.c.
 	 */
-	bzero(&config_page, sizeof(config_page));
-	device_info = le32toh(config_page.DeviceInfo);
 	id = mps_xnu_get_tid(sc, handle);
 	if (id == MPS_MAP_BAD_ID) {
 		mps_dprint(sc, MPS_INFO, "failure at %s:%d/%s()! "

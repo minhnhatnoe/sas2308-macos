@@ -915,6 +915,110 @@ mps_reinit_task(void *arg, int pending)
 	mps_unlock(sc);
 }
 
+/*
+ * XNU: system sleep and shutdown.  FreeBSD's mps_pci_suspend/resume return
+ * EINVAL; this follows Linux mpt3sas (scsih_suspend: block requests, stop
+ * the IOC; scsih_resume: hard reset, unblock).  Called with mps_mtx held;
+ * both sleep (the lock is dropped meanwhile).
+ *
+ * Suspend: new SCSI IO is requeued (held, SIM queue frozen) and OS task
+ * management is refused (CAM_BUSY); outstanding commands get up to
+ * `drain_ms' to complete, a pending reinit and queued events to finish.
+ * Then the periodic watchdog stops, interrupts are masked, the IOC is
+ * stopped with a message unit reset (no DMA after it) and what it still
+ * owned is completed as after a diag reset (CAM_SCSI_BUS_RESET: the OS
+ * retries and the retry is held).  MPS_FLAGS_DIAGRESET stays set and
+ * MPS_FLAGS_XNU_SUSPENDED keeps every register access away from the
+ * (possibly powered off) device until mps_xnu_resume().
+ */
+static int
+mps_xnu_suspend_busy(struct mps_softc *sc)
+{
+	struct mpssas_softc *sassc = sc->sassc;
+
+	if (sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_SHUTDOWN))
+		return (0);
+	return (sc->io_cmds_active > 0 || sc->xnu.reinit_pending ||
+	    (sc->mps_flags & MPS_FLAGS_DIAGRESET) != 0 ||
+	    (sassc != NULL && !TAILQ_EMPTY(&sassc->ev_queue)));
+}
+
+int
+mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms)
+{
+	struct mpssas_softc *sassc = sc->sassc;
+	int error = 0, start;
+
+	mtx_assert(&sc->mps_mtx, MA_OWNED);
+	if (sc->xnu.suspending || (sc->mps_flags & MPS_FLAGS_SHUTDOWN))
+		return (0);
+	sc->xnu.suspending = 1;
+	sc->xnu.stats.suspends++;
+	mps_dprint(sc, MPS_INIT|MPS_INFO, "suspending: %d commands "
+	    "outstanding\n", sc->io_cmds_active);
+	if (sassc != NULL && sassc->sim != NULL &&
+	    (sassc->flags & MPSSAS_QUEUE_FROZEN) == 0) {
+		xpt_freeze_simq(sassc->sim, 1);
+		sassc->flags |= MPSSAS_QUEUE_FROZEN;
+	}
+
+	start = ticks;
+	while (mps_xnu_suspend_busy(sc) &&
+	    (u_int)(ticks - start) < drain_ms * (hz / 1000)) {
+		if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) == 0)
+			mps_intr_locked(sc);
+		msleep(&sc->xnu.suspending, &sc->mps_mtx, 0, "mpssusp",
+		    hz / 100);
+	}
+	if (sc->io_cmds_active > 0 || sc->xnu.reinit_pending ||
+	    (sc->mps_flags & MPS_FLAGS_DIAGRESET))
+		mps_dprint(sc, MPS_INIT|MPS_RECOVERY|MPS_INFO, "suspend: %d "
+		    "commands still outstanding after %u ms%s, stopping the "
+		    "IOC\n", sc->io_cmds_active, drain_ms,
+		    sc->xnu.reinit_pending ? " (reinit pending)" : "");
+	sc->xnu.stats.suspend_drain_left += sc->io_cmds_active;
+
+	callout_stop(&sc->periodic);
+	/* A reinit still running gives up at its next wait (MPS_XNU_ABANDON) */
+	sc->mps_flags |= MPS_FLAGS_DIAGRESET;
+	if ((sc->mps_flags & MPS_FLAGS_XNU_GONE) == 0) {
+		mps_mask_intr(sc);
+		if ((error = mps_transition_ready(sc)) != 0)
+			mps_dprint(sc, MPS_INIT|MPS_FAULT, "suspend: the IOC "
+			    "did not stop (error %d)\n", error);
+	}
+	mpssas_xnu_suspend(sc);
+	sc->mps_flags |= MPS_FLAGS_XNU_SUSPENDED;
+	sc->xnu.suspended_logged = 0;
+	mps_dprint(sc, MPS_INIT|MPS_INFO, "suspended: IOC stopped\n");
+	return (error);
+}
+
+/*
+ * Resume: registers usable again; the reinit (diag reset, IOCFacts,
+ * IOCInit, events, port enable = rediscovery, mps_reinit) runs on the
+ * reinit taskqueue.  IO stays held until the rediscovery releases the SIM
+ * queue; a controller that went away meanwhile is disabled there.
+ */
+int
+mps_xnu_resume(struct mps_softc *sc)
+{
+
+	mtx_assert(&sc->mps_mtx, MA_OWNED);
+	if (!sc->xnu.suspending)
+		return (0);
+	sc->mps_flags &= ~(MPS_FLAGS_XNU_SUSPENDED | MPS_FLAGS_DIAGRESET);
+	sc->xnu.suspending = 0;
+	sc->xnu.stats.resumes++;
+	mps_dprint(sc, MPS_INIT|MPS_INFO, "resuming: reinitializing the "
+	    "controller\n");
+	if (sc->mps_flags & MPS_FLAGS_SHUTDOWN)
+		return (ENXIO);
+	mps_periodic(sc);
+	mps_xnu_request_reinit(sc, "resume");
+	return (0);
+}
+
 /* Wait for the chip to ACK a word that we've put into its FIFO 
  * Wait for <timeout> seconds. In single loop wait for busy loop
  * for 500 microseconds.
@@ -1868,9 +1972,10 @@ mps_free(struct mps_softc *sc)
 	 * XNU: stop the IOC (message unit reset) before the outstanding
 	 * commands and held ccbs are completed, so no buffer goes back to the
 	 * OS while the IOC could still DMA into it; every ccb completes once.
+	 * Suspended (mps_xnu_suspend): already stopped, registers left alone.
 	 */
 	mps_lock(sc);
-	if ((sc->mps_flags & MPS_FLAGS_XNU_GONE) == 0 &&
+	if ((sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) == 0 &&
 	    sc->mps_flags & MPS_FLAGS_ATTACH_DONE)
 		mps_transition_ready(sc);
 	mpssas_xnu_fail_all(sc);
@@ -1885,8 +1990,8 @@ mps_free(struct mps_softc *sc)
 
 	/* Put the IOC back in the READY state. */
 	mps_lock(sc);
-	if ((error = mps_transition_ready(sc)) != 0 &&
-	    (sc->mps_flags & MPS_FLAGS_XNU_GONE) == 0) {	/* XNU: free anyway */
+	if ((error = mps_transition_ready(sc)) != 0 &&	/* XNU: free anyway */
+	    (sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) == 0) {
 		mps_unlock(sc);
 		return (error);
 	}
@@ -1900,6 +2005,7 @@ mps_free(struct mps_softc *sc)
 	 * to free these buffers too.
 	 */
 	mps_iocfacts_free(sc);
+	mps_xnu_config_free(sc);	/* XNU: config page buffer */
 
 	/* XNU: no sysctl tree, no shutdown handler */
 

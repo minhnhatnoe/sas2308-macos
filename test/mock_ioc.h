@@ -78,6 +78,15 @@ struct MockIocModel {
     uint32_t lastEventMasks[4]{};             /* last EVENT_NOTIFICATION (1 = masked) */
     int eventRegistrations = 0, portEnables = 0, iocInits = 0, removeDevices = 0;
 
+    /* ---- config pages: SAS Device Page 0 (handle 0x0001 = the HBA itself) ---- */
+    static constexpr uint16_t kHostHandle = 0x0001;
+    static constexpr uint64_t kHostSasAddr = 0x500605B000001000ull;
+    static uint64_t SasAddrOf(uint16_t h) { return h == kHostHandle ? kHostSasAddr : 0x5000C50012340000ull + h; }
+    int configHeaders = 0, configReads = 0, configChained = 0;
+    uint16_t configFailHandle = 0;             /* page reads for this handle: CONFIG_INVALID_PAGE */
+    uint16_t lastConfigHandle = 0;
+    bool dropConfigOnce = false;               /* lose the next config reply (wait timeout)*/
+
     /* ---- IOC-side view of the queues (from IOCInit) ---- */
     uint64_t reqBase = 0, postBase = 0, freeBase = 0;
     uint32_t replyHigh = 0, senseHigh = 0, frameSz = 0, pq = 0, fq = 0;
@@ -322,6 +331,7 @@ struct MockIocModel {
             uint8_t fn = v >> MPI2_DOORBELL_FUNCTION_SHIFT;
             if (fn == MPI2_FUNCTION_IOC_MESSAGE_UNIT_RESET) {
                 state = MPI2_IOC_STATE_READY; murCount++;
+                pending.clear(); deferredTm.clear();   /* the message unit forgets its requests */
             } else if (fn == MPI2_FUNCTION_HANDSHAKE &&
                        (state & MPI2_IOC_STATE_MASK) != MPI2_IOC_STATE_FAULT) {   /* a faulted IOC does not answer */
                 expect = (v & MPI2_DOORBELL_ADD_DWORDS_MASK) >> MPI2_DOORBELL_ADD_DWORDS_SHIFT;
@@ -451,6 +461,72 @@ struct MockIocModel {
         }
         AddressReply(0, buf, sizeof(buf));
     }
+    /* MPI2_FUNCTION_CONFIG: header, then READ_CURRENT of SAS Device Page 0 (FreeBSD mps_config.c). */
+    void AnswerConfig(uint8_t *f, uint16_t smid, uint8_t descType) {
+        auto *q = (MPI2_CONFIG_REQUEST *)f;
+        if (dropConfigOnce) { dropConfigOnce = false; return; }
+        CHECK(descType == MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE);
+        CHECK(q->Header.PageType == MPI2_CONFIG_PAGETYPE_EXTENDED);
+        CHECK(q->ExtPageType == MPI2_CONFIG_EXTPAGETYPE_SAS_DEVICE && q->Header.PageNumber == 0);
+        MPI2_CONFIG_REPLY cr{};
+        cr.MsgLength = sizeof(cr) / 4; cr.Function = MPI2_FUNCTION_CONFIG; cr.Action = q->Action;
+        cr.Header.PageType = MPI2_CONFIG_PAGETYPE_EXTENDED; cr.Header.PageVersion = MPI2_SASDEVICE0_PAGEVERSION;
+        cr.ExtPageType = MPI2_CONFIG_EXTPAGETYPE_SAS_DEVICE;
+        cr.ExtPageLength = sizeof(Mpi2SasDevicePage0_t) / 4;
+        if (q->Action == MPI2_CONFIG_ACTION_PAGE_HEADER) {
+            configHeaders++;
+            AddressReply(smid, &cr, sizeof(cr));
+            return;
+        }
+        CHECK(q->Action == MPI2_CONFIG_ACTION_PAGE_READ_CURRENT);
+        CHECK(q->ExtPageLength == sizeof(Mpi2SasDevicePage0_t) / 4);
+        CHECK((q->PageAddress & MPI2_SAS_DEVICE_PGAD_FORM_MASK) == MPI2_SAS_DEVICE_PGAD_FORM_HANDLE);
+        const uint16_t h = (uint16_t)(q->PageAddress & MPI2_SAS_DEVICE_PGAD_HANDLE_MASK);
+        lastConfigHandle = h;
+        configReads++;
+        /*
+         * One simple 64-bit SGE, IOC to host, the page length exactly.  FreeBSD's
+         * mps_push_sge puts it in a chain frame: PageBufferSGE (12 bytes) holds a
+         * chain element when "segment + chain" does not fit.
+         */
+        MPI2_SGE_SIMPLE64 sge; memcpy(&sge, &q->PageBufferSGE, sizeof(sge));
+        if (((sge.FlagsLength >> MPI2_SGE_FLAGS_SHIFT) & MPI2_SGE_FLAGS_ELEMENT_MASK) == MPI2_SGE_FLAGS_CHAIN_ELEMENT) {
+            MPI2_SGE_CHAIN64 ce; memcpy(&ce, &q->PageBufferSGE, sizeof(ce));
+            CHECK(ce.Flags == (MPI2_SGE_FLAGS_CHAIN_ELEMENT | MPI2_SGE_FLAGS_64_BIT_ADDRESSING));
+            CHECK(ce.Length == frameSz);
+            memcpy(&sge, Ptr(((uint64_t)ce.Address.High << 32) | ce.Address.Low, sizeof(sge)), sizeof(sge));
+            configChained++;
+        }
+        const uint32_t fl = sge.FlagsLength >> MPI2_SGE_FLAGS_SHIFT;
+        CHECK((fl & MPI2_SGE_FLAGS_ELEMENT_MASK) == MPI2_SGE_FLAGS_SIMPLE_ELEMENT);
+        CHECK(fl & MPI2_SGE_FLAGS_64_BIT_ADDRESSING);
+        CHECK(!(fl & MPI2_SGE_FLAGS_HOST_TO_IOC));
+        CHECK((fl & MPI2_SGE_FLAGS_END_OF_LIST) && (fl & MPI2_SGE_FLAGS_LAST_ELEMENT));
+        CHECK((sge.FlagsLength & 0xFFFFFF) == sizeof(Mpi2SasDevicePage0_t));
+        bool known = h == kHostHandle;
+        for (uint16_t d : devices) known |= d == h;
+        if (!known || h == configFailHandle) {
+            cr.IOCStatus = MPI2_IOCSTATUS_CONFIG_INVALID_PAGE;
+            AddressReply(smid, &cr, sizeof(cr));
+            return;
+        }
+        Mpi2SasDevicePage0_t pg{};
+        pg.Header.PageType = MPI2_CONFIG_PAGETYPE_EXTENDED; pg.Header.PageVersion = MPI2_SASDEVICE0_PAGEVERSION;
+        pg.Header.ExtPageType = MPI2_CONFIG_EXTPAGETYPE_SAS_DEVICE;
+        pg.Header.ExtPageLength = sizeof(pg) / 4;
+        const uint64_t a = SasAddrOf(h);
+        pg.SASAddress.High = (uint32_t)(a >> 32); pg.SASAddress.Low = (uint32_t)a;
+        pg.DevHandle = h;
+        pg.ParentDevHandle = h == kHostHandle ? 0 : kHostHandle;
+        pg.PhyNum = (uint8_t)(h & 7);
+        pg.DeviceInfo = h == kHostHandle ?
+            (MPI2_SAS_DEVICE_INFO_SSP_INITIATOR | MPI2_SAS_DEVICE_INFO_STP_INITIATOR |
+             MPI2_SAS_DEVICE_INFO_SMP_INITIATOR) :
+            (MPI2_SAS_DEVICE_INFO_SSP_TARGET | MPI2_SAS_DEVICE_INFO_END_DEVICE);
+        pg.DeviceName.High = 0x5000C500; pg.DeviceName.Low = 0xABC00000u + h;
+        memcpy(Ptr(((uint64_t)sge.Address.High << 32) | sge.Address.Low, sizeof(pg)), &pg, sizeof(pg));
+        AddressReply(smid, &cr, sizeof(cr));
+    }
     void RequestPosted(uint32_t low, uint32_t) {
         if (state != MPI2_IOC_STATE_OPERATIONAL) { dropped++; return; }   /* faulted: ignored */
         uint16_t smid = low >> 16;
@@ -533,6 +609,8 @@ struct MockIocModel {
             if (tmIgnoreMask & (1u << t->TaskType)) return;
             if (tmDeferMask & (1u << t->TaskType)) { deferredTm.push_back(smid); return; }
             AnswerTm(f, smid);
+        } else if (fn == MPI2_FUNCTION_CONFIG) {
+            AnswerConfig(f, smid, descType);
         } else if (fn == MPI2_FUNCTION_SAS_IO_UNIT_CONTROL) {
             auto *q = (MPI2_SAS_IOUNIT_CONTROL_REQUEST *)f;
             CHECK(q->Operation == MPI2_SAS_OP_REMOVE_DEVICE);

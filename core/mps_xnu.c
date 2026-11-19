@@ -831,6 +831,85 @@ mps_xnu_reinit_done(struct mps_softc *sc)
 	    (uintmax_t)ms);
 }
 
+/* ---- system sleep ------------------------------------------------------------ */
+
+uint32_t
+mps_xnu_suspended_access(struct mps_softc *sc, uint32_t offset)
+{
+	sc->xnu.stats.suspended_access++;
+	if (!sc->xnu.suspended_logged) {
+		sc->xnu.suspended_logged = 1;
+		mps_dprint(sc, MPS_FAULT, "register 0x%02x accessed while "
+		    "suspended: refused\n", offset);
+	}
+	return (0);
+}
+
+/* ---- config pages (mps_config.c) -------------------------------------------- */
+
+void *
+mps_xnu_config_page(struct mps_softc *sc, struct mps_command *cm)
+{
+	if (sc->xnu.cfg_busy || cm->cm_length == 0 ||
+	    cm->cm_length > MPS_XNU_CFG_PAGE_BYTES)
+		return (NULL);
+	if (sc->xnu.cfg_page == NULL) {
+		if (bus_dma_tag_create(sc->mps_parent_dmat, 4, 0,
+		    BUS_SPACE_MAXADDR, BUS_SPACE_MAXADDR, NULL, NULL,
+		    MPS_XNU_CFG_PAGE_BYTES, 1, MPS_XNU_CFG_PAGE_BYTES, 0, NULL,
+		    NULL, &sc->xnu.cfg_dmat) != 0)
+			return (NULL);
+		if (bus_dmamem_alloc(sc->xnu.cfg_dmat, &sc->xnu.cfg_page,
+		    BUS_DMA_NOWAIT, &sc->xnu.cfg_map) != 0) {
+			bus_dma_tag_destroy(sc->xnu.cfg_dmat);
+			sc->xnu.cfg_dmat = NULL;
+			sc->xnu.cfg_page = NULL;
+			return (NULL);
+		}
+	}
+	bzero(sc->xnu.cfg_page, cm->cm_length);
+	bus_dmamap_xnu_lend(cm->cm_dmamap, sc->xnu.cfg_map);
+	sc->xnu.cfg_busy = 1;
+	sc->xnu.stats.config_reads++;
+	return (sc->xnu.cfg_page);
+}
+
+void
+mps_xnu_config_page_done(struct mps_softc *sc, void *page)
+{
+	if (page != NULL && page == sc->xnu.cfg_page)
+		sc->xnu.cfg_busy = 0;
+}
+
+void
+mps_xnu_config_free(struct mps_softc *sc)
+{
+	if (sc->xnu.cfg_page != NULL)
+		bus_dmamem_free(sc->xnu.cfg_dmat, sc->xnu.cfg_page,
+		    sc->xnu.cfg_map);
+	if (sc->xnu.cfg_dmat != NULL)
+		bus_dma_tag_destroy(sc->xnu.cfg_dmat);
+	sc->xnu.cfg_page = NULL;
+	sc->xnu.cfg_map = NULL;
+	sc->xnu.cfg_dmat = NULL;
+	sc->xnu.cfg_busy = 0;
+}
+
+int
+mps_xnu_target_info(struct mps_softc *sc, u_int tid, uint64_t *sasaddr,
+    uint32_t *devinfo, uint8_t *linkrate)
+{
+	struct mpssas_target *targ;
+
+	if (!mps_xnu_target_present(sc, tid, NULL))
+		return (0);
+	targ = &sc->sassc->targets[tid];
+	*sasaddr = targ->sasaddr;
+	*devinfo = targ->devinfo;
+	*linkrate = targ->linkrate;
+	return (1);
+}
+
 /* ---- mps_pci.c counterparts --------------------------------------------- */
 
 int

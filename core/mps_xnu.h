@@ -102,7 +102,17 @@ struct mps_xnu {
 	uint16_t		 tid_handle[MPS_XNU_MAX_TARGETS]; /* last handle */
 	uint64_t		 reinit_start_us;
 	int			 gone_logged;
+	/* config pages (mps_config.c): one DMA buffer, one read at a time */
+	bus_dma_tag_t		 cfg_dmat;
+	bus_dmamap_t		 cfg_map;
+	void			*cfg_page;
+	int			 cfg_busy;
+	/* system sleep / shutdown: new IO held, OS TMs refused (mps.c) */
+	int			 suspending;
+	int			 suspended_logged;
 };
+
+#define	MPS_XNU_CFG_PAGE_BYTES	1024	/* largest config page read */
 
 /* target id for a newly announced device handle (MPS_MAP_BAD_ID: none) */
 u_int	mps_xnu_get_tid(struct mps_softc *sc, uint16_t handle);
@@ -133,6 +143,18 @@ void	mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm,
 void	mps_xnu_tm_done(struct mps_softc *sc, struct mps_command *tm);
 /* a reinit finished: duration statistics */
 void	mps_xnu_reinit_done(struct mps_softc *sc);
+/* register access while MPS_FLAGS_XNU_SUSPENDED: refused, logged once, 0 */
+uint32_t mps_xnu_suspended_access(struct mps_softc *sc, uint32_t offset);
+/*
+ * mps_config.c: the DMA buffer for a config page read of cm->cm_length
+ * bytes, lent to cm's map (NULL: busy or too large); _done when finished
+ */
+void	*mps_xnu_config_page(struct mps_softc *sc, struct mps_command *cm);
+void	 mps_xnu_config_page_done(struct mps_softc *sc, void *page);
+void	 mps_xnu_config_free(struct mps_softc *sc);	/* mps_free */
+/* SAS Device Page 0 of target `tid' as read by mpssas_add_device (0: none) */
+int	 mps_xnu_target_info(struct mps_softc *sc, u_int tid, uint64_t *sasaddr,
+	    uint32_t *devinfo, uint8_t *linkrate);
 
 /* ---- driver-specific platform hooks (mps_pci.c counterparts) ------------- */
 
