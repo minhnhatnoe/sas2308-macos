@@ -634,8 +634,7 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 	if (error) {
 		mps_dprint(sc, MPS_INIT|MPS_FAULT,
 		    "Failed to alloc queues with error %d\n", error);
-		if (attaching)		/* XNU: not on a reinit */
-			mps_free(sc);
+		/* XNU: mps_attach() frees on every failure */
 		return (error);
 	}
 
@@ -652,8 +651,7 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 	if (error != 0) {
 		mps_dprint(sc, MPS_INIT|MPS_FAULT, "Failed to "
 		    "transition to operational with error %d\n", error);
-		if (attaching)		/* XNU: not on a reinit */
-			mps_free(sc);
+		/* XNU: mps_attach() frees on every failure */
 		return (error);
 	}
 
@@ -1690,6 +1688,7 @@ mps_attach(struct mps_softc *sc)
 	if ((error = mps_transition_ready(sc)) != 0) {
 		mps_dprint(sc, MPS_INIT|MPS_FAULT, "failed to transition "
 		    "ready\n");
+		mps_free(sc);	/* XNU: here, not in the caller (mps_pci.c) */
 		return (error);
 	}
 
@@ -1698,6 +1697,7 @@ mps_attach(struct mps_softc *sc)
 	if(!sc->facts) {
 		mps_dprint(sc, MPS_INIT|MPS_FAULT, "Cannot allocate memory, "
 		    "exit\n");
+		mps_free(sc);	/* XNU */
 		return (ENOMEM);
 	}
 
@@ -1711,6 +1711,7 @@ mps_attach(struct mps_softc *sc)
 	if ((error = mps_iocfacts_allocate(sc, TRUE)) != 0) {
 		mps_dprint(sc, MPS_INIT|MPS_FAULT, "IOC Facts based allocation "
 		    "failed with error %d, exit\n", error);
+		mps_free(sc);	/* XNU: once, for every failure */
 		return (error);
 	}
 

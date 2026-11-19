@@ -222,7 +222,7 @@ struct Rig {
     }
     void Detach() {
         if (sc == nullptr) return;
-        CHECK(mps_free(sc) == 0);           /* also after a failed attach (mps_pci_attach) */
+        if (attachRc == 0) CHECK(mps_free(sc) == 0);   /* a failed mps_attach freed itself */
         CHECK(bus_dma_tag_destroy(sc->mps_parent_dmat) == 0);
         for (Io *io : ios) {
             CHECK(io->done == 1);           /* every ccb completed exactly once */

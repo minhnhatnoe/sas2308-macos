@@ -273,6 +273,12 @@ xpt_action(union ccb *ccb)
 	struct cam_sim *sim;
 
 	sim = cam_xnu_sim(ccb);
+	if (sim == NULL) {		/* bus gone (detached): fail, no SIM */
+		ccb->ccb_h.status = CAM_PATH_INVALID;
+		if (ccb->ccb_h.cbfcnp != NULL)
+			ccb->ccb_h.cbfcnp(NULL, ccb);
+		return;
+	}
 	mtx_assert(sim->mtx, MA_OWNED);
 	if (ccb->ccb_h.xnu_seq == 0) {
 		ccb->ccb_h.xnu_seq = ++sim->seq;
@@ -319,6 +325,8 @@ xpt_freeze_devq(struct cam_path *path, u_int count)
 
 	sim = cam_xnu_sim_for_path(path->path_id);
 	KASSERT(sim != NULL, ("xpt_freeze_devq: no SIM"));
+	if (sim == NULL)
+		return (0);
 	mtx_assert(sim->mtx, MA_OWNED);
 	f = cam_xnu_find_frozen(sim, path->target_id, path->lun_id);
 	if (f == NULL) {
@@ -363,6 +371,8 @@ xpt_release_devq(struct cam_path *path, u_int count, int run_queue)
 
 	sim = cam_xnu_sim_for_path(path->path_id);
 	KASSERT(sim != NULL, ("xpt_release_devq: no SIM"));
+	if (sim == NULL)
+		return;
 	mtx_assert(sim->mtx, MA_OWNED);
 	cam_xnu_release_dev(sim, path->target_id, path->lun_id, count);
 	if (run_queue)
@@ -376,6 +386,11 @@ xpt_done(union ccb *ccb)
 	int run = 0;
 
 	sim = cam_xnu_sim(ccb);
+	if (sim == NULL) {		/* KASSERTed: complete it anyway */
+		if (ccb->ccb_h.cbfcnp != NULL)
+			ccb->ccb_h.cbfcnp(NULL, ccb);
+		return;
+	}
 	mtx_assert(sim->mtx, MA_OWNED);
 	if (ccb->ccb_h.status & CAM_DEV_QFRZN) {
 		/* The periph's cam_release_devq() in FreeBSD. */
@@ -472,8 +487,10 @@ xpt_rescan(union ccb *ccb)
 	struct cam_sim *sim;
 
 	sim = cam_xnu_sim(ccb);
-	mtx_assert(sim->mtx, MA_OWNED);
-	cam_xnu_async_dispatch(sim, AC_XNU_SCAN, ccb->ccb_h.path, ccb);
+	if (sim != NULL) {
+		mtx_assert(sim->mtx, MA_OWNED);
+		cam_xnu_async_dispatch(sim, AC_XNU_SCAN, ccb->ccb_h.path, ccb);
+	}
 	xpt_free_path(ccb->ccb_h.path);
 	xpt_free_ccb(ccb);
 }
