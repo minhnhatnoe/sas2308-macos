@@ -30,82 +30,20 @@
  * Avago Technologies (LSI) MPT-Fusion Host Adapter FreeBSD
  */
 
-#include <sys/cdefs.h>
+#include "compat/mps_compat.h"
+#include "compat/cam_compat.h"
+#include "mps_mpi.h"
+#include "mpsvar.h"
+#include "mps_sas.h"
+#include "mps_table.h"
 /* Communications core for Avago Technologies (LSI) MPT2 */
 
 /* TODO Move headers to mpsvar */
-#include <sys/types.h>
-#include <sys/param.h>
-#include <sys/systm.h>
-#include <sys/kernel.h>
-#include <sys/selinfo.h>
-#include <sys/module.h>
-#include <sys/bus.h>
-#include <sys/conf.h>
-#include <sys/bio.h>
-#include <sys/malloc.h>
-#include <sys/uio.h>
-#include <sys/sysctl.h>
-#include <sys/endian.h>
-#include <sys/queue.h>
-#include <sys/kthread.h>
-#include <sys/taskqueue.h>
-#include <sys/sbuf.h>
 
-#include <machine/bus.h>
-#include <machine/resource.h>
-#include <sys/rman.h>
 
-#include <machine/stdarg.h>
 
-#include <cam/cam.h>
-#include <cam/cam_ccb.h>
-#include <cam/cam_xpt.h>
-#include <cam/cam_debug.h>
-#include <cam/cam_sim.h>
-#include <cam/cam_xpt_sim.h>
-#include <cam/cam_xpt_periph.h>
-#include <cam/cam_periph.h>
-#include <cam/scsi/scsi_all.h>
-#include <cam/scsi/scsi_message.h>
-#include <cam/scsi/smp_all.h>
 
-#include <dev/mps/mpi/mpi2_type.h>
-#include <dev/mps/mpi/mpi2.h>
-#include <dev/mps/mpi/mpi2_ioc.h>
-#include <dev/mps/mpi/mpi2_sas.h>
-#include <dev/mps/mpi/mpi2_cnfg.h>
-#include <dev/mps/mpi/mpi2_init.h>
-#include <dev/mps/mpi/mpi2_tool.h>
-#include <dev/mps/mps_ioctl.h>
-#include <dev/mps/mpsvar.h>
-#include <dev/mps/mps_table.h>
-#include <dev/mps/mps_sas.h>
 
-/*
- * static array to check SCSI OpCode for EEDP protection bits
- */
-#define	PRO_R MPI2_SCSIIO_EEDPFLAGS_CHECK_REMOVE_OP
-#define	PRO_W MPI2_SCSIIO_EEDPFLAGS_INSERT_OP
-#define	PRO_V MPI2_SCSIIO_EEDPFLAGS_INSERT_OP
-static uint8_t op_code_prot[256] = {
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, PRO_R, 0, PRO_W, 0, 0, 0, PRO_W, PRO_V,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, PRO_W, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, PRO_R, 0, PRO_W, 0, 0, 0, PRO_W, PRO_V,
-	0, 0, 0, PRO_W, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, PRO_R, 0, PRO_W, 0, 0, 0, PRO_W, PRO_V,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-};
 
 MALLOC_DEFINE(M_MPSSAS, "MPSSAS", "MPS SAS memory");
 
@@ -117,18 +55,10 @@ static int mpssas_send_abort(struct mps_softc *sc, struct mps_command *tm,
     struct mps_command *cm);
 static void mpssas_scsiio_timeout(void *data);
 static void mpssas_abort_complete(struct mps_softc *sc, struct mps_command *cm);
-static void mpssas_direct_drive_io(struct mpssas_softc *sassc,
-    struct mps_command *cm, union ccb *ccb);
 static void mpssas_action_scsiio(struct mpssas_softc *, union ccb *);
 static void mpssas_scsiio_complete(struct mps_softc *, struct mps_command *);
 static void mpssas_action_resetdev(struct mpssas_softc *, union ccb *);
-static void mpssas_smpio_complete(struct mps_softc *sc, struct mps_command *cm);
-static void mpssas_send_smpcmd(struct mpssas_softc *sassc, union ccb *ccb,
-			       uint64_t sasaddr);
-static void mpssas_action_smpio(struct mpssas_softc *sassc, union ccb *ccb);
 static void mpssas_resetdev_complete(struct mps_softc *, struct mps_command *);
-static void mpssas_async(void *callback_arg, uint32_t code,
-			 struct cam_path *path, void *arg);
 static int mpssas_send_portenable(struct mps_softc *sc);
 static void mpssas_portenable_complete(struct mps_softc *sc,
     struct mps_command *cm);
@@ -332,131 +262,10 @@ mpssas_log_command(struct mps_command *cm, u_int level, const char *fmt, ...)
 	va_end(ap);
 }
 
-static void
-mpssas_remove_volume(struct mps_softc *sc, struct mps_command *tm)
-{
-	MPI2_SCSI_TASK_MANAGE_REPLY *reply;
-	struct mpssas_target *targ;
-	uint16_t handle;
-
-	MPS_FUNCTRACE(sc);
-
-	reply = (MPI2_SCSI_TASK_MANAGE_REPLY *)tm->cm_reply;
-	handle = (uint16_t)(uintptr_t)tm->cm_complete_data;
-	targ = tm->cm_targ;
-
-	if (reply == NULL) {
-		/* XXX retry the remove after the diag reset completes? */
-		mps_dprint(sc, MPS_FAULT,
-		    "%s NULL reply resetting device 0x%04x\n", __func__,
-		    handle);
-		mpssas_free_tm(sc, tm);
-		return;
-	}
-
-	if ((le16toh(reply->IOCStatus) & MPI2_IOCSTATUS_MASK) !=
-	    MPI2_IOCSTATUS_SUCCESS) {
-		mps_dprint(sc, MPS_ERROR,
-		   "IOCStatus = 0x%x while resetting device 0x%x\n",
-		   le16toh(reply->IOCStatus), handle);
-	}
-
-	mps_dprint(sc, MPS_XINFO,
-	    "Reset aborted %u commands\n", reply->TerminationCount);
-	mps_free_reply(sc, tm->cm_reply_data);
-	tm->cm_reply = NULL;	/* Ensures the reply won't get re-freed */
-
-	mps_dprint(sc, MPS_XINFO,
-	    "clearing target %u handle 0x%04x\n", targ->tid, handle);
-
-	/*
-	 * Don't clear target if remove fails because things will get confusing.
-	 * Leave the devname and sasaddr intact so that we know to avoid reusing
-	 * this target id if possible, and so we can assign the same target id
-	 * to this device if it comes back in the future.
-	 */
-	if ((le16toh(reply->IOCStatus) & MPI2_IOCSTATUS_MASK) ==
-	    MPI2_IOCSTATUS_SUCCESS) {
-		targ = tm->cm_targ;
-		targ->handle = 0x0;
-		targ->encl_handle = 0x0;
-		targ->encl_slot = 0x0;
-		targ->exp_dev_handle = 0x0;
-		targ->phy_num = 0x0;
-		targ->linkrate = 0x0;
-		targ->devinfo = 0x0;
-		targ->flags = 0x0;
-	}
-
-	mpssas_free_tm(sc, tm);
-}
-
 /*
  * No Need to call "MPI2_SAS_OP_REMOVE_DEVICE" For Volume removal.
  * Otherwise Volume Delete is same as Bare Drive Removal.
  */
-void
-mpssas_prepare_volume_remove(struct mpssas_softc *sassc, uint16_t handle)
-{
-	MPI2_SCSI_TASK_MANAGE_REQUEST *req;
-	struct mps_softc *sc;
-	struct mps_command *tm;
-	struct mpssas_target *targ = NULL;
-
-	MPS_FUNCTRACE(sassc->sc);
-	sc = sassc->sc;
-
-#ifdef WD_SUPPORT
-	/*
-	 * If this is a WD controller, determine if the disk should be exposed
-	 * to the OS or not.  If disk should be exposed, return from this
-	 * function without doing anything.
-	 */
-	if (sc->WD_available && (sc->WD_hide_expose ==
-	    MPS_WD_EXPOSE_ALWAYS)) {
-		return;
-	}
-#endif //WD_SUPPORT
-
-	targ = mpssas_find_target_by_handle(sassc, 0, handle);
-	if (targ == NULL) {
-		/* FIXME: what is the action? */
-		/* We don't know about this device? */
-		mps_dprint(sc, MPS_ERROR,
-		   "%s %d : invalid handle 0x%x \n", __func__,__LINE__, handle);
-		return;
-	}
-
-	targ->flags |= MPSSAS_TARGET_INREMOVAL;
-
-	tm = mpssas_alloc_tm(sc);
-	if (tm == NULL) {
-		mps_dprint(sc, MPS_ERROR,
-		    "%s: command alloc failure\n", __func__);
-		return;
-	}
-
-	mpssas_rescan_target(sc, targ);
-
-	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)tm->cm_req;
-	req->DevHandle = targ->handle;
-	req->TaskType = MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET;
-
-	/* SAS Hard Link Reset / SATA Link Reset */
-	req->MsgFlags = MPI2_SCSITASKMGMT_MSGFLAGS_LINK_RESET;
-
-	tm->cm_targ = targ;
-	tm->cm_data = NULL;
-	tm->cm_complete = mpssas_remove_volume;
-	tm->cm_complete_data = (void *)(uintptr_t)handle;
-
-	mps_dprint(sc, MPS_INFO, "%s: Sending reset for target ID %d\n",
-	    __func__, targ->tid);
-	mpssas_prepare_for_tm(sc, tm, targ, CAM_LUN_WILDCARD);
-
-	mps_map_command(sc, tm);
-}
-
 /*
  * The MPT2 firmware performs debounce on the link to avoid transient link
  * errors and false removals.  When it does decide that link has been lost
@@ -697,7 +506,6 @@ int
 mps_attach_sas(struct mps_softc *sc)
 {
 	struct mpssas_softc *sassc;
-	cam_status status;
 	int unit, error = 0, reqs;
 
 	MPS_FUNCTRACE(sc);
@@ -767,39 +575,7 @@ mps_attach_sas(struct mps_softc *sc)
 
 	mps_unlock(sc);
 
-	/*
-	 * Register for async events so we can determine the EEDP
-	 * capabilities of devices.
-	 */
-	status = xpt_create_path(&sassc->path, /*periph*/NULL,
-	    cam_sim_path(sc->sassc->sim), CAM_TARGET_WILDCARD,
-	    CAM_LUN_WILDCARD);
-	if (status != CAM_REQ_CMP) {
-		mps_dprint(sc, MPS_ERROR|MPS_INIT,
-		    "Error %#x creating sim path\n", status);
-		sassc->path = NULL;
-	} else {
-		int event;
-
-		event = AC_ADVINFO_CHANGED;
-		status = xpt_register_async(event, mpssas_async, sc,
-					    sassc->path);
-		if (status != CAM_REQ_CMP) {
-			mps_dprint(sc, MPS_ERROR,
-			    "Error %#x registering async handler for "
-			    "AC_ADVINFO_CHANGED events\n", status);
-			xpt_free_path(sassc->path);
-			sassc->path = NULL;
-		}
-	}
-	if (status != CAM_REQ_CMP) {
-		/*
-		 * EEDP use is the exception, not the rule.
-		 * Warn the user, but do not fail to attach.
-		 */
-		mps_printf(sc, "EEDP capabilities disabled.\n");
-	}
-
+	/* XNU: no EEDP, so no AC_ADVINFO_CHANGED handler (mpssas_async) */
 	mpssas_register_events(sc);
 out:
 	if (error)
@@ -833,12 +609,7 @@ mps_detach_sas(struct mps_softc *sc)
 	if (sassc->ev_tq != NULL)
 		taskqueue_free(sassc->ev_tq);
 
-	/* Deregister our async handler */
-	if (sassc->path != NULL) {
-		xpt_register_async(0, mpssas_async, sc, sassc->path);
-		xpt_free_path(sassc->path);
-		sassc->path = NULL;
-	}
+	/* XNU: no async handler to deregister (no EEDP) */
 
 	/* Make sure CAM doesn't wedge if we had to bail out early. */
 	mps_lock(sc);
@@ -890,14 +661,7 @@ mpssas_discovery_end(struct mpssas_softc *sassc)
 	 * complete and keep resetting itself until some device in the mapping
 	 * table is not missing, meaning that event processing has started.
 	 */
-	if (sc->track_mapping_events) {
-		mps_dprint(sc, MPS_XINFO | MPS_MAPPING, "Discovery has "
-		    "completed. Check for missing devices in the mapping "
-		    "table.\n");
-		callout_reset(&sc->device_check_callout,
-		    MPS_MISSING_CHECK_DELAY * hz, mps_mapping_check_devices,
-		    sc);
-	}
+	/* XNU: no mapping table (mps_mapping_check_devices) */
 }
 
 static void
@@ -913,88 +677,10 @@ mpssas_action(struct cam_sim *sim, union ccb *ccb)
 	mtx_assert(&sassc->sc->mps_mtx, MA_OWNED);
 
 	switch (ccb->ccb_h.func_code) {
-	case XPT_PATH_INQ:
-	{
-		struct ccb_pathinq *cpi = &ccb->cpi;
-		struct mps_softc *sc = sassc->sc;
-
-		cpi->version_num = 1;
-		cpi->hba_inquiry = PI_SDTR_ABLE|PI_TAG_ABLE|PI_WIDE_16;
-		cpi->target_sprt = 0;
-		cpi->hba_misc = PIM_NOBUSRESET | PIM_UNMAPPED | PIM_NOSCAN;
-		cpi->hba_eng_cnt = 0;
-		cpi->max_target = sassc->maxtargets - 1;
-		cpi->max_lun = 255;
-
-		/*
-		 * initiator_id is set here to an ID outside the set of valid
-		 * target IDs (including volumes).
-		 */
-		cpi->initiator_id = sassc->maxtargets;
-		strlcpy(cpi->sim_vid, "FreeBSD", SIM_IDLEN);
-		strlcpy(cpi->hba_vid, "Avago Tech", HBA_IDLEN);
-		strlcpy(cpi->dev_name, cam_sim_name(sim), DEV_IDLEN);
-		cpi->unit_number = cam_sim_unit(sim);
-		cpi->bus_id = cam_sim_bus(sim);
-		cpi->base_transfer_speed = 150000;
-		cpi->transport = XPORT_SAS;
-		cpi->transport_version = 0;
-		cpi->protocol = PROTO_SCSI;
-		cpi->protocol_version = SCSI_REV_SPC;
-		cpi->maxio = sc->maxio;
-		mpssas_set_ccbstatus(ccb, CAM_REQ_CMP);
-		break;
-	}
-	case XPT_GET_TRAN_SETTINGS:
-	{
-		struct ccb_trans_settings	*cts;
-		struct ccb_trans_settings_sas	*sas;
-		struct ccb_trans_settings_scsi	*scsi;
-		struct mpssas_target *targ;
-
-		cts = &ccb->cts;
-		sas = &cts->xport_specific.sas;
-		scsi = &cts->proto_specific.scsi;
-
-		KASSERT(cts->ccb_h.target_id < sassc->maxtargets,
-		    ("Target %d out of bounds in XPT_GET_TRANS_SETTINGS\n",
-		    cts->ccb_h.target_id));
-		targ = &sassc->targets[cts->ccb_h.target_id];
-		if (targ->handle == 0x0) {
-			mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
-			break;
-		}
-
-		cts->protocol_version = SCSI_REV_SPC2;
-		cts->transport = XPORT_SAS;
-		cts->transport_version = 0;
-
-		sas->valid = CTS_SAS_VALID_SPEED;
-		switch (targ->linkrate) {
-		case 0x08:
-			sas->bitrate = 150000;
-			break;
-		case 0x09:
-			sas->bitrate = 300000;
-			break;
-		case 0x0a:
-			sas->bitrate = 600000;
-			break;
-		default:
-			sas->valid = 0;
-		}
-
-		cts->protocol = PROTO_SCSI;
-		scsi->valid = CTS_SCSI_VALID_TQ;
-		scsi->flags = CTS_SCSI_FLAGS_TAG_ENB;
-
-		mpssas_set_ccbstatus(ccb, CAM_REQ_CMP);
-		break;
-	}
-	case XPT_CALC_GEOMETRY:
-		cam_calc_geometry(&ccb->ccg, /*extended*/1);
-		mpssas_set_ccbstatus(ccb, CAM_REQ_CMP);
-		break;
+	/*
+	 * XNU: no XPT_PATH_INQ, XPT_GET_TRAN_SETTINGS, XPT_CALC_GEOMETRY or
+	 * XPT_SMP_IO: the kext asks the core directly (maxio, link rate).
+	 */
 	case XPT_RESET_DEV:
 		mps_dprint(sassc->sc, MPS_XINFO, "mpssas_action XPT_RESET_DEV\n");
 		mpssas_action_resetdev(sassc, ccb);
@@ -1009,8 +695,6 @@ mpssas_action(struct cam_sim *sim, union ccb *ccb)
 	case XPT_SCSI_IO:
 		mpssas_action_scsiio(sassc, ccb);
 		return;
-	case XPT_SMP_IO:
-		mpssas_action_smpio(sassc, ccb);
 		return;
 	default:
 		mpssas_set_ccbstatus(ccb, CAM_FUNC_NOTAVAIL);
@@ -1209,7 +893,7 @@ mpssas_logical_unit_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 	    "logical unit reset status 0x%x code 0x%x count %u\n",
 	    le16toh(reply->IOCStatus), le32toh(reply->ResponseCode),
 	    le32toh(reply->TerminationCount));
-		
+
 	/*
 	 * See if there are any outstanding commands for this LUN.
 	 * This could be made more efficient by using a per-LU data
@@ -1284,7 +968,7 @@ mpssas_target_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 
 	if (reply == NULL) {
 		mps_dprint(sc, MPS_RECOVERY,
-		    "NULL target reset reply for tm %pi TaskMID %u\n",
+		    "NULL target reset reply for tm %p TaskMID %u\n",
 		    tm, le16toh(req->TaskMID));
 		if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) != 0) {
 			/* this completion was due to a reset, just cleanup */
@@ -1413,7 +1097,7 @@ mpssas_abort_complete(struct mps_softc *sc, struct mps_command *tm)
 	 */
 	if ((tm->cm_flags & MPS_CM_FLAGS_ERROR_MASK) != 0) {
 		mps_dprint(sc, MPS_RECOVERY,
-		    "cm_flags = %#x for abort %p TaskMID %u!\n", 
+		    "cm_flags = %#x for abort %p TaskMID %u!\n",
 		    tm->cm_flags, tm, le16toh(req->TaskMID));
 		mpssas_free_tm(sc, tm);
 		return;
@@ -1421,7 +1105,7 @@ mpssas_abort_complete(struct mps_softc *sc, struct mps_command *tm)
 
 	if (reply == NULL) {
 		mps_dprint(sc, MPS_RECOVERY,
-		    "NULL abort reply for tm %p TaskMID %u\n", 
+		    "NULL abort reply for tm %p TaskMID %u\n",
 		    tm, le16toh(req->TaskMID));
 		if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) != 0) {
 			/* this completion was due to a reset, just cleanup */
@@ -1459,7 +1143,7 @@ mpssas_abort_complete(struct mps_softc *sc, struct mps_command *tm)
 		/* abort success, but we have more timedout commands to abort */
 		mps_dprint(sc, MPS_INFO|MPS_RECOVERY,
 		    "Continuing abort recovery for target %u\n", targ->tid);
-		
+
 		mpssas_send_abort(sc, tm, cm);
 	} else {
 		/* we didn't get a command completion, so the abort
@@ -1469,7 +1153,7 @@ mpssas_abort_complete(struct mps_softc *sc, struct mps_command *tm)
 		    "Abort failed for target %u, sending logical unit reset\n",
 		    targ->tid);
 
-		mpssas_send_reset(sc, tm, 
+		mpssas_send_reset(sc, tm,
 		    MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET);
 	}
 }
@@ -1597,7 +1281,7 @@ mpssas_scsiio_timeout(void *data)
 		 * available.  The firmware only has a limited number of
 		 * HighPriority credits for the high priority requests used
 		 * for task management, and we ran out.
-		 * 
+		 *
 		 * Isilon: don't worry about this for now, since we have
 		 * more credits than disks in an enclosure, and limit
 		 * ourselves to one TM per target for recovery.
@@ -1615,10 +1299,7 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 	struct ccb_scsiio *csio;
 	struct mps_softc *sc;
 	struct mpssas_target *targ;
-	struct mpssas_lun *lun;
 	struct mps_command *cm;
-	uint8_t i, lba_byte, *ref_tag_addr;
-	uint16_t eedp_flags;
 	uint32_t mpi_control;
 
 	sc = sassc->sc;
@@ -1641,7 +1322,7 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 			xpt_done(ccb);
 			return;
 		}
-		mps_dprint(sc, MPS_ERROR, "%s NULL handle for target %u\n", 
+		mps_dprint(sc, MPS_ERROR, "%s NULL handle for target %u\n",
 		    __func__, csio->ccb_h.target_id);
 		mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
 		xpt_done(ccb);
@@ -1778,7 +1459,7 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 	}
 	mpi_control |= (csio->priority << MPI2_SCSIIO_CONTROL_TASKPRI_SHIFT) &
 	    MPI2_SCSIIO_CONTROL_TASKPRI_MASK;
-	mpi_control |= sc->mapping_table[csio->ccb_h.target_id].TLR_bits;
+	/* XNU: no mapping table, no TLR (Transport Layer Retries) bits */
 	req->Control = htole32(mpi_control);
 	if (MPS_SET_LUN(req->LUN, csio->ccb_h.target_lun) != 0) {
 		mps_free_command(sc, cm);
@@ -1793,59 +1474,7 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 		bcopy(csio->cdb_io.cdb_bytes, &req->CDB.CDB32[0],csio->cdb_len);
 	req->IoFlags = htole16(csio->cdb_len);
 
-	/*
-	 * Check if EEDP is supported and enabled.  If it is then check if the
-	 * SCSI opcode could be using EEDP.  If so, make sure the LUN exists and
-	 * is formatted for EEDP support.  If all of this is true, set CDB up
-	 * for EEDP transfer.
-	 */
-	eedp_flags = op_code_prot[req->CDB.CDB32[0]];
-	if (sc->eedp_enabled && eedp_flags) {
-		SLIST_FOREACH(lun, &targ->luns, lun_link) {
-			if (lun->lun_id == csio->ccb_h.target_lun) {
-				break;
-			}
-		}
-
-		if ((lun != NULL) && (lun->eedp_formatted)) {
-			req->EEDPBlockSize = htole16(lun->eedp_block_size);
-			eedp_flags |= (MPI2_SCSIIO_EEDPFLAGS_INC_PRI_REFTAG |
-			    MPI2_SCSIIO_EEDPFLAGS_CHECK_REFTAG |
-			    MPI2_SCSIIO_EEDPFLAGS_CHECK_GUARD);
-			req->EEDPFlags = htole16(eedp_flags);
-
-			/*
-			 * If CDB less than 32, fill in Primary Ref Tag with
-			 * low 4 bytes of LBA.  If CDB is 32, tag stuff is
-			 * already there.  Also, set protection bit.  FreeBSD
-			 * currently does not support CDBs bigger than 16, but
-			 * the code doesn't hurt, and will be here for the
-			 * future.
-			 */
-			if (csio->cdb_len != 32) {
-				lba_byte = (csio->cdb_len == 16) ? 6 : 2;
-				ref_tag_addr = (uint8_t *)&req->CDB.EEDP32.
-				    PrimaryReferenceTag;
-				for (i = 0; i < 4; i++) {
-					*ref_tag_addr =
-					    req->CDB.CDB32[lba_byte + i];
-					ref_tag_addr++;
-				}
-				req->CDB.EEDP32.PrimaryReferenceTag = 
-					htole32(req->CDB.EEDP32.PrimaryReferenceTag);
-				req->CDB.EEDP32.PrimaryApplicationTagMask =
-				    0xFFFF;
-				req->CDB.CDB32[1] = (req->CDB.CDB32[1] & 0x1F) |
-				    0x20;
-			} else {
-				eedp_flags |=
-				    MPI2_SCSIIO_EEDPFLAGS_INC_PRI_APPTAG;
-				req->EEDPFlags = htole16(eedp_flags);
-				req->CDB.CDB32[10] = (req->CDB.CDB32[10] &
-				    0x1F) | 0x20;
-			}
-		}
-	}
+	/* XNU: no EEDP (protection information): sc->eedp_enabled is 0 */
 
 	cm->cm_length = csio->dxfer_len;
 	if (cm->cm_length != 0) {
@@ -1864,23 +1493,8 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 	cm->cm_lun = csio->ccb_h.target_lun;
 	cm->cm_ccb = ccb;
 
-	/*
-	 * If HBA is a WD and the command is not for a retry, try to build a
-	 * direct I/O message. If failed, or the command is for a retry, send
-	 * the I/O to the IR volume itself.
-	 */
-	if (sc->WD_valid_config) {
-		if (ccb->ccb_h.sim_priv.entries[0].field == MPS_WD_RETRY) {
-			mpssas_direct_drive_io(sassc, cm, ccb);
-		} else {
-			mpssas_set_ccbstatus(ccb, CAM_REQ_INPROG);
-		}
-	}
+	/* XNU: no WarpDrive (direct drive IO) */
 
-#if defined(BUF_TRACKING) || defined(FULL_BUF_TRACKING)
-	if (csio->bio != NULL)
-		biotrack(csio->bio, __func__);
-#endif
 	csio->ccb_h.qos.sim_data = sbinuptime();
 	callout_reset_sbt(&cm->cm_callout, SBT_1MS * ccb->ccb_h.timeout, 0,
 	    mpssas_scsiio_timeout, cm, 0);
@@ -1929,16 +1543,12 @@ mps_sc_failed_io_info(struct mps_softc *sc, struct ccb_scsiio *csio,
 	 * TO-DO
 	 */
 	mps_dprint(sc, MPS_XINFO, "\tscsi_status(%s)(0x%02x), "
-	    "scsi_state %b\n", desc_scsi_status, scsi_status,
-	    scsi_state, "\20" "\1AutosenseValid" "\2AutosenseFailed"
-	    "\3NoScsiStatus" "\4Terminated" "\5Response InfoValid");
+	    "scsi_state %s\n", desc_scsi_status, scsi_status,	/* XNU: no %b */
+	    MPS_XNU_BITS(scsi_state, "\20" "\1AutosenseValid"
+	    "\2AutosenseFailed" "\3NoScsiStatus" "\4Terminated"
+	    "\5Response InfoValid"));
 
-	if (sc->mps_debug & MPS_XINFO &&
-		scsi_state & MPI2_SCSI_STATE_AUTOSENSE_VALID) {
-		mps_dprint(sc, MPS_XINFO, "-> Sense Buffer Data : Start :\n");
-		scsi_sense_print(csio);
-		mps_dprint(sc, MPS_XINFO, "-> Sense Buffer Data : End :\n");
-	}
+	/* XNU: the sense data is decoded in the failed-IO line (mps_xnu.c) */
 
 	if (scsi_state & MPI2_SCSI_STATE_RESPONSE_INFO_VALID) {
 		response_info = le32toh(mpi_reply->ResponseInfo);
@@ -1957,11 +1567,7 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 	union ccb *ccb;
 	struct ccb_scsiio *csio;
 	struct mpssas_softc *sassc;
-	struct scsi_vpd_supported_page_list *vpd_list = NULL;
-	u8 *TLR_bits, TLR_on;
-	int dir = 0, i;
-	u16 alloc_len;
-	struct mpssas_target *target;
+	int dir = 0;
 	target_id_t target_id;
 
 	MPS_FUNCTRACE(sc);
@@ -2066,17 +1672,7 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 		}
 	}
 
-	/*
-	 * If this is a Start Stop Unit command and it was issued by the driver
-	 * during shutdown, decrement the refcount to account for all of the
-	 * commands that were sent.  All SSU commands should be completed before
-	 * shutdown completes, meaning SSU_refcount will be 0 after SSU_started
-	 * is TRUE.
-	 */
-	if (sc->SSU_started && (csio->cdb_io.cdb_bytes[0] == START_STOP_UNIT)) {
-		mps_dprint(sc, MPS_INFO, "Decrementing SSU count.\n");
-		sc->SSU_refcount--;
-	}
+	/* XNU: no START STOP UNIT at shutdown (SSU_refcount) */
 
 	/* Take the fast path to completion */
 	if (cm->cm_reply == NULL) {
@@ -2093,7 +1689,7 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 				mps_dprint(sc, MPS_XINFO,
 				    "Unfreezing SIM queue\n");
 			}
-		} 
+		}
 
 		/*
 		 * There are two scenarios where the status won't be
@@ -2119,19 +1715,8 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 	    le16toh(rep->IOCStatus), rep->SCSIStatus, rep->SCSIState,
 	    le32toh(rep->TransferCount));
 
-	/*
-	 * If this is a Direct Drive I/O, reissue the I/O to the original IR
-	 * Volume if an error occurred (normal I/O retry).  Use the original
-	 * CCB, but set a flag that this will be a retry so that it's sent to
-	 * the original volume.  Free the command but reuse the CCB.
-	 */
-	if (cm->cm_flags & MPS_CM_FLAGS_DD_IO) {
-		mps_free_command(sc, cm);
-		ccb->ccb_h.sim_priv.entries[0].field = MPS_WD_RETRY;
-		mpssas_action_scsiio(sassc, ccb);
-		return;
-	} else
-		ccb->ccb_h.sim_priv.entries[0].field = 0;
+	/* XNU: no WarpDrive direct drive IO (MPS_CM_FLAGS_DD_IO) */
+	ccb->ccb_h.sim_priv.entries[0].field = 0;
 
 	switch (le16toh(rep->IOCStatus) & MPI2_IOCSTATUS_MASK) {
 	case MPI2_IOCSTATUS_SCSI_DATA_UNDERRUN:
@@ -2160,18 +1745,7 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 			break;
 		}
 
-		/*
-		 * CAM doesn't care about SAS Response Info data, but if this is
-		 * the state check if TLR should be done.  If not, clear the
-		 * TLR_bits for the target.
-		 */
-		if ((rep->SCSIState & MPI2_SCSI_STATE_RESPONSE_INFO_VALID) &&
-		    ((le32toh(rep->ResponseInfo) &
-		    MPI2_SCSI_RI_MASK_REASONCODE) ==
-		    MPS_SCSI_RI_INVALID_FRAME)) {
-			sc->mapping_table[target_id].TLR_bits =
-			    (u8)MPI2_SCSIIO_CONTROL_NO_TLR;
-		}
+		/* XNU: no TLR (no mapping table) */
 
 		/*
 		 * Intentionally override the normal SCSI status reporting
@@ -2211,56 +1785,7 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 			ccb->ccb_h.status |= CAM_AUTOSNS_VALID;
 		}
 
-		/*
-		 * Check if this is an INQUIRY command.  If it's a VPD inquiry,
-		 * and it's page code 0 (Supported Page List), and there is
-		 * inquiry data, and this is for a sequential access device, and
-		 * the device is an SSP target, and TLR is supported by the
-		 * controller, turn the TLR_bits value ON if page 0x90 is
-		 * supported.
-		 */
-		if ((csio->cdb_io.cdb_bytes[0] == INQUIRY) &&
-		    (csio->cdb_io.cdb_bytes[1] & SI_EVPD) &&
-		    (csio->cdb_io.cdb_bytes[2] == SVPD_SUPPORTED_PAGE_LIST) &&
-		    ((csio->ccb_h.flags & CAM_DATA_MASK) == CAM_DATA_VADDR) &&
-		    (csio->data_ptr != NULL) &&
-		    ((csio->data_ptr[0] & 0x1f) == T_SEQUENTIAL) &&
-		    (sc->control_TLR) &&
-		    (sc->mapping_table[target_id].device_info &
-		    MPI2_SAS_DEVICE_INFO_SSP_TARGET)) {
-			vpd_list = (struct scsi_vpd_supported_page_list *)
-			    csio->data_ptr;
-			TLR_bits = &sc->mapping_table[target_id].TLR_bits;
-			*TLR_bits = (u8)MPI2_SCSIIO_CONTROL_NO_TLR;
-			TLR_on = (u8)MPI2_SCSIIO_CONTROL_TLR_ON;
-			alloc_len = ((u16)csio->cdb_io.cdb_bytes[3] << 8) +
-			    csio->cdb_io.cdb_bytes[4];
-			alloc_len -= csio->resid;
-			for (i = 0; i < MIN(vpd_list->length, alloc_len); i++) {
-				if (vpd_list->list[i] == 0x90) {
-					*TLR_bits = TLR_on;
-					break;
-				}
-			}
-		}
-
-		/*
-		 * If this is a SATA direct-access end device, mark it so that
-		 * a SCSI StartStopUnit command will be sent to it when the
-		 * driver is being shutdown.
-		 */
-		if ((csio->cdb_io.cdb_bytes[0] == INQUIRY) &&
-		    ((csio->data_ptr[0] & 0x1f) == T_DIRECT) &&
-		    (sc->mapping_table[target_id].device_info &
-		    MPI2_SAS_DEVICE_INFO_SATA_DEVICE) &&
-		    ((sc->mapping_table[target_id].device_info &
-		    MPI2_SAS_DEVICE_INFO_MASK_DEVICE_TYPE) ==
-		    MPI2_SAS_DEVICE_INFO_END_DEVICE)) {
-			target = &sassc->targets[target_id];
-			target->supports_SSU = TRUE;
-			mps_dprint(sc, MPS_XINFO, "Target %d supports SSU\n",
-			    target_id);
-		}
+		/* XNU: no TLR, no SATA START STOP UNIT (no mapping table) */
 		break;
 	case MPI2_IOCSTATUS_SCSI_INVALID_DEVHANDLE:
 	case MPI2_IOCSTATUS_SCSI_DEVICE_NOT_THERE:
@@ -2390,643 +1915,6 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 	xpt_done(ccb);
 }
 
-/* All Request reached here are Endian safe */
-static void
-mpssas_direct_drive_io(struct mpssas_softc *sassc, struct mps_command *cm,
-    union ccb *ccb) {
-	pMpi2SCSIIORequest_t	pIO_req;
-	struct mps_softc	*sc = sassc->sc;
-	uint64_t		virtLBA;
-	uint32_t		physLBA, stripe_offset, stripe_unit;
-	uint32_t		io_size, column;
-	uint8_t			*ptrLBA, lba_idx, physLBA_byte, *CDB;
-
-	/*
-	 * If this is a valid SCSI command (Read6, Read10, Read16, Write6,
-	 * Write10, or Write16), build a direct I/O message.  Otherwise, the I/O
-	 * will be sent to the IR volume itself.  Since Read6 and Write6 are a
-	 * bit different than the 10/16 CDBs, handle them separately.
-	 */
-	pIO_req = (pMpi2SCSIIORequest_t)cm->cm_req;
-	CDB = pIO_req->CDB.CDB32;
-
-	/*
-	 * Handle 6 byte CDBs.
-	 */
-	if ((pIO_req->DevHandle == sc->DD_dev_handle) && ((CDB[0] == READ_6) ||
-	    (CDB[0] == WRITE_6))) {
-		/*
-		 * Get the transfer size in blocks.
-		 */
-		io_size = (cm->cm_length >> sc->DD_block_exponent);
-
-		/*
-		 * Get virtual LBA given in the CDB.
-		 */
-		virtLBA = ((uint64_t)(CDB[1] & 0x1F) << 16) |
-		    ((uint64_t)CDB[2] << 8) | (uint64_t)CDB[3];
-
-		/*
-		 * Check that LBA range for I/O does not exceed volume's
-		 * MaxLBA.
-		 */
-		if ((virtLBA + (uint64_t)io_size - 1) <=
-		    sc->DD_max_lba) {
-			/*
-			 * Check if the I/O crosses a stripe boundary.  If not,
-			 * translate the virtual LBA to a physical LBA and set
-			 * the DevHandle for the PhysDisk to be used.  If it
-			 * does cross a boundary, do normal I/O.  To get the
-			 * right DevHandle to use, get the map number for the
-			 * column, then use that map number to look up the
-			 * DevHandle of the PhysDisk.
-			 */
-			stripe_offset = (uint32_t)virtLBA &
-			    (sc->DD_stripe_size - 1);
-			if ((stripe_offset + io_size) <= sc->DD_stripe_size) {
-				physLBA = (uint32_t)virtLBA >>
-				    sc->DD_stripe_exponent;
-				stripe_unit = physLBA / sc->DD_num_phys_disks;
-				column = physLBA % sc->DD_num_phys_disks;
-				pIO_req->DevHandle =
-				    htole16(sc->DD_column_map[column].dev_handle);
-				/* ???? Is this endian safe*/
-				cm->cm_desc.SCSIIO.DevHandle =
-				    pIO_req->DevHandle;
-
-				physLBA = (stripe_unit <<
-				    sc->DD_stripe_exponent) + stripe_offset;
-				ptrLBA = &pIO_req->CDB.CDB32[1];
-				physLBA_byte = (uint8_t)(physLBA >> 16);
-				*ptrLBA = physLBA_byte;
-				ptrLBA = &pIO_req->CDB.CDB32[2];
-				physLBA_byte = (uint8_t)(physLBA >> 8);
-				*ptrLBA = physLBA_byte;
-				ptrLBA = &pIO_req->CDB.CDB32[3];
-				physLBA_byte = (uint8_t)physLBA;
-				*ptrLBA = physLBA_byte;
-
-				/*
-				 * Set flag that Direct Drive I/O is
-				 * being done.
-				 */
-				cm->cm_flags |= MPS_CM_FLAGS_DD_IO;
-			}
-		}
-		return;
-	}
-
-	/*
-	 * Handle 10, 12 or 16 byte CDBs.
-	 */
-	if ((pIO_req->DevHandle == sc->DD_dev_handle) && ((CDB[0] == READ_10) ||
-	    (CDB[0] == WRITE_10) || (CDB[0] == READ_16) ||
-	    (CDB[0] == WRITE_16) || (CDB[0] == READ_12) ||
-	    (CDB[0] == WRITE_12))) {
-		/*
-		 * For 16-byte CDB's, verify that the upper 4 bytes of the CDB
-		 * are 0.  If not, this is accessing beyond 2TB so handle it in
-		 * the else section.  10-byte and 12-byte CDB's are OK.
-		 * FreeBSD sends very rare 12 byte READ/WRITE, but driver is 
-		 * ready to accept 12byte CDB for Direct IOs.
-		 */
-		if ((CDB[0] == READ_10 || CDB[0] == WRITE_10) ||
-		    (CDB[0] == READ_12 || CDB[0] == WRITE_12) ||
-		    !(CDB[2] | CDB[3] | CDB[4] | CDB[5])) {
-			/*
-			 * Get the transfer size in blocks.
-			 */
-			io_size = (cm->cm_length >> sc->DD_block_exponent);
-
-			/*
-			 * Get virtual LBA.  Point to correct lower 4 bytes of
-			 * LBA in the CDB depending on command.
-			 */
-			lba_idx = ((CDB[0] == READ_12) || 
-				(CDB[0] == WRITE_12) ||
-				(CDB[0] == READ_10) ||
-				(CDB[0] == WRITE_10))? 2 : 6;
-			virtLBA = ((uint64_t)CDB[lba_idx] << 24) |
-			    ((uint64_t)CDB[lba_idx + 1] << 16) |
-			    ((uint64_t)CDB[lba_idx + 2] << 8) |
-			    (uint64_t)CDB[lba_idx + 3];
-
-			/*
-			 * Check that LBA range for I/O does not exceed volume's
-			 * MaxLBA.
-			 */
-			if ((virtLBA + (uint64_t)io_size - 1) <=
-			    sc->DD_max_lba) {
-				/*
-				 * Check if the I/O crosses a stripe boundary.
-				 * If not, translate the virtual LBA to a
-				 * physical LBA and set the DevHandle for the
-				 * PhysDisk to be used.  If it does cross a
-				 * boundary, do normal I/O.  To get the right
-				 * DevHandle to use, get the map number for the
-				 * column, then use that map number to look up
-				 * the DevHandle of the PhysDisk.
-				 */
-				stripe_offset = (uint32_t)virtLBA &
-				    (sc->DD_stripe_size - 1);
-				if ((stripe_offset + io_size) <=
-				    sc->DD_stripe_size) {
-					physLBA = (uint32_t)virtLBA >>
-					    sc->DD_stripe_exponent;
-					stripe_unit = physLBA /
-					    sc->DD_num_phys_disks;
-					column = physLBA %
-					    sc->DD_num_phys_disks;
-					pIO_req->DevHandle =
-					    htole16(sc->DD_column_map[column].
-					    dev_handle);
-					cm->cm_desc.SCSIIO.DevHandle =
-					    pIO_req->DevHandle;
-
-					physLBA = (stripe_unit <<
-					    sc->DD_stripe_exponent) +
-					    stripe_offset;
-					ptrLBA =
-					    &pIO_req->CDB.CDB32[lba_idx];
-					physLBA_byte = (uint8_t)(physLBA >> 24);
-					*ptrLBA = physLBA_byte;
-					ptrLBA =
-					    &pIO_req->CDB.CDB32[lba_idx + 1];
-					physLBA_byte = (uint8_t)(physLBA >> 16);
-					*ptrLBA = physLBA_byte;
-					ptrLBA =
-					    &pIO_req->CDB.CDB32[lba_idx + 2];
-					physLBA_byte = (uint8_t)(physLBA >> 8);
-					*ptrLBA = physLBA_byte;
-					ptrLBA =
-					    &pIO_req->CDB.CDB32[lba_idx + 3];
-					physLBA_byte = (uint8_t)physLBA;
-					*ptrLBA = physLBA_byte;
-
-					/*
-					 * Set flag that Direct Drive I/O is
-					 * being done.
-					 */
-					cm->cm_flags |= MPS_CM_FLAGS_DD_IO;
-				}
-			}
-		} else {
-			/*
-			 * 16-byte CDB and the upper 4 bytes of the CDB are not
-			 * 0.  Get the transfer size in blocks.
-			 */
-			io_size = (cm->cm_length >> sc->DD_block_exponent);
-
-			/*
-			 * Get virtual LBA.
-			 */
-			virtLBA = ((uint64_t)CDB[2] << 54) |
-			    ((uint64_t)CDB[3] << 48) |
-			    ((uint64_t)CDB[4] << 40) |
-			    ((uint64_t)CDB[5] << 32) |
-			    ((uint64_t)CDB[6] << 24) |
-			    ((uint64_t)CDB[7] << 16) |
-			    ((uint64_t)CDB[8] << 8) |
-			    (uint64_t)CDB[9]; 
-
-			/*
-			 * Check that LBA range for I/O does not exceed volume's
-			 * MaxLBA.
-			 */
-			if ((virtLBA + (uint64_t)io_size - 1) <=
-			    sc->DD_max_lba) {
-				/*
-				 * Check if the I/O crosses a stripe boundary.
-				 * If not, translate the virtual LBA to a
-				 * physical LBA and set the DevHandle for the
-				 * PhysDisk to be used.  If it does cross a
-				 * boundary, do normal I/O.  To get the right
-				 * DevHandle to use, get the map number for the
-				 * column, then use that map number to look up
-				 * the DevHandle of the PhysDisk.
-				 */
-				stripe_offset = (uint32_t)virtLBA &
-				    (sc->DD_stripe_size - 1);
-				if ((stripe_offset + io_size) <=
-				    sc->DD_stripe_size) {
-					physLBA = (uint32_t)(virtLBA >>
-					    sc->DD_stripe_exponent);
-					stripe_unit = physLBA /
-					    sc->DD_num_phys_disks;
-					column = physLBA %
-					    sc->DD_num_phys_disks;
-					pIO_req->DevHandle =
-					    htole16(sc->DD_column_map[column].
-					    dev_handle);
-					cm->cm_desc.SCSIIO.DevHandle =
-					    pIO_req->DevHandle;
-
-					physLBA = (stripe_unit <<
-					    sc->DD_stripe_exponent) +
-					    stripe_offset;
-
-					/*
-					 * Set upper 4 bytes of LBA to 0.  We
-					 * assume that the phys disks are less
-					 * than 2 TB's in size.  Then, set the
-					 * lower 4 bytes.
-					 */
-					pIO_req->CDB.CDB32[2] = 0;
-					pIO_req->CDB.CDB32[3] = 0;
-					pIO_req->CDB.CDB32[4] = 0;
-					pIO_req->CDB.CDB32[5] = 0;
-					ptrLBA = &pIO_req->CDB.CDB32[6];
-					physLBA_byte = (uint8_t)(physLBA >> 24);
-					*ptrLBA = physLBA_byte;
-					ptrLBA = &pIO_req->CDB.CDB32[7];
-					physLBA_byte = (uint8_t)(physLBA >> 16);
-					*ptrLBA = physLBA_byte;
-					ptrLBA = &pIO_req->CDB.CDB32[8];
-					physLBA_byte = (uint8_t)(physLBA >> 8);
-					*ptrLBA = physLBA_byte;
-					ptrLBA = &pIO_req->CDB.CDB32[9];
-					physLBA_byte = (uint8_t)physLBA;
-					*ptrLBA = physLBA_byte;
-
-					/*
-					 * Set flag that Direct Drive I/O is
-					 * being done.
-					 */
-					cm->cm_flags |= MPS_CM_FLAGS_DD_IO;
-				}
-			}
-		}
-	}
-}
-
-static void
-mpssas_smpio_complete(struct mps_softc *sc, struct mps_command *cm)
-{
-	MPI2_SMP_PASSTHROUGH_REPLY *rpl;
-	MPI2_SMP_PASSTHROUGH_REQUEST *req;
-	uint64_t sasaddr;
-	union ccb *ccb;
-
-	ccb = cm->cm_complete_data;
-
-	/*
-	 * Currently there should be no way we can hit this case.  It only
-	 * happens when we have a failure to allocate chain frames, and SMP
-	 * commands require two S/G elements only.  That should be handled
-	 * in the standard request size.
-	 */
-	if ((cm->cm_flags & MPS_CM_FLAGS_ERROR_MASK) != 0) {
-		mps_dprint(sc, MPS_ERROR,"%s: cm_flags = %#x on SMP request!\n",
-			   __func__, cm->cm_flags);
-		mpssas_set_ccbstatus(ccb, CAM_REQ_CMP_ERR);
-		goto bailout;
-        }
-
-	rpl = (MPI2_SMP_PASSTHROUGH_REPLY *)cm->cm_reply;
-	if (rpl == NULL) {
-		mps_dprint(sc, MPS_ERROR, "%s: NULL cm_reply!\n", __func__);
-		mpssas_set_ccbstatus(ccb, CAM_REQ_CMP_ERR);
-		goto bailout;
-	}
-
-	req = (MPI2_SMP_PASSTHROUGH_REQUEST *)cm->cm_req;
-	sasaddr = le32toh(req->SASAddress.Low);
-	sasaddr |= ((uint64_t)(le32toh(req->SASAddress.High))) << 32;
-
-	if ((le16toh(rpl->IOCStatus) & MPI2_IOCSTATUS_MASK) !=
-	    MPI2_IOCSTATUS_SUCCESS ||
-	    rpl->SASStatus != MPI2_SASSTATUS_SUCCESS) {
-		mps_dprint(sc, MPS_XINFO, "%s: IOCStatus %04x SASStatus %02x\n",
-		    __func__, le16toh(rpl->IOCStatus), rpl->SASStatus);
-		mpssas_set_ccbstatus(ccb, CAM_REQ_CMP_ERR);
-		goto bailout;
-	}
-
-	mps_dprint(sc, MPS_XINFO, "%s: SMP request to SAS address "
-		   "%#jx completed successfully\n", __func__,
-		   (uintmax_t)sasaddr);
-
-	if (ccb->smpio.smp_response[2] == SMP_FR_ACCEPTED)
-		mpssas_set_ccbstatus(ccb, CAM_REQ_CMP);
-	else
-		mpssas_set_ccbstatus(ccb, CAM_SMP_STATUS_ERROR);
-
-bailout:
-	/*
-	 * We sync in both directions because we had DMAs in the S/G list
-	 * in both directions.
-	 */
-	bus_dmamap_sync(sc->buffer_dmat, cm->cm_dmamap,
-			BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
-	bus_dmamap_unload(sc->buffer_dmat, cm->cm_dmamap);
-	mps_free_command(sc, cm);
-	xpt_done(ccb);
-}
-
-static void
-mpssas_send_smpcmd(struct mpssas_softc *sassc, union ccb *ccb, uint64_t sasaddr)
-{
-	struct mps_command *cm;
-	uint8_t *request, *response;
-	MPI2_SMP_PASSTHROUGH_REQUEST *req;
-	struct mps_softc *sc;
-	int error;
-
-	sc = sassc->sc;
-	error = 0;
-
-	/*
-	 * XXX We don't yet support physical addresses here.
-	 */
-	switch ((ccb->ccb_h.flags & CAM_DATA_MASK)) {
-	case CAM_DATA_PADDR:
-	case CAM_DATA_SG_PADDR:
-		mps_dprint(sc, MPS_ERROR,
-			   "%s: physical addresses not supported\n", __func__);
-		mpssas_set_ccbstatus(ccb, CAM_REQ_INVALID);
-		xpt_done(ccb);
-		return;
-	case CAM_DATA_SG:
-		/*
-		 * The chip does not support more than one buffer for the
-		 * request or response.
-		 */
-	 	if ((ccb->smpio.smp_request_sglist_cnt > 1)
-		  || (ccb->smpio.smp_response_sglist_cnt > 1)) {
-			mps_dprint(sc, MPS_ERROR,
-				   "%s: multiple request or response "
-				   "buffer segments not supported for SMP\n",
-				   __func__);
-			mpssas_set_ccbstatus(ccb, CAM_REQ_INVALID);
-			xpt_done(ccb);
-			return;
-		}
-
-		/*
-		 * The CAM_SCATTER_VALID flag was originally implemented
-		 * for the XPT_SCSI_IO CCB, which only has one data pointer.
-		 * We have two.  So, just take that flag to mean that we
-		 * might have S/G lists, and look at the S/G segment count
-		 * to figure out whether that is the case for each individual
-		 * buffer.
-		 */
-		if (ccb->smpio.smp_request_sglist_cnt != 0) {
-			bus_dma_segment_t *req_sg;
-
-			req_sg = (bus_dma_segment_t *)ccb->smpio.smp_request;
-			request = (uint8_t *)(uintptr_t)req_sg[0].ds_addr;
-		} else
-			request = ccb->smpio.smp_request;
-
-		if (ccb->smpio.smp_response_sglist_cnt != 0) {
-			bus_dma_segment_t *rsp_sg;
-
-			rsp_sg = (bus_dma_segment_t *)ccb->smpio.smp_response;
-			response = (uint8_t *)(uintptr_t)rsp_sg[0].ds_addr;
-		} else
-			response = ccb->smpio.smp_response;
-		break;
-	case CAM_DATA_VADDR:
-		request = ccb->smpio.smp_request;
-		response = ccb->smpio.smp_response;
-		break;
-	default:
-		mpssas_set_ccbstatus(ccb, CAM_REQ_INVALID);
-		xpt_done(ccb);
-		return;
-	}
-
-	cm = mps_alloc_command(sc);
-	if (cm == NULL) {
-		mps_dprint(sc, MPS_ERROR,
-		    "%s: cannot allocate command\n", __func__);
-		mpssas_set_ccbstatus(ccb, CAM_RESRC_UNAVAIL);
-		xpt_done(ccb);
-		return;
-	}
-
-	req = (MPI2_SMP_PASSTHROUGH_REQUEST *)cm->cm_req;
-	bzero(req, sizeof(*req));
-	req->Function = MPI2_FUNCTION_SMP_PASSTHROUGH;
-
-	/* Allow the chip to use any route to this SAS address. */
-	req->PhysicalPort = 0xff;
-
-	req->RequestDataLength = htole16(ccb->smpio.smp_request_len);
-	req->SGLFlags = 
-	    MPI2_SGLFLAGS_SYSTEM_ADDRESS_SPACE | MPI2_SGLFLAGS_SGL_TYPE_MPI;
-
-	mps_dprint(sc, MPS_XINFO, "%s: sending SMP request to SAS "
-	    "address %#jx\n", __func__, (uintmax_t)sasaddr);
-
-	mpi_init_sge(cm, req, &req->SGL);
-
-	/*
-	 * Set up a uio to pass into mps_map_command().  This allows us to
-	 * do one map command, and one busdma call in there.
-	 */
-	cm->cm_uio.uio_iov = cm->cm_iovec;
-	cm->cm_uio.uio_iovcnt = 2;
-	cm->cm_uio.uio_segflg = UIO_SYSSPACE;
-
-	/*
-	 * The read/write flag isn't used by busdma, but set it just in
-	 * case.  This isn't exactly accurate, either, since we're going in
-	 * both directions.
-	 */
-	cm->cm_uio.uio_rw = UIO_WRITE;
-
-	cm->cm_iovec[0].iov_base = request;
-	cm->cm_iovec[0].iov_len = le16toh(req->RequestDataLength);
-	cm->cm_iovec[1].iov_base = response;
-	cm->cm_iovec[1].iov_len = ccb->smpio.smp_response_len;
-
-	cm->cm_uio.uio_resid = cm->cm_iovec[0].iov_len +
-			       cm->cm_iovec[1].iov_len;
-
-	/*
-	 * Trigger a warning message in mps_data_cb() for the user if we
-	 * wind up exceeding two S/G segments.  The chip expects one
-	 * segment for the request and another for the response.
-	 */
-	cm->cm_max_segs = 2;
-
-	cm->cm_desc.Default.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE;
-	cm->cm_complete = mpssas_smpio_complete;
-	cm->cm_complete_data = ccb;
-
-	/*
-	 * Tell the mapping code that we're using a uio, and that this is
-	 * an SMP passthrough request.  There is a little special-case
-	 * logic there (in mps_data_cb()) to handle the bidirectional
-	 * transfer.  
-	 */
-	cm->cm_flags |= MPS_CM_FLAGS_USE_UIO | MPS_CM_FLAGS_SMP_PASS |
-			MPS_CM_FLAGS_DATAIN | MPS_CM_FLAGS_DATAOUT;
-
-	/* The chip data format is little endian. */
-	req->SASAddress.High = htole32(sasaddr >> 32);
-	req->SASAddress.Low = htole32(sasaddr);
-
-	/*
-	 * XXX Note that we don't have a timeout/abort mechanism here.
-	 * From the manual, it looks like task management requests only
-	 * work for SCSI IO and SATA passthrough requests.  We may need to
-	 * have a mechanism to retry requests in the event of a chip reset
-	 * at least.  Hopefully the chip will insure that any errors short
-	 * of that are relayed back to the driver.
-	 */
-	error = mps_map_command(sc, cm);
-	if ((error != 0) && (error != EINPROGRESS)) {
-		mps_dprint(sc, MPS_ERROR,
-			   "%s: error %d returned from mps_map_command()\n",
-			   __func__, error);
-		goto bailout_error;
-	}
-
-	return;
-
-bailout_error:
-	mps_free_command(sc, cm);
-	mpssas_set_ccbstatus(ccb, CAM_RESRC_UNAVAIL);
-	xpt_done(ccb);
-	return;
-
-}
-
-static void
-mpssas_action_smpio(struct mpssas_softc *sassc, union ccb *ccb)
-{
-	struct mps_softc *sc;
-	struct mpssas_target *targ;
-	uint64_t sasaddr = 0;
-
-	sc = sassc->sc;
-
-	/*
-	 * Make sure the target exists.
-	 */
-	KASSERT(ccb->ccb_h.target_id < sassc->maxtargets,
-	    ("Target %d out of bounds in XPT_SMP_IO\n", ccb->ccb_h.target_id));
-	targ = &sassc->targets[ccb->ccb_h.target_id];
-	if (targ->handle == 0x0) {
-		mps_dprint(sc, MPS_ERROR,
-			   "%s: target %d does not exist!\n", __func__,
-			   ccb->ccb_h.target_id);
-		mpssas_set_ccbstatus(ccb, CAM_SEL_TIMEOUT);
-		xpt_done(ccb);
-		return;
-	}
-
-	/*
-	 * If this device has an embedded SMP target, we'll talk to it
-	 * directly.
-	 * figure out what the expander's address is.
-	 */
-	if ((targ->devinfo & MPI2_SAS_DEVICE_INFO_SMP_TARGET) != 0)
-		sasaddr = targ->sasaddr;
-
-	/*
-	 * If we don't have a SAS address for the expander yet, try
-	 * grabbing it from the page 0x83 information cached in the
-	 * transport layer for this target.  LSI expanders report the
-	 * expander SAS address as the port-associated SAS address in
-	 * Inquiry VPD page 0x83.  Maxim expanders don't report it in page
-	 * 0x83.
-	 *
-	 * XXX KDM disable this for now, but leave it commented out so that
-	 * it is obvious that this is another possible way to get the SAS
-	 * address.
-	 *
-	 * The parent handle method below is a little more reliable, and
-	 * the other benefit is that it works for devices other than SES
-	 * devices.  So you can send a SMP request to a da(4) device and it
-	 * will get routed to the expander that device is attached to.
-	 * (Assuming the da(4) device doesn't contain an SMP target...)
-	 */
-#if 0
-	if (sasaddr == 0)
-		sasaddr = xpt_path_sas_addr(ccb->ccb_h.path);
-#endif
-
-	/*
-	 * If we still don't have a SAS address for the expander, look for
-	 * the parent device of this device, which is probably the expander.
-	 */
-	if (sasaddr == 0) {
-#ifdef OLD_MPS_PROBE
-		struct mpssas_target *parent_target;
-#endif
-
-		if (targ->parent_handle == 0x0) {
-			mps_dprint(sc, MPS_ERROR,
-				   "%s: handle %d does not have a valid "
-				   "parent handle!\n", __func__, targ->handle);
-			mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
-			goto bailout;
-		}
-#ifdef OLD_MPS_PROBE
-		parent_target = mpssas_find_target_by_handle(sassc, 0,
-			targ->parent_handle);
-
-		if (parent_target == NULL) {
-			mps_dprint(sc, MPS_ERROR,
-				   "%s: handle %d does not have a valid "
-				   "parent target!\n", __func__, targ->handle);
-			mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
-			goto bailout;
-		}
-
-		if ((parent_target->devinfo &
-		     MPI2_SAS_DEVICE_INFO_SMP_TARGET) == 0) {
-			mps_dprint(sc, MPS_ERROR,
-				   "%s: handle %d parent %d does not "
-				   "have an SMP target!\n", __func__,
-				   targ->handle, parent_target->handle);
-			mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
-			goto bailout;
-		}
-
-		sasaddr = parent_target->sasaddr;
-#else /* OLD_MPS_PROBE */
-		if ((targ->parent_devinfo &
-		     MPI2_SAS_DEVICE_INFO_SMP_TARGET) == 0) {
-			mps_dprint(sc, MPS_ERROR,
-				   "%s: handle %d parent %d does not "
-				   "have an SMP target!\n", __func__,
-				   targ->handle, targ->parent_handle);
-			mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
-			goto bailout;
-		}
-		if (targ->parent_sasaddr == 0x0) {
-			mps_dprint(sc, MPS_ERROR,
-				   "%s: handle %d parent handle %d does "
-				   "not have a valid SAS address!\n",
-				   __func__, targ->handle, targ->parent_handle);
-			mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
-			goto bailout;
-		}
-
-		sasaddr = targ->parent_sasaddr;
-#endif /* OLD_MPS_PROBE */
-	}
-
-	if (sasaddr == 0) {
-		mps_dprint(sc, MPS_INFO,
-			   "%s: unable to find SAS address for handle %d\n",
-			   __func__, targ->handle);
-		mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
-		goto bailout;
-	}
-	mpssas_send_smpcmd(sassc, ccb, sasaddr);
-
-	return;
-
-bailout:
-	xpt_done(ccb);
-
-}
-
 static void
 mpssas_action_resetdev(struct mpssas_softc *sassc, union ccb *ccb)
 {
@@ -3132,109 +2020,6 @@ mpssas_poll(struct cam_sim *sim)
 	}
 
 	mps_intr_locked(sassc->sc);
-}
-
-static void
-mpssas_async(void *callback_arg, uint32_t code, struct cam_path *path,
-	     void *arg)
-{
-	struct mps_softc *sc;
-
-	sc = (struct mps_softc *)callback_arg;
-
-	mps_lock(sc);
-	switch (code) {
-	case AC_ADVINFO_CHANGED: {
-		struct mpssas_target *target;
-		struct mpssas_softc *sassc;
-		struct scsi_read_capacity_data_long rcap_buf;
-		struct ccb_dev_advinfo cdai;
-		struct mpssas_lun *lun;
-		lun_id_t lunid;
-		int found_lun;
-		uintptr_t buftype;
-
-		buftype = (uintptr_t)arg;
-
-		found_lun = 0;
-		sassc = sc->sassc;
-
-		/*
-		 * We're only interested in read capacity data changes.
-		 */
-		if (buftype != CDAI_TYPE_RCAPLONG)
-			break;
-
-		/*
-		 * We should have a handle for this, but check to make sure.
-		 */
-		KASSERT(xpt_path_target_id(path) < sassc->maxtargets,
-		    ("Target %d out of bounds in mpssas_async\n",
-		    xpt_path_target_id(path)));
-		target = &sassc->targets[xpt_path_target_id(path)];
-		if (target->handle == 0)
-			break;
-
-		lunid = xpt_path_lun_id(path);
-
-		SLIST_FOREACH(lun, &target->luns, lun_link) {
-			if (lun->lun_id == lunid) {
-				found_lun = 1;
-				break;
-			}
-		}
-
-		if (found_lun == 0) {
-			lun = malloc(sizeof(struct mpssas_lun), M_MPT2,
-				     M_NOWAIT | M_ZERO);
-			if (lun == NULL) {
-				mps_dprint(sc, MPS_ERROR, "Unable to alloc "
-					   "LUN for EEDP support.\n");
-				break;
-			}
-			lun->lun_id = lunid;
-			SLIST_INSERT_HEAD(&target->luns, lun, lun_link);
-		}
-
-		bzero(&rcap_buf, sizeof(rcap_buf));
-		bzero(&cdai, sizeof(cdai));
-		xpt_setup_ccb(&cdai.ccb_h, path, CAM_PRIORITY_NORMAL);
-		cdai.ccb_h.func_code = XPT_DEV_ADVINFO;
-		cdai.ccb_h.flags = CAM_DIR_IN;
-		cdai.buftype = CDAI_TYPE_RCAPLONG;
-		cdai.flags = CDAI_FLAG_NONE;
-		cdai.bufsiz = sizeof(rcap_buf);
-		cdai.buf = (uint8_t *)&rcap_buf;
-		xpt_action((union ccb *)&cdai);
-		if ((cdai.ccb_h.status & CAM_DEV_QFRZN) != 0)
-			cam_release_devq(cdai.ccb_h.path,
-					 0, 0, 0, FALSE);
-
-		if ((mpssas_get_ccbstatus((union ccb *)&cdai) == CAM_REQ_CMP)
-		 && (rcap_buf.prot & SRC16_PROT_EN)) {
-			switch (rcap_buf.prot & SRC16_P_TYPE) {
-			case SRC16_PTYPE_1:
-			case SRC16_PTYPE_3:
-				lun->eedp_formatted = TRUE;
-				lun->eedp_block_size =
-				    scsi_4btoul(rcap_buf.length);
-				break;
-			case SRC16_PTYPE_2:
-			default:
-				lun->eedp_formatted = FALSE;
-				lun->eedp_block_size = 0;
-				break;
-			}
-		} else {
-			lun->eedp_formatted = FALSE;
-			lun->eedp_block_size = 0;
-		}
-		break;
-	}
-	default:
-		break;
-	}
-	mps_unlock(sc);
 }
 
 /*
@@ -3343,14 +2128,7 @@ mpssas_portenable_complete(struct mps_softc *sc, struct mps_command *cm)
 
 	mps_free_command(sc, cm);
 
-	/*
-	 * Get WarpDrive info after discovery is complete but before the scan
-	 * starts.  At this point, all devices are ready to be exposed to the
-	 * OS.  If devices should be hidden instead, take them out of the
-	 * 'targets' array before the scan.  The devinfo for a disk will have
-	 * some info and a volume's will be 0.  Use that to remove disks.
-	 */
-	mps_wd_config_pages(sc);
+	/* XNU: no WarpDrive config pages (mps_wd_config_pages) */
 
 	/*
 	 * Done waiting for port enable to complete.  Decrement the refcount.

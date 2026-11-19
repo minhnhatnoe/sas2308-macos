@@ -33,8 +33,9 @@
 #ifndef _MPSVAR_H
 #define _MPSVAR_H
 
-#include <sys/lock.h>
-#include <sys/mutex.h>
+#include "compat/mps_compat.h"
+#include "compat/cam_compat.h"
+#include "mps_xnu.h"
 
 #define MPS_DRIVER_VERSION	"21.02.00.00-fbsd"
 
@@ -64,7 +65,6 @@
 
 #define DEFAULT_SPINUP_WAIT	3	/* seconds to wait for spinup */
 
-#include <sys/endian.h>
 
 /*
  * host mapping related macro definitions
@@ -213,8 +213,7 @@ struct mps_command {
 	void				*cm_data;
 	u_int				cm_length;
 	u_int				cm_out_len;
-	struct uio			cm_uio;
-	struct iovec			cm_iovec[MPS_IOVEC_COUNT];
+	/* XNU: no uio (cm_uio, cm_iovec): no user (ioctl) commands */
 	u_int				cm_max_segs;
 	u_int				cm_sglsize;
 	MPI2_SGE_IO_UNION		*cm_sge;
@@ -265,16 +264,6 @@ struct mps_event_handle {
 	mps_evt_callback_t		*callback;
 	void				*data;
 	u32				mask[MPI2_EVENT_NOTIFY_EVENTMASK_WORDS];
-};
-
-struct mps_busdma_context {
-	int				completed;
-	int				abandoned;
-	int				error;
-	bus_addr_t			*addr;
-	struct mps_softc		*softc;
-	bus_dmamap_t			buffer_dmamap;
-	bus_dma_tag_t			buffer_dmat;
 };
 
 struct mps_queue {
@@ -425,11 +414,7 @@ struct mps_softc {
 	mps_fw_diagnostic_buffer_t
 				fw_diag_buffer_list[MPI2_DIAG_BUF_TYPE_COUNT];
 
-	/* Event Recording IOCTL support */
-	uint32_t			events_to_record[4];
-	mps_event_entry_t		recorded_events[MPS_EVENT_QUEUE_SIZE];
-	uint8_t				event_index;
-	uint32_t			event_number;
+	/* XNU: no event recording (mps_user.c ioctl) */
 
 	/* EEDP and TLR support */
 	uint8_t				eedp_enabled;
@@ -750,74 +735,24 @@ int mps_push_sge(struct mps_command *, void *, size_t, int);
 int mps_add_dmaseg(struct mps_command *, vm_paddr_t, size_t, u_int, int);
 int mps_attach_sas(struct mps_softc *sc);
 int mps_detach_sas(struct mps_softc *sc);
-int mps_read_config_page(struct mps_softc *, struct mps_config_params *);
-int mps_write_config_page(struct mps_softc *, struct mps_config_params *);
 void mps_memaddr_cb(void *, bus_dma_segment_t *, int , int );
-void mps_memaddr_wait_cb(void *, bus_dma_segment_t *, int , int );
 void mpi_init_sge(struct mps_command *cm, void *req, void *sge);
-int mps_attach_user(struct mps_softc *);
-void mps_detach_user(struct mps_softc *);
-void mpssas_record_event(struct mps_softc *sc,
-    MPI2_EVENT_NOTIFICATION_REPLY *event_reply);
 
 int mps_map_command(struct mps_softc *sc, struct mps_command *cm);
 int mps_wait_command(struct mps_softc *sc, struct mps_command **cm, int timeout,
     int sleep_flag);
 
-int mps_config_get_bios_pg3(struct mps_softc *sc, Mpi2ConfigReply_t
-    *mpi_reply, Mpi2BiosPage3_t *config_page);
-int mps_config_get_raid_volume_pg0(struct mps_softc *sc, Mpi2ConfigReply_t
-    *mpi_reply, Mpi2RaidVolPage0_t *config_page, u32 page_address);
-int mps_config_get_ioc_pg8(struct mps_softc *sc, Mpi2ConfigReply_t *,
-    Mpi2IOCPage8_t *);
-int mps_config_get_man_pg10(struct mps_softc *sc, Mpi2ConfigReply_t *mpi_reply);
-int mps_config_get_sas_device_pg0(struct mps_softc *, Mpi2ConfigReply_t *,
-    Mpi2SasDevicePage0_t *, u32 , u16 );
-int mps_config_get_dpm_pg0(struct mps_softc *, Mpi2ConfigReply_t *,
-    Mpi2DriverMappingPage0_t *, u16 );
-int mps_config_get_raid_volume_pg1(struct mps_softc *sc,
-    Mpi2ConfigReply_t *mpi_reply, Mpi2RaidVolPage1_t *config_page, u32 form,
-    u16 handle);
-int mps_config_get_volume_wwid(struct mps_softc *sc, u16 volume_handle,
-    u64 *wwid);
-int mps_config_get_raid_pd_pg0(struct mps_softc *sc,
-    Mpi2ConfigReply_t *mpi_reply, Mpi2RaidPhysDiskPage0_t *config_page,
-    u32 page_address);
-void mpssas_ir_shutdown(struct mps_softc *sc, int howto);
 
 int mps_reinit(struct mps_softc *sc);
 void mpssas_handle_reinit(struct mps_softc *sc);
 
-void mps_base_static_config_pages(struct mps_softc *sc);
-void mps_wd_config_pages(struct mps_softc *sc);
-
-int mps_mapping_initialize(struct mps_softc *);
-void mps_mapping_topology_change_event(struct mps_softc *,
-    Mpi2EventDataSasTopologyChangeList_t *);
-void mps_mapping_free_memory(struct mps_softc *sc);
-int mps_config_set_dpm_pg0(struct mps_softc *, Mpi2ConfigReply_t *,
-    Mpi2DriverMappingPage0_t *, u16 );
-void mps_mapping_exit(struct mps_softc *);
-void mps_mapping_check_devices(void *);
-int mps_mapping_allocate_memory(struct mps_softc *sc);
-unsigned int mps_mapping_get_tid(struct mps_softc *, uint64_t , u16);
-unsigned int mps_mapping_get_tid_from_handle(struct mps_softc *sc,
-    u16 handle);
-unsigned int mps_mapping_get_raid_tid(struct mps_softc *sc, u64 wwid,
-     u16 volHandle);
-unsigned int mps_mapping_get_raid_tid_from_handle(struct mps_softc *sc,
-    u16 volHandle);
-void mps_mapping_enclosure_dev_status_change_event(struct mps_softc *,
-    Mpi2EventDataSasEnclDevStatusChange_t *event_data);
-void mps_mapping_ir_config_change_event(struct mps_softc *sc,
-    Mpi2EventDataIrConfigChangeList_t *event_data);
-int mps_mapping_dump(SYSCTL_HANDLER_ARGS);
-int mps_mapping_encl_dump(SYSCTL_HANDLER_ARGS);
+/* XNU: no config pages, no mps_mapping.c (simple target ids, mps_xnu.c) */
+void mps_parse_debug(struct mps_softc *sc, char *list);	/* XNU: kext */
+void mps_reinit_task(void *arg, int pending);			/* XNU */
 
 void mpssas_evt_handler(struct mps_softc *sc, uintptr_t data,
     MPI2_EVENT_NOTIFICATION_REPLY *event);
 void mpssas_prepare_remove(struct mpssas_softc *sassc, uint16_t handle);
-void mpssas_prepare_volume_remove(struct mpssas_softc *sassc, uint16_t handle);
 int mpssas_startup(struct mps_softc *sc);
 struct mpssas_target * mpssas_find_target_by_handle(struct mpssas_softc *, int, uint16_t);
 void mpssas_realloc_targets(struct mps_softc *sc, int maxtargets);
@@ -827,7 +762,6 @@ void mpssas_release_simq_reinit(struct mpssas_softc *sassc);
 int mpssas_send_reset(struct mps_softc *sc, struct mps_command *tm,
     uint8_t type);
 
-SYSCTL_DECL(_hw_mps);
 
 /* Compatibility shims for different OS versions */
 #if defined(CAM_PRIORITY_XPT)

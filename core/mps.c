@@ -30,53 +30,19 @@
  * Avago Technologies (LSI) MPT-Fusion Host Adapter FreeBSD
  */
 
-#include <sys/cdefs.h>
+#include "compat/mps_compat.h"
+#include "compat/cam_compat.h"
+#include "mps_mpi.h"
+#include "mpsvar.h"
+#include "mps_sas.h"
+#include "mps_table.h"
 /* Communications core for Avago Technologies (LSI) MPT2 */
 
 /* TODO Move headers to mpsvar */
-#include <sys/types.h>
-#include <sys/param.h>
-#include <sys/systm.h>
-#include <sys/kernel.h>
-#include <sys/selinfo.h>
-#include <sys/lock.h>
-#include <sys/mutex.h>
-#include <sys/module.h>
-#include <sys/bus.h>
-#include <sys/conf.h>
-#include <sys/bio.h>
-#include <sys/malloc.h>
-#include <sys/uio.h>
-#include <sys/sysctl.h>
-#include <sys/smp.h>
-#include <sys/queue.h>
-#include <sys/kthread.h>
-#include <sys/taskqueue.h>
-#include <sys/endian.h>
-#include <sys/eventhandler.h>
-#include <sys/sbuf.h>
-#include <sys/priv.h>
 
-#include <machine/bus.h>
-#include <machine/resource.h>
-#include <sys/rman.h>
-#include <sys/proc.h>
 
-#include <dev/pci/pcivar.h>
 
-#include <cam/cam.h>
-#include <cam/scsi/scsi_all.h>
 
-#include <dev/mps/mpi/mpi2_type.h>
-#include <dev/mps/mpi/mpi2.h>
-#include <dev/mps/mpi/mpi2_ioc.h>
-#include <dev/mps/mpi/mpi2_sas.h>
-#include <dev/mps/mpi/mpi2_cnfg.h>
-#include <dev/mps/mpi/mpi2_init.h>
-#include <dev/mps/mpi/mpi2_tool.h>
-#include <dev/mps/mps_ioctl.h>
-#include <dev/mps/mpsvar.h>
-#include <dev/mps/mps_table.h>
 
 static int mps_diag_reset(struct mps_softc *sc, int sleep_flag);
 static int mps_init_queues(struct mps_softc *sc);
@@ -96,21 +62,13 @@ static __inline void mps_complete_command(struct mps_softc *sc,
     struct mps_command *cm);
 static void mps_dispatch_event(struct mps_softc *sc, uintptr_t data,
     MPI2_EVENT_NOTIFICATION_REPLY *reply);
-static void mps_config_complete(struct mps_softc *sc, struct mps_command *cm);
 static void mps_periodic(void *);
 static int mps_reregister_events(struct mps_softc *sc);
 static void mps_enqueue_request(struct mps_softc *sc, struct mps_command *cm);
 static int mps_get_iocfacts(struct mps_softc *sc, MPI2_IOC_FACTS_REPLY *facts);
 static int mps_wait_db_ack(struct mps_softc *sc, int timeout, int sleep_flag);
-static int mps_debug_sysctl(SYSCTL_HANDLER_ARGS);
-static int mps_dump_reqs(SYSCTL_HANDLER_ARGS);
-static void mps_parse_debug(struct mps_softc *sc, char *list);
-
-SYSCTL_NODE(_hw, OID_AUTO, mps, CTLFLAG_RD | CTLFLAG_MPSAFE, 0,
-    "MPS Driver Parameters");
 
 MALLOC_DEFINE(M_MPT2, "mps", "mpt2 driver memory");
-MALLOC_DECLARE(M_MPSUSER);
 
 /*
  * Do a "Diagnostic Reset" aka a hard reset.  This should get the chip out of
@@ -503,11 +461,11 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 
 	mps_dprint(sc, MPS_INFO, "Firmware: %s, Driver: %s\n", sc->fw_version,
 	    MPS_DRIVER_VERSION);
-	mps_dprint(sc, MPS_INFO, "IOCCapabilities: %b\n",
-	     sc->facts->IOCCapabilities,
+	mps_dprint(sc, MPS_INFO, "IOCCapabilities: %s\n",	/* XNU: no %b */
+	     MPS_XNU_BITS(sc->facts->IOCCapabilities,
 	    "\20" "\3ScsiTaskFull" "\4DiagTrace" "\5SnapBuf" "\6ExtBuf"
 	    "\7EEDP" "\10BiDirTarg" "\11Multicast" "\14TransRetry" "\15IR"
-	    "\16EventReplay" "\17RaidAccel" "\20MSIXIndex" "\21HostDisc");
+	    "\16EventReplay" "\17RaidAccel" "\20MSIXIndex" "\21HostDisc"));
 
 	/*
 	 * If the chip doesn't support event replay then a hard reset will be
@@ -695,8 +653,7 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 			break;
 		if ((error = mps_attach_sas(sc)) != 0)
 			break;
-		if ((error = mps_attach_user(sc)) != 0)
-			break;
+		/* XNU: no mps_attach_user() (ioctl interface) */
 		break;
 	}
 	if (error) {
@@ -840,45 +797,14 @@ mps_reinit(struct mps_softc *sc)
 		    __func__, error);
 	}
 
-	/* Restore the PCI state, including the MSI-X registers */
-	mps_pci_restore(sc);
-
-	/* Give the I/O subsystem special priority to get itself prepared */
-	mpssas_handle_reinit(sc);
-
 	/*
-	 * Get IOC Facts and allocate all structures based on this information.
-	 * The attach function will also call mps_iocfacts_allocate at startup.
-	 * If relevant values have changed in IOC Facts, this function will free
-	 * all of the memory based on IOC Facts and reallocate that memory.
-	 */
-	if ((error = mps_iocfacts_allocate(sc, FALSE)) != 0) {
-		panic("%s IOC Facts based allocation failed with error %d\n",
-		    __func__, error);
-	}
-
-	/*
-	 * Mapping structures will be re-allocated after getting IOC Page8, so
-	 * free these structures here.
-	 */
-	mps_mapping_exit(sc);
-
-	/*
-	 * The static page function currently read is IOC Page8.  Others can be
-	 * added in future.  It's possible that the values in IOC Page8 have
-	 * changed after a Diag Reset due to user modification, so always read
-	 * these.  Interrupts are masked, so unmask them before getting config
-	 * pages.
+	 * XNU: no mps_mapping.c and no static config pages (IOC Page8):
+	 * mps_mapping_exit(), mps_base_static_config_pages() and
+	 * mps_mapping_initialize() are gone.  Interrupts are masked, so
+	 * unmask them before the event registration.
 	 */
 	mps_unmask_intr(sc);
 	sc->mps_flags &= ~MPS_FLAGS_DIAGRESET;
-	mps_base_static_config_pages(sc);
-
-	/*
-	 * Some mapping info is based in IOC Page8 data, so re-initialize the
-	 * mapping tables.
-	 */
-	mps_mapping_initialize(sc);
 
 	/*
 	 * Restart will reload the event masks clobbered by the reset, and
@@ -1234,42 +1160,6 @@ mps_memaddr_cb(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
 	*addr = segs[0].ds_addr;
 }
 
-void
-mps_memaddr_wait_cb(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
-{
-	struct mps_busdma_context *ctx;
-	int need_unload, need_free;
-
-	ctx = (struct mps_busdma_context *)arg;
-	need_unload = 0;
-	need_free = 0;
-
-	mps_lock(ctx->softc);
-	ctx->error = error;
-	ctx->completed = 1;
-	if ((error == 0) && (ctx->abandoned == 0)) {
-		*ctx->addr = segs[0].ds_addr;
-	} else {
-		if (nsegs != 0)
-			need_unload = 1;
-		if (ctx->abandoned != 0)
-			need_free = 1;
-	}
-	if (need_free == 0)
-		wakeup(ctx);
-
-	mps_unlock(ctx->softc);
-
-	if (need_unload != 0) {
-		bus_dmamap_unload(ctx->buffer_dmat,
-				  ctx->buffer_dmamap);
-		*ctx->addr = 0;
-	}
-
-	if (need_free != 0)
-		free(ctx, M_MPSUSER);
-}
-
 static int
 mps_alloc_queues(struct mps_softc *sc)
 {
@@ -1569,243 +1459,25 @@ mps_init_queues(struct mps_softc *sc)
 void
 mps_get_tunables(struct mps_softc *sc)
 {
-	char tmpstr[80], mps_debug[80];
 
-	/* XXX default to some debugging for now */
-	sc->mps_debug = MPS_INFO|MPS_FAULT;
+	/*
+	 * XNU: defaults for this port.  No TUNABLE_*_FETCH: the kext applies
+	 * its Info.plist properties and boot-args after this.
+	 */
+	sc->mps_debug = mps_xnu_level_mask(MPS_LEVEL_INFO);
 	sc->disable_msix = 0;
 	sc->disable_msi = 0;
 	sc->max_msix = MPS_MSIX_MAX;
 	sc->max_chains = MPS_CHAIN_FRAMES;
-	sc->max_io_pages = MPS_MAXIO_PAGES;
+	sc->max_io_pages = MPS_XNU_MAXIO_PAGES;
 	sc->enable_ssu = MPS_SSU_ENABLE_SSD_DISABLE_HDD;
 	sc->spinup_wait_time = DEFAULT_SPINUP_WAIT;
 	sc->use_phynum = 1;
-	sc->max_reqframes = MPS_REQ_FRAMES;
-	sc->max_prireqframes = MPS_PRI_REQ_FRAMES;
-	sc->max_replyframes = MPS_REPLY_FRAMES;
-	sc->max_evtframes = MPS_EVT_REPLY_FRAMES;
-
-	/*
-	 * Grab the global variables.
-	 */
-	bzero(mps_debug, 80);
-	if (TUNABLE_STR_FETCH("hw.mps.debug_level", mps_debug, 80) != 0)
-		mps_parse_debug(sc, mps_debug);
-	TUNABLE_INT_FETCH("hw.mps.disable_msix", &sc->disable_msix);
-	TUNABLE_INT_FETCH("hw.mps.disable_msi", &sc->disable_msi);
-	TUNABLE_INT_FETCH("hw.mps.max_msix", &sc->max_msix);
-	TUNABLE_INT_FETCH("hw.mps.max_chains", &sc->max_chains);
-	TUNABLE_INT_FETCH("hw.mps.max_io_pages", &sc->max_io_pages);
-	TUNABLE_INT_FETCH("hw.mps.enable_ssu", &sc->enable_ssu);
-	TUNABLE_INT_FETCH("hw.mps.spinup_wait_time", &sc->spinup_wait_time);
-	TUNABLE_INT_FETCH("hw.mps.use_phy_num", &sc->use_phynum);
-	TUNABLE_INT_FETCH("hw.mps.max_reqframes", &sc->max_reqframes);
-	TUNABLE_INT_FETCH("hw.mps.max_prireqframes", &sc->max_prireqframes);
-	TUNABLE_INT_FETCH("hw.mps.max_replyframes", &sc->max_replyframes);
-	TUNABLE_INT_FETCH("hw.mps.max_evtframes", &sc->max_evtframes);
-
-	/* Grab the unit-instance variables */
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.debug_level",
-	    device_get_unit(sc->mps_dev));
-	bzero(mps_debug, 80);
-	if (TUNABLE_STR_FETCH(tmpstr, mps_debug, 80) != 0)
-		mps_parse_debug(sc, mps_debug);
-
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.disable_msix",
-	    device_get_unit(sc->mps_dev));
-	TUNABLE_INT_FETCH(tmpstr, &sc->disable_msix);
-
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.disable_msi",
-	    device_get_unit(sc->mps_dev));
-	TUNABLE_INT_FETCH(tmpstr, &sc->disable_msi);
-
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_msix",
-	    device_get_unit(sc->mps_dev));
-	TUNABLE_INT_FETCH(tmpstr, &sc->max_msix);
-
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_chains",
-	    device_get_unit(sc->mps_dev));
-	TUNABLE_INT_FETCH(tmpstr, &sc->max_chains);
-
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_io_pages",
-	    device_get_unit(sc->mps_dev));
-	TUNABLE_INT_FETCH(tmpstr, &sc->max_io_pages);
-
-	bzero(sc->exclude_ids, sizeof(sc->exclude_ids));
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.exclude_ids",
-	    device_get_unit(sc->mps_dev));
-	TUNABLE_STR_FETCH(tmpstr, sc->exclude_ids, sizeof(sc->exclude_ids));
-
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.enable_ssu",
-	    device_get_unit(sc->mps_dev));
-	TUNABLE_INT_FETCH(tmpstr, &sc->enable_ssu);
-
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.spinup_wait_time",
-	    device_get_unit(sc->mps_dev));
-	TUNABLE_INT_FETCH(tmpstr, &sc->spinup_wait_time);
-
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.use_phy_num",
-	    device_get_unit(sc->mps_dev));
-	TUNABLE_INT_FETCH(tmpstr, &sc->use_phynum);
-
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_reqframes",
-	    device_get_unit(sc->mps_dev));
-	TUNABLE_INT_FETCH(tmpstr, &sc->max_reqframes);
-
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_prireqframes",
-	    device_get_unit(sc->mps_dev));
-	TUNABLE_INT_FETCH(tmpstr, &sc->max_prireqframes);
-
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_replyframes",
-	    device_get_unit(sc->mps_dev));
-	TUNABLE_INT_FETCH(tmpstr, &sc->max_replyframes);
-
-	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_evtframes",
-	    device_get_unit(sc->mps_dev));
-	TUNABLE_INT_FETCH(tmpstr, &sc->max_evtframes);
-
-}
-
-static void
-mps_setup_sysctl(struct mps_softc *sc)
-{
-	struct sysctl_ctx_list	*sysctl_ctx = NULL;
-	struct sysctl_oid	*sysctl_tree = NULL;
-	char tmpstr[80], tmpstr2[80];
-
-	/*
-	 * Setup the sysctl variable so the user can change the debug level
-	 * on the fly.
-	 */
-	snprintf(tmpstr, sizeof(tmpstr), "MPS controller %d",
-	    device_get_unit(sc->mps_dev));
-	snprintf(tmpstr2, sizeof(tmpstr2), "%d", device_get_unit(sc->mps_dev));
-
-	sysctl_ctx = device_get_sysctl_ctx(sc->mps_dev);
-	if (sysctl_ctx != NULL)
-		sysctl_tree = device_get_sysctl_tree(sc->mps_dev);
-
-	if (sysctl_tree == NULL) {
-		sysctl_ctx_init(&sc->sysctl_ctx);
-		sc->sysctl_tree = SYSCTL_ADD_NODE(&sc->sysctl_ctx,
-		    SYSCTL_STATIC_CHILDREN(_hw_mps), OID_AUTO, tmpstr2,
-		    CTLFLAG_RD | CTLFLAG_MPSAFE, 0, tmpstr);
-		if (sc->sysctl_tree == NULL)
-			return;
-		sysctl_ctx = &sc->sysctl_ctx;
-		sysctl_tree = sc->sysctl_tree;
-	}
-
-	SYSCTL_ADD_PROC(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "debug_level", CTLTYPE_STRING | CTLFLAG_RW |CTLFLAG_MPSAFE,
-	    sc, 0, mps_debug_sysctl, "A", "mps debug level");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "disable_msix", CTLFLAG_RD, &sc->disable_msix, 0,
-	    "Disable the use of MSI-X interrupts");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "disable_msi", CTLFLAG_RD, &sc->disable_msi, 0,
-	    "Disable the use of MSI interrupts");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "max_msix", CTLFLAG_RD, &sc->max_msix, 0,
-	    "User-defined maximum number of MSIX queues");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "msix_msgs", CTLFLAG_RD, &sc->msi_msgs, 0,
-	    "Negotiated number of MSIX queues");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "max_reqframes", CTLFLAG_RD, &sc->max_reqframes, 0,
-	    "Total number of allocated request frames");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "max_prireqframes", CTLFLAG_RD, &sc->max_prireqframes, 0,
-	    "Total number of allocated high priority request frames");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "max_replyframes", CTLFLAG_RD, &sc->max_replyframes, 0,
-	    "Total number of allocated reply frames");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "max_evtframes", CTLFLAG_RD, &sc->max_evtframes, 0,
-	    "Total number of event frames allocated");
-
-	SYSCTL_ADD_STRING(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "firmware_version", CTLFLAG_RD, sc->fw_version,
-	    strlen(sc->fw_version), "firmware version");
-
-	SYSCTL_ADD_STRING(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "driver_version", CTLFLAG_RD, MPS_DRIVER_VERSION,
-	    strlen(MPS_DRIVER_VERSION), "driver version");
-
-	SYSCTL_ADD_STRING(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "msg_version", CTLFLAG_RD, sc->msg_version,
-	    strlen(sc->msg_version), "message interface version (deprecated)");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "io_cmds_active", CTLFLAG_RD,
-	    &sc->io_cmds_active, 0, "number of currently active commands");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "io_cmds_highwater", CTLFLAG_RD,
-	    &sc->io_cmds_highwater, 0, "maximum active commands seen");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "chain_free", CTLFLAG_RD,
-	    &sc->chain_free, 0, "number of free chain elements");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "chain_free_lowwater", CTLFLAG_RD,
-	    &sc->chain_free_lowwater, 0,"lowest number of free chain elements");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "max_chains", CTLFLAG_RD,
-	    &sc->max_chains, 0,"maximum chain frames that will be allocated");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "max_io_pages", CTLFLAG_RD,
-	    &sc->max_io_pages, 0,"maximum pages to allow per I/O (if <1 use "
-	    "IOCFacts)");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "enable_ssu", CTLFLAG_RW, &sc->enable_ssu, 0,
-	    "enable SSU to SATA SSD/HDD at shutdown");
-
-	SYSCTL_ADD_UQUAD(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "chain_alloc_fail", CTLFLAG_RD,
-	    &sc->chain_alloc_fail, "chain allocation failures");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "spinup_wait_time", CTLFLAG_RD,
-	    &sc->spinup_wait_time, DEFAULT_SPINUP_WAIT, "seconds to wait for "
-	    "spinup after SATA ID error");
-
-	SYSCTL_ADD_PROC(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "mapping_table_dump",
-	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
-	    mps_mapping_dump, "A", "Mapping Table Dump");
-
-	SYSCTL_ADD_PROC(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "encl_table_dump",
-	    CTLTYPE_STRING | CTLFLAG_RD | CTLFLAG_MPSAFE, sc, 0,
-	    mps_mapping_encl_dump, "A", "Enclosure Table Dump");
-
-	SYSCTL_ADD_PROC(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "dump_reqs",
-	    CTLTYPE_OPAQUE | CTLFLAG_RD | CTLFLAG_SKIP | CTLFLAG_MPSAFE,
-	    sc, 0, mps_dump_reqs, "I", "Dump Active Requests");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "dump_reqs_alltypes", CTLFLAG_RW,
-	    &sc->dump_reqs_alltypes, 0,
-	    "dump all request types not just inqueue");
-
-	SYSCTL_ADD_INT(sysctl_ctx, SYSCTL_CHILDREN(sysctl_tree),
-	    OID_AUTO, "use_phy_num", CTLFLAG_RD, &sc->use_phynum, 0,
-	    "Use the phy number for enumeration");
+	sc->max_reqframes = MPS_XNU_REQ_FRAMES;
+	sc->max_prireqframes = MPS_XNU_PRI_REQ_FRAMES;
+	sc->max_replyframes = MPS_XNU_REPLY_FRAMES;
+	sc->max_evtframes = MPS_XNU_EVT_REPLY_FRAMES;
+	sc->msi_msgs = 1;	/* XNU: one MSI vector (mps_pci.c sets it) */
 }
 
 static struct mps_debug_string {
@@ -1831,54 +1503,7 @@ enum mps_debug_level_combiner {
 	COMB_SUB
 };
 
-static int
-mps_debug_sysctl(SYSCTL_HANDLER_ARGS)
-{
-	struct mps_softc *sc;
-	struct mps_debug_string *string;
-	struct sbuf *sbuf;
-	char *buffer;
-	size_t sz;
-	int i, len, debug, error;
-
-	sc = (struct mps_softc *)arg1;
-
-	error = sysctl_wire_old_buffer(req, 0);
-	if (error != 0)
-		return (error);
-
-	sbuf = sbuf_new_for_sysctl(NULL, NULL, 128, req);
-	debug = sc->mps_debug;
-
-	sbuf_printf(sbuf, "%#x", debug);
-
-	sz = sizeof(mps_debug_strings) / sizeof(mps_debug_strings[0]);
-	for (i = 0; i < sz; i++) {
-		string = &mps_debug_strings[i];
-		if (debug & string->flag)
-			sbuf_printf(sbuf, ",%s", string->name);
-	}
-
-	error = sbuf_finish(sbuf);
-	sbuf_delete(sbuf);
-
-	if (error || req->newptr == NULL)
-		return (error);
-
-	len = req->newlen - req->newidx;
-	if (len == 0)
-		return (0);
-
-	buffer = malloc(len, M_MPT2, M_ZERO|M_WAITOK);
-	error = SYSCTL_IN(req, buffer, len);
-
-	mps_parse_debug(sc, buffer);
-
-	free(buffer, M_MPT2);
-	return (error);
-}
-
-static void
+void	/* XNU: not static, the kext parses its debug property with it */
 mps_parse_debug(struct mps_softc *sc, char *list)
 {
 	struct mps_debug_string *string;
@@ -1932,70 +1557,6 @@ mps_parse_debug(struct mps_softc *sc, char *list)
 	}
 
 	return;
-}
-
-struct mps_dumpreq_hdr {
-	uint32_t	smid;
-	uint32_t	state;
-	uint32_t	numframes;
-	uint32_t	deschi;
-	uint32_t	desclo;
-};
-
-static int
-mps_dump_reqs(SYSCTL_HANDLER_ARGS)
-{
-	struct mps_softc *sc;
-	struct mps_chain *chain, *chain1;
-	struct mps_command *cm;
-	struct mps_dumpreq_hdr hdr;
-	struct sbuf *sb;
-	uint32_t smid, state;
-	int i, numreqs, error = 0;
-
-	sc = (struct mps_softc *)arg1;
-
-	if ((error = priv_check(curthread, PRIV_DRIVER)) != 0) {
-		printf("priv check error %d\n", error);
-		return (error);
-	}
-
-	state = MPS_CM_STATE_INQUEUE;
-	smid = 1;
-	numreqs = sc->num_reqs;
-
-	if (req->newptr != NULL)
-		return (EINVAL);
-
-	if (smid == 0 || smid > sc->num_reqs)
-		return (EINVAL);
-	if (numreqs <= 0 || (numreqs + smid > sc->num_reqs))
-		numreqs = sc->num_reqs;
-	sb = sbuf_new_for_sysctl(NULL, NULL, 4096, req);
-
-	/* Best effort, no locking */
-	for (i = smid; i < numreqs; i++) {
-		cm = &sc->commands[i];
-		if ((sc->dump_reqs_alltypes == 0) && (cm->cm_state != state))
-			continue;
-		hdr.smid = i;
-		hdr.state = cm->cm_state;
-		hdr.numframes = 1;
-		hdr.deschi = cm->cm_desc.Words.High;
-		hdr.desclo = cm->cm_desc.Words.Low;
-		TAILQ_FOREACH_SAFE(chain, &cm->cm_chain_list, chain_link,
-		   chain1)
-			hdr.numframes++;
-		sbuf_bcat(sb, &hdr, sizeof(hdr));
-		sbuf_bcat(sb, cm->cm_req, 128);
-		TAILQ_FOREACH_SAFE(chain, &cm->cm_chain_list, chain_link,
-		    chain1)
-			sbuf_bcat(sb, chain->chain, 128);
-	}
-
-	error = sbuf_finish(sb);
-	sbuf_delete(sb);
-	return (error);
 }
 
 int
@@ -2055,17 +1616,7 @@ mps_attach(struct mps_softc *sc)
 		error = EINVAL;
 	}
 
-	/*
-	 * Allow IR to shutdown gracefully when shutdown occurs.
-	 */
-	sc->shutdown_eh = EVENTHANDLER_REGISTER(shutdown_final,
-	    mpssas_ir_shutdown, sc, SHUTDOWN_PRI_DEFAULT);
-
-	if (sc->shutdown_eh == NULL)
-		mps_dprint(sc, MPS_INIT|MPS_ERROR,
-		    "shutdown event registration failed\n");
-
-	mps_setup_sysctl(sc);
+	/* XNU: no IR shutdown handler, no sysctl tree (kext properties) */
 
 	sc->mps_flags |= MPS_FLAGS_ATTACH_DONE;
 	mps_dprint(sc, MPS_INIT, "%s exit error= %d\n", __func__, error);
@@ -2085,9 +1636,7 @@ mps_startup(void *arg)
 	mps_lock(sc);
 	mps_unmask_intr(sc);
 
-	/* initialize device mapping tables */
-	mps_base_static_config_pages(sc);
-	mps_mapping_initialize(sc);
+	/* XNU: no device mapping tables (no config pages, mps_mapping.c) */
 	mpssas_startup(sc);
 	mps_unlock(sc);
 
@@ -2194,8 +1743,6 @@ mps_free(struct mps_softc *sc)
 		return (error);
 	}
 
-	mps_detach_user(sc);
-
 	/* Put the IOC back in the READY state. */
 	mps_lock(sc);
 	if ((error = mps_transition_ready(sc)) != 0) {
@@ -2213,12 +1760,7 @@ mps_free(struct mps_softc *sc)
 	 */
 	mps_iocfacts_free(sc);
 
-	if (sc->sysctl_tree != NULL)
-		sysctl_ctx_free(&sc->sysctl_ctx);
-
-	/* Deregister the shutdown function */
-	if (sc->shutdown_eh != NULL)
-		EVENTHANDLER_DEREGISTER(shutdown_final, sc->shutdown_eh);
+	/* XNU: no sysctl tree, no shutdown handler */
 
 	mtx_destroy(&sc->mps_mtx);
 	mps_dprint(sc, MPS_INIT, "%s exit\n", __func__);
@@ -2434,25 +1976,6 @@ mps_intr_locked(void *data)
 			baddr = le32toh(desc->AddressReply.ReplyFrameAddress);
 			reply = sc->reply_frames +
 				(baddr - ((uint32_t)sc->reply_busaddr));
-			/*
-			 * Make sure the reply we got back is in a valid
-			 * range.  If not, go ahead and panic here, since
-			 * we'll probably panic as soon as we deference the
-			 * reply pointer anyway.
-			 */
-			if ((reply < sc->reply_frames)
-			 || (reply > (sc->reply_frames +
-			     (sc->fqdepth * sc->replyframesz)))) {
-				printf("%s: WARNING: reply %p out of range!\n",
-				       __func__, reply);
-				printf("%s: reply_frames %p, fqdepth %d, "
-				       "frame size %d\n", __func__,
-				       sc->reply_frames, sc->fqdepth,
-				       sc->replyframesz);
-				printf("%s: baddr %#x,\n", __func__, baddr);
-				/* LSI-TODO. See Linux Code for Graceful exit */
-				panic("Reply address out of range");
-			}
 			if (le16toh(desc->AddressReply.SMID) == 0) {
 				if (((MPI2_DEFAULT_REPLY *)reply)->Function ==
 				    MPI2_FUNCTION_DIAG_BUFFER_POST) {
@@ -3021,13 +2544,6 @@ mps_data_cb(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
 	return;
 }
 
-static void
-mps_data_cb2(void *arg, bus_dma_segment_t *segs, int nsegs, bus_size_t mapsize,
-	     int error)
-{
-	mps_data_cb(arg, segs, nsegs, error);
-}
-
 /*
  * This is the routine to enqueue commands ansynchronously.
  * Note that the only error path here is from bus_dmamap_load(), which can
@@ -3040,10 +2556,8 @@ mps_map_command(struct mps_softc *sc, struct mps_command *cm)
 {
 	int error = 0;
 
-	if (cm->cm_flags & MPS_CM_FLAGS_USE_UIO) {
-		error = bus_dmamap_load_uio(sc->buffer_dmat, cm->cm_dmamap,
-		    &cm->cm_uio, mps_data_cb2, cm, 0);
-	} else if (cm->cm_flags & MPS_CM_FLAGS_USE_CCB) {
+	/* XNU: no MPS_CM_FLAGS_USE_UIO (user commands) */
+	if (cm->cm_flags & MPS_CM_FLAGS_USE_CCB) {
 		error = bus_dmamap_load_ccb(sc->buffer_dmat, cm->cm_dmamap,
 		    cm->cm_data, mps_data_cb, cm, 0);
 	} else if ((cm->cm_data != NULL) && (cm->cm_length != 0)) {
@@ -3137,136 +2651,4 @@ mps_wait_command(struct mps_softc *sc, struct mps_command **cmp, int timeout,
 		error = ETIMEDOUT;
 	}
 	return (error);
-}
-
-/*
- * The MPT driver had a verbose interface for config pages.  In this driver,
- * reduce it to much simpler terms, similar to the Linux driver.
- */
-int
-mps_read_config_page(struct mps_softc *sc, struct mps_config_params *params)
-{
-	MPI2_CONFIG_REQUEST *req;
-	struct mps_command *cm;
-	int error;
-
-	if (sc->mps_flags & MPS_FLAGS_BUSY) {
-		return (EBUSY);
-	}
-
-	cm = mps_alloc_command(sc);
-	if (cm == NULL) {
-		return (EBUSY);
-	}
-
-	req = (MPI2_CONFIG_REQUEST *)cm->cm_req;
-	req->Function = MPI2_FUNCTION_CONFIG;
-	req->Action = params->action;
-	req->SGLFlags = 0;
-	req->ChainOffset = 0;
-	req->PageAddress = params->page_address;
-	if (params->hdr.Struct.PageType == MPI2_CONFIG_PAGETYPE_EXTENDED) {
-		MPI2_CONFIG_EXTENDED_PAGE_HEADER *hdr;
-
-		hdr = &params->hdr.Ext;
-		req->ExtPageType = hdr->ExtPageType;
-		req->ExtPageLength = hdr->ExtPageLength;
-		req->Header.PageType = MPI2_CONFIG_PAGETYPE_EXTENDED;
-		req->Header.PageLength = 0; /* Must be set to zero */
-		req->Header.PageNumber = hdr->PageNumber;
-		req->Header.PageVersion = hdr->PageVersion;
-	} else {
-		MPI2_CONFIG_PAGE_HEADER *hdr;
-
-		hdr = &params->hdr.Struct;
-		req->Header.PageType = hdr->PageType;
-		req->Header.PageNumber = hdr->PageNumber;
-		req->Header.PageLength = hdr->PageLength;
-		req->Header.PageVersion = hdr->PageVersion;
-	}
-
-	cm->cm_data = params->buffer;
-	cm->cm_length = params->length;
-	if (cm->cm_data != NULL) {
-		cm->cm_sge = &req->PageBufferSGE;
-		cm->cm_sglsize = sizeof(MPI2_SGE_IO_UNION);
-		cm->cm_flags = MPS_CM_FLAGS_SGE_SIMPLE | MPS_CM_FLAGS_DATAIN;
-	} else
-		cm->cm_sge = NULL;
-	cm->cm_desc.Default.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE;
-
-	cm->cm_complete_data = params;
-	if (params->callback != NULL) {
-		cm->cm_complete = mps_config_complete;
-		return (mps_map_command(sc, cm));
-	} else {
-		error = mps_wait_command(sc, &cm, 0, CAN_SLEEP);
-		if (error) {
-			mps_dprint(sc, MPS_FAULT,
-			    "Error %d reading config page\n", error);
-			if (cm != NULL)
-				mps_free_command(sc, cm);
-			return (error);
-		}
-		mps_config_complete(sc, cm);
-	}
-
-	return (0);
-}
-
-int
-mps_write_config_page(struct mps_softc *sc, struct mps_config_params *params)
-{
-	return (EINVAL);
-}
-
-static void
-mps_config_complete(struct mps_softc *sc, struct mps_command *cm)
-{
-	MPI2_CONFIG_REPLY *reply;
-	struct mps_config_params *params;
-
-	MPS_FUNCTRACE(sc);
-	params = cm->cm_complete_data;
-
-	if (cm->cm_data != NULL) {
-		bus_dmamap_sync(sc->buffer_dmat, cm->cm_dmamap,
-		    BUS_DMASYNC_POSTREAD);
-		bus_dmamap_unload(sc->buffer_dmat, cm->cm_dmamap);
-	}
-
-	/*
-	 * XXX KDM need to do more error recovery?  This results in the
-	 * device in question not getting probed.
-	 */
-	if ((cm->cm_flags & MPS_CM_FLAGS_ERROR_MASK) != 0) {
-		params->status = MPI2_IOCSTATUS_BUSY;
-		goto done;
-	}
-
-	reply = (MPI2_CONFIG_REPLY *)cm->cm_reply;
-	if (reply == NULL) {
-		params->status = MPI2_IOCSTATUS_BUSY;
-		goto done;
-	}
-	params->status = reply->IOCStatus;
-	if (params->hdr.Struct.PageType == MPI2_CONFIG_PAGETYPE_EXTENDED) {
-		params->hdr.Ext.ExtPageType = reply->ExtPageType;
-		params->hdr.Ext.ExtPageLength = reply->ExtPageLength;
-		params->hdr.Ext.PageType = reply->Header.PageType;
-		params->hdr.Ext.PageNumber = reply->Header.PageNumber;
-		params->hdr.Ext.PageVersion = reply->Header.PageVersion;
-	} else {
-		params->hdr.Struct.PageType = reply->Header.PageType;
-		params->hdr.Struct.PageNumber = reply->Header.PageNumber;
-		params->hdr.Struct.PageLength = reply->Header.PageLength;
-		params->hdr.Struct.PageVersion = reply->Header.PageVersion;
-	}
-
-done:
-	mps_free_command(sc, cm);
-	if (params->callback != NULL)
-		params->callback(sc, params);
-
-	return;
 }
