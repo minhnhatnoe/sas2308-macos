@@ -1,0 +1,186 @@
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * mps_xnu.h - additions with no counterpart in FreeBSD sys/dev/mps:
+ * log-level presets on top of the mps_dprint classes, %b replacement,
+ * CDB/sense/ASC/loginfo decoders (FreeBSD gets these from CAM), the
+ * failed-IO rate limiter, statistics, simple target-id mapping (FreeBSD's
+ * mps_mapping.c needs config pages), surprise removal, event acks, and the
+ * driver-specific platform hooks.
+ */
+#ifndef _MPS_XNU_H_
+#define _MPS_XNU_H_
+
+#include "compat/mps_compat.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+struct mps_softc;
+
+/* ---- tunable defaults (mps_get_tunables) ------------------------------- */
+
+#define MPS_XNU_IO_CMDS		64	/* SCSI IOs the OS may have outstanding */
+#define MPS_XNU_INTERNAL_CMDS	8	/* events, acks, port enable, removal */
+#define MPS_XNU_REQ_FRAMES	(MPS_XNU_IO_CMDS + MPS_XNU_INTERNAL_CMDS)
+#define MPS_XNU_PRI_REQ_FRAMES	4	/* task management */
+#define MPS_XNU_EVT_REPLY_FRAMES 32
+#define MPS_XNU_REPLY_FRAMES	(MPS_XNU_REQ_FRAMES + MPS_XNU_PRI_REQ_FRAMES)
+#define MPS_XNU_MAXIO_PAGES	256	/* 1 MiB */
+#define MPS_XNU_REINIT_TRIES	3	/* mps_reinit attempts on nested faults */
+#define MPS_XNU_MAX_TARGETS	64	/* target ids handed out */
+
+/* ---- log levels: presets of the mps_dprint class mask ------------------ */
+
+#define MPS_LEVEL_ERROR		0	/* fault, error */
+#define MPS_LEVEL_WARN		1	/* + recovery */
+#define MPS_LEVEL_INFO		2	/* + info, init, event, mapping (default) */
+#define MPS_LEVEL_DEBUG		3	/* + xinfo, log, user */
+#define MPS_LEVEL_TRACE		4	/* + trace */
+#define MPS_DEBUG_ALL		((1u << 11) - 1)
+
+uint32_t	 mps_xnu_level_mask(int level);
+const char	*mps_xnu_level_name(int level);
+int		 mps_xnu_parse_level(const char *s);
+/* os_log category of a line: its most specific class */
+const char	*mps_xnu_category(uint32_t cls);
+void		 mps_xnu_describe_debug(uint32_t mask, char *buf, size_t len);
+
+/* ---- the kernel printf %b conversion -------------------------------------- */
+
+const char	*mps_xnu_bits(char *buf, size_t len, uint32_t v, const char *bits);
+/* printf("%b", v, bits) -> printf("%s", MPS_XNU_BITS(v, bits)); C only */
+#define MPS_XNU_BITS(v, bits)	mps_xnu_bits((char[160]){ 0 }, 160, (v), (bits))
+
+/* ---- decoders (FreeBSD: CAM scsi_all.c) ------------------------------------- */
+
+const char	*mps_xnu_ioc_state_str(uint32_t doorbell);
+const char	*mps_xnu_tm_type_str(uint8_t type);
+const char	*mps_xnu_sense_key_str(uint8_t key);
+const char	*mps_xnu_cdb_str(uint8_t opcode);
+const char	*mps_xnu_asc_str(uint8_t asc, uint8_t ascq);	/* NULL: unknown */
+int		 mps_xnu_parse_sense(const uint8_t *sense, uint32_t len,
+		    uint8_t *key, uint8_t *asc, uint8_t *ascq);
+void		 mps_xnu_loginfo_str(uint32_t loginfo, char *buf, size_t len);
+void		 mps_xnu_lun_str(const uint8_t lun[8], char *buf, size_t len);
+int		 mps_xnu_cdb_lba(const uint8_t *cdb, uint8_t cdblen,
+		    uint64_t *lba, uint32_t *blocks);
+
+/* ---- failed-IO rate limiter --------------------------------------------- */
+
+#define MPS_XNU_RL_SLOTS	8	/* per target: handle % 8 */
+#define MPS_XNU_RL_BURST	5	/* lines per window */
+#define MPS_XNU_RL_WINDOW_MS	10000
+
+struct mps_xnu_ratelimit {
+	uint64_t	window_start_ms;
+	uint32_t	in_window;
+	uint32_t	suppressed;
+};
+
+/* 1: log the line (*suppressed: lines dropped in the previous window) */
+int	mps_xnu_ratelimit_allow(struct mps_xnu_ratelimit *rl, uint64_t now_ms,
+	    uint32_t burst, uint32_t window_ms, uint32_t *suppressed);
+/* 1: the window closed with lines suppressed; print the summary */
+int	mps_xnu_ratelimit_flush(struct mps_xnu_ratelimit *rl, uint64_t now_ms,
+	    uint32_t window_ms, uint32_t *suppressed);
+
+/* ---- statistics (M4 MpsStats) -------------------------------------------- */
+
+struct mps_xnu_stats {
+	/* IO */
+	uint64_t	ios;		/* SCSI IOs completed (any status) */
+	uint64_t	read_bytes, write_bytes;
+	uint64_t	lat_sum_us;	/* post -> completion */
+	uint32_t	lat_max_us;
+	uint32_t	held;		/* IOs requeued/held during recovery */
+	uint32_t	held_timeouts;
+	/* errors by class */
+	uint32_t	err_check_condition;
+	uint32_t	err_scsi_status;
+	uint32_t	err_terminated;
+	uint32_t	err_device_gone;
+	uint32_t	err_transport;
+	uint32_t	io_timeouts;
+	/* task management */
+	uint32_t	tm_sent[16];	/* by MPI2 TaskType */
+	uint32_t	tm_timeouts;
+	uint32_t	tm_late_replies;
+	uint32_t	tm_failed;
+	uint32_t	aborts, lun_resets, target_resets;
+	uint32_t	recoveries;
+	uint32_t	recovered_abort, recovered_lun_reset,
+			recovered_target_reset;
+	/* controller */
+	uint32_t	faults;
+	uint32_t	diag_resets;
+	uint32_t	reinits;
+	uint32_t	reinit_failures;
+	uint32_t	reinit_max_ms;
+	/* replies / events */
+	uint32_t	stale_replies;	/* reply for an idle SMID */
+	uint32_t	bad_replies;	/* malformed descriptor dropped */
+	uint32_t	events;
+	uint32_t	event_ack_dropped;
+	/* chain pool (from sc->chain_alloc_fail / chain_free_lowwater) */
+	uint32_t	chain_alloc_fail;
+	uint32_t	chain_free_low;
+};
+
+/* ---- per-controller XNU state: struct mps_softc member `xnu' ------------- */
+
+struct mps_xnu {
+	struct mps_xnu_stats	 stats;
+	struct mps_xnu_ratelimit ioerr_rl[MPS_XNU_RL_SLOTS];
+	uint16_t		 ioerr_handle[MPS_XNU_RL_SLOTS];
+	uint16_t		 ioerr_tid[MPS_XNU_RL_SLOTS];
+	int			 reinit_pending;	/* mps_reinit_task queued */
+	int			 disabled;		/* mps_xnu_disable() ran */
+	uint16_t		 tid_handle[MPS_XNU_MAX_TARGETS]; /* last handle */
+	uint64_t		 reinit_start_us;
+	int			 gone_logged;
+};
+
+/* target id for a newly announced device handle (MPS_MAP_BAD_ID: none) */
+u_int	mps_xnu_get_tid(struct mps_softc *sc, uint16_t handle);
+/* 1 if target `tid' is attached and not being removed (*handle set) */
+int	mps_xnu_target_present(struct mps_softc *sc, u_int tid,
+	    uint16_t *handle);
+/* all-ones register read: the controller is gone (surprise removal) */
+void	mps_xnu_gone(struct mps_softc *sc, uint32_t offset);
+/* EVENT_ACK for an event with AckRequired set */
+void	mps_xnu_event_ack(struct mps_softc *sc, void *event_reply);
+/* every reinit attempt failed: disable the controller (FreeBSD panics) */
+void	mps_xnu_disable(struct mps_softc *sc, int error);
+/* copy sc->chain_* / held counters into sc->xnu.stats */
+void	mps_xnu_stats_update(struct mps_softc *sc);
+/* queue sc->mps_reinit_task (mps_reinit sleeps: never called inline) */
+void	mps_xnu_request_reinit(struct mps_softc *sc, const char *why);
+/* M2-M4: doorbell FAULT check when an interrupt finds the queue empty */
+void	mps_xnu_check_fault(struct mps_softc *sc);
+/* 1 s from mps_periodic: rate-limit summaries, statistics */
+void	mps_xnu_periodic(struct mps_softc *sc);
+/* SCSI IO posted / completed: trace lines, statistics, failed-IO line */
+struct mps_command;
+union ccb;
+void	mps_xnu_io_start(struct mps_softc *sc, struct mps_command *cm);
+void	mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm,
+	    union ccb *ccb, void *scsi_io_reply);
+/* a TM reply arrived (reply != NULL): recovery line, statistics */
+void	mps_xnu_tm_done(struct mps_softc *sc, struct mps_command *tm);
+/* a reinit finished: duration statistics */
+void	mps_xnu_reinit_done(struct mps_softc *sc);
+
+/* ---- driver-specific platform hooks (mps_pci.c counterparts) ------------- */
+
+int	mps_os_setup_interrupts(device_t dev);	/* after the queues exist */
+void	mps_os_free_interrupts(device_t dev);
+int	mps_os_pci_restore(device_t dev);	/* after a diag reset */
+void	mps_os_controller_dead(device_t dev);	/* stop bus mastering */
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* !_MPS_XNU_H_ */
