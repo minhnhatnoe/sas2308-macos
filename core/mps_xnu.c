@@ -457,6 +457,19 @@ mps_xnu_ratelimit_flush(struct mps_xnu_ratelimit *rl, uint64_t now_ms,
 /* ---- target ids ----------------------------------------------------------- */
 
 /*
+ * MPSSAS_TARGET_XNU_REMOVE_WAIT (mps_sas.h) must be a bit of its own in the
+ * uint8_t flags: FreeBSD uses bits 0-6, bit 6 is MPS_TARGET_IS_SATA_SSD (D1).
+ */
+_Static_assert(MPSSAS_TARGET_XNU_REMOVE_WAIT <
+    (1 << (8 * sizeof(((struct mpssas_target *)0)->flags))),
+    "REMOVE_WAIT does not fit mpssas_target.flags");
+_Static_assert((MPSSAS_TARGET_XNU_REMOVE_WAIT & (MPSSAS_TARGET_INABORT |
+    MPSSAS_TARGET_INRESET | MPSSAS_TARGET_INDIAGRESET |
+    MPSSAS_TARGET_INREMOVAL | MPS_TARGET_FLAGS_RAID_COMPONENT |
+    MPS_TARGET_FLAGS_VOLUME | MPS_TARGET_IS_SATA_SSD)) == 0,
+    "REMOVE_WAIT overlaps another target flag");
+
+/*
  * Target ids (FreeBSD: mps_mapping.c, keyed on the SAS address, which
  * needs config pages).  Here: the id that last had this device identity
  * (`ident': SAS address, IDENTIFY-derived for SATA) comes back to it, else

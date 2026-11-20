@@ -489,6 +489,7 @@ static void RecoveredSenseTests();
 static void CheckConditionLogTests(Rig &g);
 static void SleepTests();
 static void ReviewTests();
+static void DeviationTests();
 
 int main()
 {
@@ -496,6 +497,7 @@ int main()
     gHost.verbose = getenv("MOCK_VERBOSE") != nullptr;
     if (getenv("MOCK_ONLY")) {              /* one review scenario alone */
         ReviewTests();
+        DeviationTests();
         printf("PASS (%s)\n", getenv("MOCK_ONLY"));
         return 0;
     }
@@ -1039,6 +1041,7 @@ int main()
     RecoveredSenseTests();
     SleepTests();
     ReviewTests();
+    DeviationTests();
     printf("PASS (%llu SGLs walked, %zu log lines checked)\n", (unsigned long long)ioc.sglChecked, gHost.log.size());
     return 0;
 }
@@ -2563,5 +2566,37 @@ static void ReviewTests()
         HostAdvance(2000);
         const target_id_t t2 = g.Tid(0x0009);
         CHECK(!(t2 == t && Gen(g, t2) == gen));
+    }
+}
+
+/* ---- FreeBSD deviation fixes (docs/reviews/2026-11-freebsd-deviations.md) ----
+ * Each scenario failed on the code before its fix; MOCK_ONLY=D<n> runs one.
+ */
+static void DeviationTests()
+{
+    if (Want("D1")) {
+        /* a SATA SSD (IDENTIFY word 217 = 1) next to a SAS disk; any TM freed */
+        Rig g({0x0009, 0x000B}, [](Rig &r) {
+            r.ioc.sataSerial[0x000B] = "S6SSD001";
+            r.ioc.sataSsd.insert(0x000B);
+        });
+        MockIocModel &m = g.ioc;
+        const target_id_t ts = g.Tid(0x000B);
+        CHECK(g.Targ(0x000B)->flags & MPS_TARGET_IS_SATA_SSD);
+        const int removes = m.removeDevices;
+        const size_t tms = m.tms.size();
+        Io *t = g.TmSync(kLunT, g.Tid(0x0009), 0);       /* an OS TM on the other disk */
+        CHECK(t->status == CAM_REQ_CMP);
+        HostRunPending();
+        g.Pump();
+        CHECK(m.removeDevices == removes);               /* the SSD is not removed */
+        for (size_t i = tms; i < m.tms.size(); i++)
+            CHECK(m.tms[i].dev != 0x000B);               /* nor reset */
+        CHECK(g.Present(ts, 0x000B));
+        CHECK(g.Targ(0x000B)->flags & MPS_TARGET_IS_SATA_SSD);
+        Io *r = g.Read(0x000B, 0, 2);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
     }
 }

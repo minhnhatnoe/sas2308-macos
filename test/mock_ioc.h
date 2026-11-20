@@ -111,6 +111,7 @@ struct MockIocModel {
     int identifies = 0;
     bool dropIdentify = false;                 /* lose IDENTIFY replies */
     std::set<uint16_t> identifyFail;           /* IDENTIFY of these handles fails */
+    std::set<uint16_t> sataSsd;                /* IDENTIFY word 217 = 1 (non-rotating) */
     bool murIgnored = false;                   /* MUR never stops the IOC (wedged) */
     uint64_t deadUntilUs = 0;                  /* registers read all-ones until then */
     /*
@@ -640,6 +641,7 @@ struct MockIocModel {
             put(10, 20, it->second);
             put(27, 40, "ST18000NM000J-2TV103");
             id[217 * 2] = 0x20; id[217 * 2 + 1] = 0x1C;          /* 7200 rpm */
+            if (sataSsd.count(q->DevHandle)) { id[217 * 2] = 1; id[217 * 2 + 1] = 0; }
             memcpy(Ptr(((uint64_t)sge.Address.High << 32) | sge.Address.Low, 512), id, 512);
         }
         AddressReply(smid, &r, sizeof(r));
