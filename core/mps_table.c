@@ -71,6 +71,9 @@ struct mps_table_lookup mps_event_names[] = {
 	{"SasPhyCounter",		0x22},
 	{"GpioInterrupt",		0x23},
 	{"HbdPhyEvent",			0x24},
+	/* XNU: our own work items on the event queue (mps_xnu.h), not MPI2 */
+	{"XnuReAdd",			MPS_XNU_EVENT_READD},
+	{"XnuTemperaturePoll",		MPS_XNU_EVENT_TEMP},
 	{NULL, 0},
 	{"Unknown Event", 0}
 };

@@ -182,10 +182,18 @@ static void
 mpssas_fw_work(struct mps_softc *sc, struct mps_fw_event_work *fw_event)
 {
 	struct mpssas_softc *sassc;
+	/*
+	 * XNU: 0xFF01/0xFF02 are not MPI2 events (MPI2 codes end at 0x7F) but
+	 * our own work items (MPS_XNU_EVENT_READD, MPS_XNU_EVENT_TEMP every
+	 * 30 s): logged at xinfo, not as IOC events.
+	 */
+	const int evlvl = (fw_event->event == MPS_XNU_EVENT_READD ||
+	    fw_event->event == MPS_XNU_EVENT_TEMP) ? MPS_XINFO : MPS_EVENT;
 	sassc = sc->sassc;
 
-	mps_dprint(sc, MPS_EVENT, "(%d)->(%s) Working on  Event: [%x]\n",
-			event_count++,__func__,fw_event->event);
+	mps_dprint(sc, evlvl, "(%d)->(%s) Working on  Event: [%x] %s\n",
+			event_count++,__func__,fw_event->event,
+			mps_describe_table(mps_event_names, fw_event->event));
 	switch (fw_event->event) {
 	case MPI2_EVENT_SAS_TOPOLOGY_CHANGE_LIST: 
 	{
@@ -323,7 +331,7 @@ mpssas_fw_work(struct mps_softc *sc, struct mps_fw_event_work *fw_event)
 		    fw_event->event);
 		break;
 	}
-	mps_dprint(sc, MPS_EVENT, "(%d)->(%s) Event Free: [%x]\n",event_count,__func__, fw_event->event);
+	mps_dprint(sc, evlvl, "(%d)->(%s) Event Free: [%x]\n",event_count,__func__, fw_event->event);
 	mpssas_fw_event_free(sc, fw_event);
 }
 

@@ -1825,6 +1825,9 @@ static void TemperatureTests()
         CHECK(m.iounit7Reads == 1);
         HostAdvance(11000);
         CHECK(m.iounit7Reads == 2 && gHost.Count(mark, "polled every 30 s") == 1);
+        /* the poll is our work item 0xFF02 on the event queue, not an IOC event: xinfo, named */
+        CHECK(LogClass(mark, "Working on  Event: [ff02] XnuTemperaturePoll") == MPS_XINFO);
+        CHECK(LogClass(mark, "Event Free: [ff02]") == MPS_XINFO);
 
         printf("temperature: warning at 85 C once, re-armed below 80 C\n");
         mark = LogMark();
