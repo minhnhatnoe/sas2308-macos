@@ -262,9 +262,12 @@ to `core/mps_xnu_stats.h` (only `<stdint.h>`) so the class can read a snapshot.
 - Completion mapping: `CAM_REQ_CMP` / `CAM_SCSI_STATUS_ERROR` → SCSI status byte, transfer count
   (`dxfer_len − resid`), autosense when `CAM_AUTOSNS_VALID`; `CAM_DEV_NOT_THERE`/`SEL_TIMEOUT`/
   `TID_INVALID`/`PATH_INVALID` → `DeviceNotPresent`; `CAM_CMD_TIMEOUT` → `ProtocolTimeoutOccurred`;
-  everything else (`CAM_SCSI_BUS_RESET` from a reinit, `CAM_REQ_ABORTED` from an OS TM, transport
-  errors) → `DeliveryFailure` (retryable); all non-status results with
-  `SERVICE_DELIVERY_OR_TARGET_FAILURE`.
+  `CAM_AUTOSENSE_FAIL` → CHECK CONDITION without sense (cam_periph_error: EIO, no retry; D20a);
+  everything else (`CAM_SCSI_BUS_RESET` after the 4th reset in a row, `CAM_REQ_ABORTED` from an
+  OS TM, transport errors) → `DeliveryFailure` (retryable); all non-status results with
+  `SERVICE_DELIVERY_OR_TARGET_FAILURE`. Since batch A (see "FreeBSD deviation fixes, batch A"):
+  IO killed by our reset is re-sent by the core (D20b), the UNIT ATTENTION after our reset is
+  re-sent by the kext (D3), a firmware DEVICE_NOT_THERE also rescans the target (D20c).
 - `HandleTimeout` → `mps_xnu_ccb_timeout` (held: completed at once; posted:
   `mpssas_scsiio_timeout`). The six TM methods → an `XPT_XNU_TM` ccb; the caller waits with mps_mtx
   dropped (`msleep` 10 ms steps) and pumps the reply queue (`mps_intr_locked`) between steps, as M4
@@ -394,8 +397,9 @@ The family controller has no PM (only its target nubs: `IOSCSIParallelInterfaceD
   pumping the reply queue (outstanding commands, a pending/running reinit, queued firmware
   events); then stop `mps_periodic`, set `MPS_FLAGS_DIAGRESET`, mask interrupts, message unit
   reset (`mps_transition_ready`), complete what the IOC still owned like a diag reset
-  (`mpssas_xnu_suspend` → `mpssas_complete_all_commands`: IO `CAM_SCSI_BUS_RESET` → kext
-  `DeliveryFailure`, retried by the upper layers, the retry is held; TMs `CAM_REQ_ABORTED`), set
+  (`mpssas_xnu_suspend` → `mpssas_complete_all_commands`: IO `CAM_REQUEUE_REQ`, held and re-sent
+  after the wake, at most 3 times per ccb (D20b; before: `CAM_SCSI_BUS_RESET` → `DeliveryFailure`
+  for READ/WRITE); TMs `CAM_REQ_ABORTED`), set
   `MPS_FLAGS_XNU_SUSPENDED`. While suspended `mps_regread`/`mps_regwrite` refuse every register
   access (counted `suspended_access`, logged once: a bug indicator), `MPS_XNU_ABANDON` is true, so
   no wait loop touches the (possibly powered-off) device. The kext then disables the interrupt
@@ -421,11 +425,15 @@ stopped (`setPowerState(on)` does not resume after a shutdown). FreeBSD has only
 suspended controller (registers left alone, held IO failed `CAM_DEV_NOT_THERE`).
 
 ### Termination
-- `willTerminate` (before `super`): `mps_kext_check_present` reads the doorbell, so a Thunderbolt
-  surprise removal (all-ones) is noticed now and the core fails its IO at once
-  (`mps_xnu_gone` → reinit task → `mps_xnu_disable`); `fTargets.Stop()` (no new hotplug work);
-  `QuiesceHotplug` waits for a `CreateTargetForID` in progress (its probe IO still completes, or
-  fails fast when gone), so the family sees every created nub. Then
+- `willTerminate` (before `super`) → `SAS2308Glue::WillTerminate`: `mps_kext_check_present` reads
+  the doorbell, so a Thunderbolt surprise removal (all-ones) is noticed now. Noticing only queues
+  the reinit (`mps_xnu_gone`), so `mps_kext_disable_now` waits for a running reinit (every wait of
+  it checks GONE) and calls `mps_xnu_disable` synchronously: every posted, held and TM ccb completes
+  `CAM_DEV_NOT_THERE`, and the completions are delivered before any nub goes (FreeBSD: `mps_free`
+  completes every ccb before the SIM and its periphs go); then every target gets the M7 flush and
+  drain (D5; before, the IO completed later on destroyed nubs). `fTargets.Stop()` (no new hotplug
+  work); `QuiesceHotplug` waits for a `CreateTargetForID` in progress (its probe IO still completes,
+  or fails fast when gone), so the family sees every created nub. Then
   `IOSCSIParallelInterfaceController::willTerminate` (stops new requests, destroys IDs
   `0 .. fHighestSupportedDeviceID − 1`), then `TerminateTargets` destroys what that loop missed:
   ID 63 (`SAS2308TargetTable::Leftovers`).
@@ -614,7 +622,7 @@ glue of the first commit, `KGLUE_ONLY=<id>`) and passes after.
 |---|---|---|
 | C1 | `ProcessParallelTask` calls `SetTimeoutForTask(task, 0)` after taking a slot, before the submit; from then on every outcome completes through `CompleteParallelTask` (the only call that removes the timer entry). The core's FreeBSD callout is armed as a backstop at task timeout + 10 s (`MPSK_BACKSTOP_MS`) | glue `C1` (held IO, timer fires, abort, `ProtocolTimeoutOccurred`), `C1-backstop` (family timer lost) |
 | L1 | refusals inside `xpt_action` are queued on the done queue and delivered by the done thread call (no family re-entry from the submit path): `DeviceNotPresent` / `FUNCTION_REJECTED` survive | glue `L1` |
-| C2 | FreeBSD's `mpssas_get_sas_address_for_sata_disk` / `mpssas_get_sata_identify` / `mpssas_ata_id_timeout` ported (IDENTIFY into the lent config page buffer instead of malloc); `mps_xnu_get_tid(sc, handle, ident)` keyed on the identity like `mps_mapping_get_tid` (SAS address, IDENTIFY hash for SATA; unknown = new disk); per-id generation (`mps_xnu_target_gen`) passed with every async event; the target table never keeps a nub across a generation change (destroy, then create, cursor stays on the id) | core `C2-swap`, `C2-permute`, `C2-sas`; glue `C2`; `kext_targets_test` generation case |
+| C2 | FreeBSD's `mpssas_get_sas_address_for_sata_disk` / `mpssas_get_sata_identify` / `mpssas_ata_id_timeout` ported (IDENTIFY into the lent config page buffer instead of malloc); `mps_xnu_get_tid(sc, handle, ident)` keyed on the identity like `mps_mapping_get_tid` (SAS address, IDENTIFY hash for SATA; unknown = new disk, except in a reinit's rediscovery since D8); per-id generation (`mps_xnu_target_gen`) passed with every async event; the target table never keeps a nub across a generation change (destroy, then create, cursor stays on the id) | core `C2-swap`, `C2-permute`, `C2-sas`; glue `C2`; `kext_targets_test` generation case |
 | H1 | hotplug thread call: `fHotplugActive`/`fHotplugAgain` (the compat taskqueue's `tq_active` pattern): a re-entered invocation makes the running one scan again | glue `H1` (removal during `CreateTargetForID`'s probe; the model's thread call runs the second invocation concurrently) |
 | H2 | `mps_xnu_request_reinit` drops requests while `MPS_FLAGS_DIAGRESET` is set and not suspending (FreeBSD's "reset already in progress" covers them); `mps_reinit_task` returns when `reinit_pending` is 0 (an in-line reinit ran) | core `H2-inline`, `H2-task` (one diag reset, flag 0, IO flows) |
 | H3 | `dmb oshst` before every MMIO store, `dmb oshld` after every MMIO load (`mps_os_bus_write_4/read_4`, arm64 only) | none possible on the host (FINAL: not observable); Mac build only |
@@ -624,8 +632,8 @@ glue of the first commit, `KGLUE_ONLY=<id>`) and passes after.
 | M2 | `mps_wait_command` returns ENXIO when `SHUTDOWN`, `XNU_GONE` or `XNU_SUSPENDED` | core `M2` (detach with three adds queued: no 60 s waits) |
 | M3 | `mps_iocfacts_allocate` no longer calls `mps_free` (once, in `mps_attach`); `mps_free` idempotent (`xnu.freed`); `mps_iocfacts_free` forgets what it freed; TF6 also found and fixed: the chain-load failure path freed the chain memory twice, unchecked `M_WAITOK` results (commands, event handles, sassc, targets), unchecked taskqueue create/start, `panic` on a failed dmamap create, `bus_dmamap_load` allocating for 1-segment loads whose callbacks read `segs[0]` (L14), the intrhook left on the global list after a failed attach | core `M3` (every one of 108 allocations of `mps_attach` failed in turn under ASan) |
 | M4 | if the IOC does not stop (suspend, `mps_free`): `mps_os_controller_dead` before anything completes; both stops time-bounded (10 s) | core `M4` |
-| M6 | IO killed by our own reset that is not READ/WRITE (SYNCHRONIZE CACHE, pass-through) is completed `CAM_REQUEUE_REQ` (held, re-sent after the reset), at most 3 times per ccb (`ccb_h.xnu_resets`) | core `M6` |
-| M7 | before `DestroyTargetForID` the hotplug thread fails the target's held ccbs (`cam_xnu_flush_held_target`, `CAM_DEV_NOT_THERE`), waits ≤ 10 s for its posted IO (`mps_kext_target_drain`), delivers, then destroys | glue `M7` (fake family asserts no completion after destroy) |
+| M6 | IO killed by our own reset that is not READ/WRITE (SYNCHRONIZE CACHE, pass-through) is completed `CAM_REQUEUE_REQ` (held, re-sent after the reset), at most 3 times per ccb (`ccb_h.xnu_resets`); since D20b READ/WRITE too | core `M6` |
+| M7 | before `DestroyTargetForID` the hotplug thread fails the target's held ccbs (`cam_xnu_flush_held_target`, `CAM_DEV_NOT_THERE`), waits ≤ 10 s for its posted IO (`mps_kext_target_drain`), delivers, then destroys; since D14 no time limit (a reinit after 60 s) | glue `M7` (fake family asserts no completion after destroy) |
 | M8 | resume tolerates an all-ones doorbell for up to 2 s (raw reads, 100 ms apart) before `mps_periodic` may declare the controller gone | core `M8` |
 
 ### Test fidelity (FINAL section 4)
@@ -725,6 +733,24 @@ TF9 beyond H4/M2. H3 is only verifiable on hardware. The kext is compiled on the
   commands"): random 4K read 1748 / 1742 / 1738 IOPS at QD 32 / 64 / 128 per drive (896
   commands outstanding at the card), latency doubling with each step; sequential read 1941 MB/s;
   verify 0 mismatches; 0 timeouts, TMs, reinits, held or rejected tasks. Merged to master.
+
+## FreeBSD deviation fixes, batch A (branch fix-batch-A, 2026-11-20)
+The likely bugs and data-safety items of `docs/reviews/2026-11-freebsd-deviations.md` (final fixes
+in `docs/reviews/2026-11-decisions.md`). Each host test failed on the code before its fix
+(`MOCK_ONLY=<id>` / `KGLUE_ONLY=<id>` runs one).
+
+| id | fix | host test |
+|---|---|---|
+| D1 | `MPSSAS_TARGET_XNU_REMOVE_WAIT` is bit 7 (was bit 6 = FreeBSD's `MPS_TARGET_IS_SATA_SSD`: the first freed TM removed a SATA SSD); static asserts: fits the `uint8_t` flags, overlaps no flag | core `D1` (SSD in the mock, TM freed) |
+| D2 | FreeBSD's loop at the end of `mpssas_add_device` restored verbatim: a SATA PASSTHROUGH flagged `SATA_ID_TIMEOUT` gets a TARGET_RESET, the IOC returns it, `mpssas_ata_id_complete` frees the config page buffer (before: held until a reinit, every page read failed) | core `D2` |
+| D3 | CAM da's RETRY_UA in the kext (`mps_kext_arm_ua`/`mps_kext_retry_ua`): AC_BUS_RESET arms every target, AC_SENT_BDR a target or LUN (with its generation); CHECK CONDITION 6/29/xx on an armed LUN is re-sent once per ccb, uncounted by SAM; the first GOOD from the LUN disarms it. SAM sends SYNCHRONIZE CACHE once and absorbs 29/00 only at power-on. da retries any key 6; we match ASC 0x29 only. Counter "Unit attentions after reset retried" | glue `D3` (SYNCHRONIZE CACHE GOOD after a reinit and a target reset; a UA without a reset of ours reaches the OS) |
+| D5 | termination of a removed controller: `mps_kext_disable_now` before the family destroys the nubs ("Termination" above) | glue `D5` |
+| D8 | a SATA IDENTIFY that fails in a reinit's rediscovery (spin-up after a wake) no longer makes a new disk: if the same handle had a known identity before the reset (`mps_xnu_reinit_targets`, `mps_xnu_ident_keep`), the id keeps it and its generation, its devq is frozen and a re-IDENTIFY runs on the re-add schedule (`MPS_XNU_EVENT_READD`, `reident` slot, 8 tries 1-5 s apart). Same disk: IO released. Different disk or no answer: held IO `CAM_DEV_NOT_THERE`, new generation, the OS replaces the nub. The made-up SAS address of a direct-attached SATA disk names the bay, not the disk (review C2), so it is not trusted. Any identity change also fails the id's held IO, and `mps_kext_submit` refuses (`DEV_NOT_THERE`) a task whose nub generation (`SAS2308TargetTable::Gen`) is not the core's: no IO of the old disk reaches a new one | core `D8`, `D8-swap`, `D8-giveup`; glue `D8` |
+| D14 | the hotplug destroy waits for the target's posted IO with no time limit (CAM frees a periph when its last ccb returns); posted IO is never completed by us (M4 rule); after 60 s (`kDrainReinitMs`) a reinit is requested and the wait goes on. FreeBSD arms no timeout for the removal TM | glue `D14` (TM answers after 20 s), `D14-cap` (never: reinit at 60 s) |
+| D20 | (a) `CAM_AUTOSENSE_FAIL` → CHECK CONDITION without sense, not retried; (b) READ/WRITE killed by our reset re-sent like the rest (M6), ≤ 3 times per ccb, uncounted by SAM; (c) a firmware DEVICE_NOT_THERE rescans the target (cam_periph_error's AC_LOST_DEVICE); (d) kept | glue `D20a`; core `D20b`, `D20c` |
+
+Comments for KEEP items in the files touched: D28 (EEDP), D43 (drain pump), D46 (no ORDERED tags).
+Hardware tests and their results: `docs/reviews/2026-11-freebsd-deviations.md` (Status).
 
 ## What is implemented (M1 – M4)
 > **Names after M5.** The tables and sections below are the M1–M4 history and use the names of

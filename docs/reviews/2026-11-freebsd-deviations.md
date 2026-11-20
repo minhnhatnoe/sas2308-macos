@@ -41,6 +41,27 @@ Comment-only changes (no behaviour change) ride with whichever batch touches the
 Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace) after batch B; D75
 (kIOMapPostedWrite A/B) after batch D; D29 decided by batch D's counter.
 
+## Status
+
+| Batch | Item | Status | Commit | Host test | Hardware |
+|---|---|---|---|---|---|
+| A | D1 | done | 2665587 | core `D1` | regression only (no SSD) |
+| A | D2 | done | f865cc8 | core `D2` | regression only |
+| A | D5 | done | 5870a52 | glue `D5` | still to run (dock unplug) |
+| A | D3 | done | bb0b43e | glue `D3` | see "Batch A hardware results" |
+| A | D8 | done | 1297470 | core `D8`, `D8-swap`, `D8-giveup`; glue `D8` | see "Batch A hardware results" |
+| A | D14 | done | 705347e | glue `D14`, `D14-cap` | still to run (disk pull) |
+| A | D20 | done | 3715d37 | glue `D20a`; core `D20b`, `D20c` | regression only |
+| A | KEEP comments D28, D43, D46 | done | 51b85a5 | none (comments) | |
+
+### Batch A hardware results
+
+(filled in after the install)
+
+### Hardware tests still to run
+
+(filled in after the install)
+
 ## Ranked table: changes (CHANGE)
 
 The 46 entries whose resolution includes a code change (D49(b) is listed below the table; D17's cosmetic compat change is included as row 18). Cat = preliminary verdict from the scan (U unnecessary, J justification missing/wrong, Q unclear). Risk H/M/L.
