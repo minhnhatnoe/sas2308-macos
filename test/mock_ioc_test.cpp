@@ -2263,6 +2263,21 @@ static void ReviewTests()
         CHECK(failed > 10);
     }
 
+    if (Want("M8")) {
+        /* the tunnel passes MMIO only 500 ms after the power-on: not a surprise removal */
+        Rig g;
+        MockIocModel &m = g.ioc;
+        CHECK(Suspend(g, 100) == 0);
+        m.deadUntilUs = m.nowUs + 500000;
+        CHECK(Resume(g) == 0);
+        HostAdvance(3000);
+        CHECK(!g.Gone() && g.Present(g.Tid(0x0009), 0x0009));
+        Io *r = g.Read(0x0009, 0, 5);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->status == CAM_REQ_CMP);
+    }
+
     if (Want("M1")) {
         /* system sleep while a reinit sleeps in its diag reset: not disabled, works after wake */
         Rig g;

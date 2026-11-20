@@ -1115,6 +1115,8 @@ mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms, int shutdown)
 int
 mps_xnu_resume(struct mps_softc *sc)
 {
+	uint32_t db;
+	int i;
 
 	mtx_assert(&sc->mps_mtx, MA_OWNED);
 	if (!sc->xnu.suspending || sc->xnu.shutdown)
@@ -1126,6 +1128,22 @@ mps_xnu_resume(struct mps_softc *sc)
 	    "controller\n");
 	if (sc->mps_flags & MPS_FLAGS_SHUTDOWN)
 		return (ENXIO);
+	/*
+	 * The Thunderbolt tunnel may not pass MMIO yet when the PCI device is
+	 * powered on: an all-ones doorbell is tolerated for a while (raw
+	 * reads, no mps_xnu_gone) before mps_periodic decides.
+	 */
+	for (i = 0; i < MPS_XNU_RESUME_TRIES; i++) {
+		db = bus_space_read_4(sc->mps_btag, sc->mps_bhandle,
+		    MPI2_DOORBELL_OFFSET);
+		if (db != 0xffffffff)
+			break;
+		if (i == 0)
+			mps_dprint(sc, MPS_INIT|MPS_INFO, "resume: registers "
+			    "read all-ones, waiting for the link\n");
+		msleep(&sc->xnu.resume_us, &sc->mps_mtx, 0, "mpsres",
+		    hz / 10);
+	}
 	mps_periodic(sc);
 	mps_xnu_request_reinit(sc, "resume");
 	return (0);

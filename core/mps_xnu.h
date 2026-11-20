@@ -40,6 +40,7 @@ struct mps_softc;
 #define MPS_XNU_SHUTDOWN_STOP_MS 2000	/* then stop the IOC within (no diag reset) */
 #define MPS_XNU_SLEEP_STOP_MS	10000	/* sleep / detach: stop the IOC within */
 #define MPS_XNU_REINIT_STOP_MS	2000	/* suspend waits for a running reinit */
+#define MPS_XNU_RESUME_TRIES	20	/* all-ones tolerated 20 x 100 ms after wake */
 
 /* ---- log levels: presets of the mps_dprint class mask ------------------ */
 
@@ -127,6 +128,7 @@ struct mps_xnu {
 	int			 shutdown;		/* system shutdown: fail IO, never hold it */
 	int			 stop_fast;		/* short MUR ack wait, no diag reset */
 	uint64_t		 stop_deadline_us;	/* mps_transition_ready gives up after */
+	uint64_t		 resume_us;		/* all-ones tolerated briefly after resume */
 	/* SAS Device Page 0 retries: in-line backoff, then later re-adds */
 	int			 cfg_retry;		/* msleep channel */
 	struct mps_xnu_readd {

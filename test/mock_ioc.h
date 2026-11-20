@@ -87,6 +87,7 @@ struct MockIocModel {
     uint16_t lastConfigHandle = 0;
     bool dropConfigOnce = false;               /* lose the next config reply (wait timeout)*/
     bool murIgnored = false;                   /* MUR never stops the IOC (wedged) */
+    uint64_t deadUntilUs = 0;                  /* registers read all-ones until then */
     /*
      * Hot-plug of several drives (SAS2308 IT, direct attach: one topology
      * list per PHY): the next list is posted when a config page read
@@ -138,7 +139,7 @@ struct MockIocModel {
 
     /* ---- the IOC's side of the bus (the host's MpsHw / mps_os_* forward here) ---- */
     uint32_t RegRead(uint32_t off) {
-        if (dead) return 0xFFFFFFFF;
+        if (dead || nowUs < deadUntilUs) return 0xFFFFFFFF;
         switch (off) {
         case MPI2_DOORBELL_OFFSET: return state | (used ? MPI2_DOORBELL_USED : 0) | dbData;
         case MPI2_HOST_INTERRUPT_STATUS_OFFSET: return his;
