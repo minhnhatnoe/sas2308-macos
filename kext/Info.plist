@@ -48,7 +48,10 @@
 			<integer>2</integer>
 			<!-- as Apple's AppleLSIFusionMPT (AppleLSIFusionSAS personality): the family copies
 			     Physical Interconnect / Location into the HBA's Protocol Characteristics; the
-			     kext copies them and the timeouts (ms) into every target nub's -->
+			     kext copies them and the timeouts (ms) into every target nub's. 30 s: the Linux sd
+			     default (SD_TIMEOUT) and the value macOS SAS HBAs publish; FreeBSD da uses 60 s.
+			     It covers drive error recovery (enterprise SATA ERC is a few seconds); it counts
+			     from the post to the IOC (D15, D4) -->
 			<key>Physical Interconnect</key>
 			<string>SAS</string>
 			<key>Physical Interconnect Location</key>

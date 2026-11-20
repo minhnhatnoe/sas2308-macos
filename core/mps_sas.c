@@ -1673,7 +1673,7 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 	/* XNU: no WarpDrive (direct drive IO) */
 
 	csio->ccb_h.qos.sim_data = sbinuptime();
-	/* XNU: timeout 0: the OS times the task (mps_xnu_ccb_timeout) */
+	/* XNU: timeout 0: FORMAT UNIT / SANITIZE from the OS, untimed (D15) */
 	if (ccb->ccb_h.timeout != 0)
 		callout_reset_sbt(&cm->cm_callout, SBT_1MS * ccb->ccb_h.timeout,
 		    0, mpssas_scsiio_timeout, cm, 0);

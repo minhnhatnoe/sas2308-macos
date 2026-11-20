@@ -174,6 +174,7 @@ int	 mps_kext_submit(struct mps_kext *k, void *td, void *os_task,
 	    int dir, uint32_t nsegs, uint64_t len, uint32_t timeout_ms,
 	    uint32_t gen, struct mps_kext_io_result *res);
 #define	MPSK_BACKSTOP_MS	10000	/* core timeout = task timeout + this */
+#define	MPSK_UNTIMED_BACKSTOP_MS 600000	/* core timeout of a task with none (D15) */
 /* pop one completed task (NULL: none); usable until mps_kext_destroy */
 void	*mps_kext_next_done(struct mps_kext *k, struct mps_kext_io_result *res);
 /*

@@ -565,8 +565,18 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
     /*
      * The family times the task (SetTimeoutForTask -> HandleTimeout); the
      * core's callout is a backstop, later, should that timer be lost.
+     * Timeout 0 is the family's "no timeout": FreeBSD's periphs always set
+     * one, macOS clients do not, and SAM sends every START STOP UNIT with
+     * 0, so a lost reply would hang the PM thread. Such a task gets the
+     * core's callout after 10 min (D15), except FORMAT UNIT and SANITIZE,
+     * which legitimately run for hours on a large disk.
      */
-    ccb->ccb_h.timeout = timeout_ms ? timeout_ms + MPSK_BACKSTOP_MS : 0;
+    if (timeout_ms != 0)
+        ccb->ccb_h.timeout = timeout_ms + MPSK_BACKSTOP_MS;
+    else if (cdb[0] == 0x04 /* FORMAT UNIT */ || cdb[0] == 0x48 /* SANITIZE */)
+        ccb->ccb_h.timeout = 0;
+    else
+        ccb->ccb_h.timeout = MPSK_UNTIMED_BACKSTOP_MS;
     ccb->ccb_h.flags = (dir == MPSK_DIR_IN ? CAM_DIR_IN : dir == MPSK_DIR_OUT ? CAM_DIR_OUT : CAM_DIR_NONE) |
                        (nsegs ? CAM_DATA_SG_PADDR : 0);
     ccb->csio.data_ptr = nsegs ? (uint8_t *)t->segs : NULL;

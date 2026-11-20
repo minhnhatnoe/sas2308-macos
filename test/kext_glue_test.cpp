@@ -662,6 +662,38 @@ int main()
         f.Detach();
     }
 
+    if (Want("D15")) {
+        /*
+         * SAM sends START STOP UNIT with timeout 0 (no family timer). Its
+         * reply is lost: the core's callout recovers it after 10 min, so
+         * the PM thread does not hang. FORMAT UNIT keeps no timer.
+         */
+        MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        auto nodata = [&](uint32_t tid, uint8_t op) {
+            FakeTask *t = f.NewRead(tid, 0);
+            memset(t->cdb, 0, sizeof(t->cdb));
+            t->cdb[0] = op; t->cdbLen = 6; t->dir = MPSK_DIR_NONE; t->len = 0;
+            CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+            CHECK(!t->armed);                       /* the family contract: 0 = no timer */
+            return t;
+        };
+        m.holdIo = true;
+        FakeTask *ssu = nodata(f.Tid(0x0009), 0x1B);
+        FakeTask *fmt = nodata(f.Tid(0x000A), 0x04);
+        f.Run(590000);
+        CHECK(ssu->completions == 0 && fmt->completions == 0);
+        f.Run(15000);
+        CHECK(ssu->completions == 1 && ssu->done == SAS2308GluePort::kDoneTimeout);
+        CHECK(fmt->completions == 0);               /* runs for hours on an 18 TB disk */
+        m.holdIo = false;
+        m.ReleasePending();
+        HostRunPending();
+        CHECK(fmt->completions == 1 && fmt->done == SAS2308GluePort::kDoneStatus);
+        f.Detach();
+    }
+
     printf("PASS (%d checks)\n", gChecks);
     return 0;
 }
