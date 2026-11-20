@@ -1,0 +1,186 @@
+SAS:
+
+    SAS Domain 0:
+
+      Vendor: LSI
+      Product: SAS9207-8i
+      Revision: 20.00.07.00
+      Initiator Identifier: 64
+      Description: 1-port SAS2 HBA, MPI 2.0, Thunderbolt
+      Speed: 6 Gigabit
+
+        SCSI Target Device @ 0:
+
+          SAS Address: 44:33:22:11:00:00:00:00
+          SCSI Target Identifier: 0
+          SCSI Peripheral Device Type: 0
+          Manufacturer: ATA
+          Model: ST18000NM000J-2T
+          Revision: SN02
+
+            SCSI Logical Unit @ 0:
+
+              Capacity: 18 TB (18,000,207,937,536 bytes)
+              LUN Address: 00:00:00:00:00:00:00:00
+              Manufacturer: ATA
+              Model: ST18000NM000J-2TV103                    
+              Revision: SN02    
+              Serial Number:             drive1
+              SATA Device: Yes
+              Removable Media: No
+              Detachable Drive: No
+              BSD Name: disk4
+              Partition Map Type: GPT (GUID Partition Table)
+              S.M.A.R.T. status: Verified
+              Volumes:
+                drive1:
+                  Capacity: 18 TB (18,000,206,872,064 bytes)
+                  File System: ExFAT
+                  BSD Name: disk4s1
+                  Content: Microsoft Basic Data
+                  Volume UUID: <volume-UUID>
+
+        SCSI Target Device @ 1:
+
+          SAS Address: 44:33:22:11:02:00:00:00
+          SCSI Target Identifier: 1
+          SCSI Peripheral Device Type: 0
+          Manufacturer: ATA
+          Model: ST18000NM000J-2T
+          Revision: SN02
+
+            SCSI Logical Unit @ 0:
+
+              Capacity: 18 TB (18,000,207,937,536 bytes)
+              LUN Address: 00:00:00:00:00:00:00:00
+              Manufacturer: ATA
+              Model: ST18000NM000J-2TV103                    
+              Revision: SN02    
+              Serial Number:             drive2
+              SATA Device: Yes
+              Removable Media: No
+              Detachable Drive: No
+              BSD Name: disk9
+              Partition Map Type: Unknown
+              S.M.A.R.T. status: Verified
+
+        SCSI Target Device @ 2:
+
+          SAS Address: 44:33:22:11:03:00:00:00
+          SCSI Target Identifier: 2
+          SCSI Peripheral Device Type: 0
+          Manufacturer: ATA
+          Model: ST18000NM000J-2T
+          Revision: SN02
+
+            SCSI Logical Unit @ 0:
+
+              Capacity: 18 TB (18,000,207,937,536 bytes)
+              LUN Address: 00:00:00:00:00:00:00:00
+              Manufacturer: ATA
+              Model: ST18000NM000J-2TV103                    
+              Revision: SN02    
+              Serial Number:             drive3
+              SATA Device: Yes
+              Removable Media: No
+              Detachable Drive: No
+              BSD Name: disk10
+              Partition Map Type: Unknown
+              S.M.A.R.T. status: Verified
+
+        SCSI Target Device @ 3:
+
+          SAS Address: 44:33:22:11:04:00:00:00
+          SCSI Target Identifier: 3
+          SCSI Peripheral Device Type: 0
+          Manufacturer: ATA
+          Model: ST18000NM000J-2T
+          Revision: SN02
+
+            SCSI Logical Unit @ 0:
+
+              Capacity: 18 TB (18,000,207,937,536 bytes)
+              LUN Address: 00:00:00:00:00:00:00:00
+              Manufacturer: ATA
+              Model: ST18000NM000J-2TV103                    
+              Revision: SN02    
+              Serial Number:             drive4
+              SATA Device: Yes
+              Removable Media: No
+              Detachable Drive: No
+              BSD Name: disk5
+              Partition Map Type: Unknown
+              S.M.A.R.T. status: Verified
+
+        SCSI Target Device @ 4:
+
+          SAS Address: 44:33:22:11:05:00:00:00
+          SCSI Target Identifier: 4
+          SCSI Peripheral Device Type: 0
+          Manufacturer: ATA
+          Model: ST18000NM000J-2T
+          Revision: SN02
+
+            SCSI Logical Unit @ 0:
+
+              Capacity: 18 TB (18,000,207,937,536 bytes)
+              LUN Address: 00:00:00:00:00:00:00:00
+              Manufacturer: ATA
+              Model: ST18000NM000J-2TV103                    
+              Revision: SN02    
+              Serial Number:             drive5
+              SATA Device: Yes
+              Removable Media: No
+              Detachable Drive: No
+              BSD Name: disk7
+              Partition Map Type: Unknown
+              S.M.A.R.T. status: Verified
+
+        SCSI Target Device @ 5:
+
+          SAS Address: 44:33:22:11:06:00:00:00
+          SCSI Target Identifier: 5
+          SCSI Peripheral Device Type: 0
+          Manufacturer: ATA
+          Model: ST18000NM000J-2T
+          Revision: SN02
+
+            SCSI Logical Unit @ 0:
+
+              Capacity: 18 TB (18,000,207,937,536 bytes)
+              LUN Address: 00:00:00:00:00:00:00:00
+              Manufacturer: ATA
+              Model: ST18000NM000J-2TV103                    
+              Revision: SN02    
+              Serial Number:             drive6
+              SATA Device: Yes
+              Removable Media: No
+              Detachable Drive: No
+              BSD Name: disk6
+              Partition Map Type: Unknown
+              S.M.A.R.T. status: Verified
+
+        SCSI Target Device @ 6:
+
+          SAS Address: 44:33:22:11:07:00:00:00
+          SCSI Target Identifier: 6
+          SCSI Peripheral Device Type: 0
+          Manufacturer: ATA
+          Model: ST18000NM000J-2T
+          Revision: SN02
+
+            SCSI Logical Unit @ 0:
+
+              Capacity: 18 TB (18,000,207,937,536 bytes)
+              LUN Address: 00:00:00:00:00:00:00:00
+              Manufacturer: ATA
+              Model: ST18000NM000J-2TV103                    
+              Revision: SN02    
+              Serial Number:             drive7
+              SATA Device: Yes
+              Removable Media: No
+              Detachable Drive: No
+              BSD Name: disk8
+              Partition Map Type: Unknown
+              S.M.A.R.T. status: Verified
+

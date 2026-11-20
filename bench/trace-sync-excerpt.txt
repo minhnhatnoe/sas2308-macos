@@ -1,0 +1,12 @@
+2026-11-20 05:19:21.907345 hba0: IO start SMID 53 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699688 blocks 8 len 4096 segs 1 chains 0
+2026-11-20 05:19:21.907808 hba0: IO done SMID 53 cam status 0x1 scsi good xfer 4096/4096 latency 476 us
+2026-11-20 05:19:21.907866 hba0: IO start SMID 26 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-20 05:19:21.914912 hba0: IO done SMID 26 cam status 0x1 scsi good xfer 0/0 latency 7051 us
+2026-11-20 05:19:21.914944 hba0: IO start SMID 47 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699696 blocks 8 len 4096 segs 1 chains 0
+2026-11-20 05:19:21.915154 hba0: IO done SMID 47 cam status 0x1 scsi good xfer 4096/4096 latency 216 us
+2026-11-20 05:19:21.915199 hba0: IO start SMID 5 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-20 05:19:21.923253 hba0: IO done SMID 5 cam status 0x1 scsi good xfer 0/0 latency 8062 us
+2026-11-20 05:19:21.923285 hba0: IO start SMID 34 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699704 blocks 8 len 4096 segs 1 chains 0
+2026-11-20 05:19:21.923487 hba0: IO done SMID 34 cam status 0x1 scsi good xfer 4096/4096 latency 209 us
+2026-11-20 05:19:21.923526 hba0: IO start SMID 52 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-20 05:19:21.931598 hba0: IO done SMID 52 cam status 0x1 scsi good xfer 0/0 latency 8078 us

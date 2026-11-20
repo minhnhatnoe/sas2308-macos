@@ -1,0 +1,62 @@
+SAS2308HBA instance 0:
+  IOC temperature read failures 0
+  IO timeouts                  0
+  Family timeouts              0
+  Suspend drain left           0
+  Debug mask                   631
+  Controller dead              0
+  TM clear task set            0
+  Held total                   7
+  Recovered by abort           0
+  Diag resets                  0
+  Err device gone              0
+  Device re-adds scheduled     0
+  TM in flight                 0
+  TM timeouts                  0
+  Config page retries          0
+  Reinit max ms                0
+  Reinits                      0
+  Events                       25
+  Device re-adds given up      0
+  Read bytes                   840314
+  Recovered by target reset    0
+  Write bytes                  0
+  Reinit failed attempts       0
+  Suspends                     0
+  TM abort task                0
+  Err SCSI status              0
+  IOs completed                2030
+  Err terminated               0
+  TM LUN reset                 0
+  TM late replies              0
+  Held now                     0
+  TM requests from OS          0
+  Recovered by LUN reset       0
+  IOC faults                   0
+  Latency avg us               23232
+  Tasks held (recovery)        7
+  State                        operational
+  Tasks accepted               2030
+  Recovered sense (not errors) 23
+  TM clear ACA                 0
+  IOC temperature reads        18
+  Err transport                0
+  Event acks dropped           0
+  TM abort task set            0
+  TM target reset              0
+  Chain free low               2087
+  Err check condition          7
+  Config page reads            14
+  Recoveries                   0
+  Config page failures         0
+  Resumes                      0
+  Tasks rejected               0
+  IOC temperature warnings     0
+  TM requests failed           0
+  TM failed                    0
+  IOC temperature (C)          59
+  Latency max us               6249074
+  Held timeouts                0
+  Stale replies                0
+  Chain alloc failures         0
+  Bad replies                  0
