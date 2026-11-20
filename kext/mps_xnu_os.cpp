@@ -304,20 +304,37 @@ void mps_os_walltime(uint64_t *sec, uint32_t *usec)
     *usec = (uint32_t)usecs;
 }
 
-/* MMIO is little-endian, so is arm64. No mapping reads as all-ones (gone). */
+/*
+ * MMIO is little-endian, so is arm64. No mapping reads as all-ones (gone).
+ *
+ * Review H3: ARMv8 does not order a store to Normal memory (a request
+ * frame, the reply free queue, a cleared reply-post slot) before a later
+ * store to Device memory (the descriptor post, REPLY_FREE/POST_HOST_INDEX),
+ * nor a Device load before later Normal loads (the reply frame a posted
+ * descriptor points at). FreeBSD mps relies on x86 ordering and an empty
+ * bus_dmamap_sync; Linux writel/readl issue these barriers.
+ */
 uint32_t mps_os_bus_read_4(bus_space_tag_t t, bus_space_handle_t h, bus_size_t off)
 {
     (void)t;
     if (h == 0)
         return 0xFFFFFFFF;
-    return *(volatile uint32_t *)(h + off);
+    const uint32_t v = *(volatile uint32_t *)(h + off);
+#if defined(__arm64__) || defined(__aarch64__)
+    __asm__ volatile("dmb oshld" ::: "memory");     /* later DMA-memory loads after this read */
+#endif
+    return v;
 }
 
 void mps_os_bus_write_4(bus_space_tag_t t, bus_space_handle_t h, bus_size_t off, uint32_t val)
 {
     (void)t;
-    if (h != 0)
-        *(volatile uint32_t *)(h + off) = val;
+    if (h == 0)
+        return;
+#if defined(__arm64__) || defined(__aarch64__)
+    __asm__ volatile("dmb oshst" ::: "memory");     /* earlier DMA-memory stores before the doorbell */
+#endif
+    *(volatile uint32_t *)(h + off) = val;
 }
 
 /*
