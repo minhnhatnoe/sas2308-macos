@@ -247,8 +247,12 @@ SAS2308HBA::PortCompleteTask(SCSIParallelTaskIdentifier task, int done, uint8_t 
         response = kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
         break;
     case SAS2308GluePort::kDoneTimeout:
-        /* terminated by the recovery after the family's timeout (CAM_CMD_TIMEOUT) */
-        status = kSCSITaskStatus_ProtocolTimeoutOccurred;
+        /*
+         * terminated by the recovery after the family's timeout
+         * (CAM_CMD_TIMEOUT): the family's own status for its own timer, as
+         * its default HandleTimeout (D44)
+         */
+        status = kSCSITaskStatus_TaskTimeoutOccurred;
         response = kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
         break;
     case SAS2308GluePort::kDoneReject:
@@ -709,7 +713,7 @@ SAS2308HBA::ProcessParallelTask(SCSIParallelTaskIdentifier task)
 //	tasks given to SetTimeoutForTask are timed). Asynchronous: the core
 //	starts (or queues on) its target's recovery - ABORT_TASK, then LUN
 //	reset, target reset, controller reinit - and this returns at once. The
-//	task is completed (ProtocolTimeoutOccurred) when the IOC gives it back.
+//	task is completed (TaskTimeoutOccurred) when the IOC gives it back.
 //	A task still held, or posted less than its timeout ago, is re-armed for
 //	the rest (D4: FreeBSD's callout runs from the post).
 //																	[PROTECTED]

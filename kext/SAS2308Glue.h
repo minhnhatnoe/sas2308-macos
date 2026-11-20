@@ -38,7 +38,7 @@ public:
     enum Done {
         kDoneStatus,        /* the device answered: scsiStatus, transfer count, sense */
         kDoneGone,          /* DeviceNotPresent */
-        kDoneTimeout,       /* ProtocolTimeoutOccurred */
+        kDoneTimeout,       /* TaskTimeoutOccurred (the family timer fired, D44) */
         kDoneRetry,         /* DeliveryFailure (reset, abort, transport) */
         kDoneReject         /* FUNCTION_REJECTED (invalid request) */
     };
