@@ -1407,6 +1407,36 @@ mps_xnu_ccb_timeout(struct mps_softc *sc, union ccb *ccb)
 	return (0);
 }
 
+/*
+ * XNU: IO killed by our own reset (reinit, sleep) is retried by the OS only
+ * if it is a READ or WRITE (IOSCSIBlockCommandsDevice); anything else
+ * (SYNCHRONIZE CACHE, pass-through) would fail upward.  Re-send it from
+ * the held queue instead, a few times at most.
+ */
+static int
+mpssas_xnu_reset_requeue(struct mps_softc *sc, union ccb *ccb)
+{
+	uint8_t op;
+
+	if (sc->xnu.shutdown || ccb->ccb_h.func_code != XPT_SCSI_IO ||
+	    ccb->ccb_h.xnu_resets >= MPS_XNU_RESET_REQUEUES)
+		return (0);
+	op = (ccb->ccb_h.flags & CAM_CDB_POINTER) ?
+	    ccb->csio.cdb_io.cdb_ptr[0] : ccb->csio.cdb_io.cdb_bytes[0];
+	switch (op) {
+	case 0x08: case 0x0a: case 0x28: case 0x2a:	/* READ/WRITE 6, 10 */
+	case 0x88: case 0x8a: case 0xa8: case 0xaa:	/* 16, 12 */
+		return (0);
+	}
+	ccb->ccb_h.xnu_resets++;
+	sc->xnu.stats.reset_requeues++;
+	mps_dprint(sc, MPS_RECOVERY, "%s for target %u killed by a reset: "
+	    "re-sent (%d of %d)\n", mps_xnu_cdb_str(op),
+	    ccb->ccb_h.target_id, ccb->ccb_h.xnu_resets,
+	    MPS_XNU_RESET_REQUEUES);
+	return (1);
+}
+
 static void
 mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 {
@@ -1845,6 +1875,9 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 			if (sc->mps_flags & (MPS_FLAGS_XNU_GONE |
 			    MPS_FLAGS_SHUTDOWN))
 				mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
+			else if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) != 0 &&
+			    mpssas_xnu_reset_requeue(sc, ccb))
+				mpssas_set_ccbstatus(ccb, CAM_REQUEUE_REQ);
 			else if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) != 0)
 				mpssas_set_ccbstatus(ccb, CAM_SCSI_BUS_RESET);
 			else {

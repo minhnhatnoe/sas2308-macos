@@ -70,6 +70,7 @@ struct mps_xnu_stats {
 	uint32_t	ioc_temp_valid;		/* ioc_temp_c holds a reading */
 	int32_t		ioc_temp_c;		/* last reading, degrees C */
 	/* review fixes */
+	uint32_t	reset_requeues;		/* non-R/W IO re-sent after our reset */
 	uint32_t	reinit_coalesced;	/* reinit requests covered by a running one */
 	uint32_t	removals_queued;	/* removals that waited for a free TM */
 	uint32_t	identity_changes;	/* a different disk behind a target id */

@@ -173,6 +173,7 @@ struct ccb_hdr {
 	uint64_t	xnu_start_us;	/* XNU: arrival time (latency incl. hold) */
 	int		xnu_held;	/* XNU: on the held queue now */
 	int		xnu_was_held;	/* XNU: held at least once */
+	int		xnu_resets;	/* XNU: re-sent after our own resets */
 	xpt_opcode	func_code;
 	uint32_t	status;
 	struct cam_path	*path;

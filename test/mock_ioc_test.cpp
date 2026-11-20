@@ -2290,6 +2290,35 @@ static void ReviewTests()
         CHECK(failed > 10);
     }
 
+    if (Want("M6")) {
+        /* SYNCHRONIZE CACHE in flight at a reinit: re-sent (the OS retries only READ/WRITE) */
+        Rig g;
+        MockIocModel &m = g.ioc;
+        m.holdIo = true;
+        uint8_t sync[10] = {0x35, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+        Io *s = g.NewIo(g.Tid(0x0009), 0, CAM_DIR_NONE, sync, 10, {});
+        CHECK(g.Go(s) == kPosted);
+        Io *r = g.Read(0x0009, 0, 4);
+        CHECK(g.Go(r) == kPosted);
+        m.holdIo = false;
+        RequestReinit(g, "test");
+        HostAdvance(2000);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_SCSI_BUS_RESET);     /* READ: retried by the OS */
+        CHECK(s->done && s->status == CAM_REQ_CMP);           /* re-sent by us after the reinit */
+        /* bounded: killed by 4 resets in a row, the 4th failure goes up */
+        m.holdIo = true;
+        Io *s2 = g.NewIo(g.Tid(0x0009), 0, CAM_DIR_NONE, sync, 10, {});
+        CHECK(g.Go(s2) == kPosted);
+        for (int i = 0; i < 4 && !s2->done; i++) {
+            RequestReinit(g, "test");
+            HostAdvance(2000);
+            g.Pump();
+        }
+        CHECK(s2->done && s2->status == CAM_SCSI_BUS_RESET);
+        m.holdIo = false;
+    }
+
     if (Want("M8")) {
         /* the tunnel passes MMIO only 500 ms after the power-on: not a surprise removal */
         Rig g;
