@@ -1178,3 +1178,36 @@ second of the window closing.
 11. Termination (M5b): `kmutil unload` with targets present → every nub gone
    (`ioreg -r -c IOSCSIParallelInterfaceDevice` empty, including ID 63 if used); dock unplug during
    discovery (hotplug thread inside CreateTargetForID) → no panic, no leftover nub.
+
+## Updating from FreeBSD
+
+The port is kept as a vendor branch. `vendor/freebsd-mps` (root commit, tag
+`vendor/freebsd-mps-8c9ce319`) holds the pristine upstream files at our paths; `core/VENDOR.txt`
+has the path map and the upstream files that are not ported. master descends from it, so
+`git diff vendor/freebsd-mps master -- core/` is the whole port delta and an upstream update is
+an ordinary 3-way merge: git carries upstream's changes into our modified copies and stops only
+where upstream changed lines we changed too. (Checked on 2026-11-20 with a fake upstream change
+to `core/mps.c` and `core/mpi/mpi2.h`: merged into the modified `core/mps.c` without conflict.)
+
+1. Get the new upstream commit into the partial clone:
+   `git -C ref/freebsd-src fetch origin <commit> && git -C ref/freebsd-src checkout <commit>`.
+2. Commit the new pristine files on the vendor branch, in a separate worktree:
+   ```
+   git worktree add ../sas2308-vendor vendor/freebsd-mps
+   cd ../sas2308-vendor
+   src=../sas2308-dext/ref/freebsd-src/sys/dev/mps
+   for f in mps.c mps_config.c mps_sas.c mps_sas.h mps_sas_lsi.c mps_table.c mps_table.h mpsvar.h
+   do cp "$src/$f" "core/$f"; done
+   cp "$src"/mpi/* core/mpi/
+   ```
+   Check `ls $src $src/mpi` for upstream files that are new or gone and update the map in
+   `core/VENDOR.txt`, with the new commit and date. Commit as "Import FreeBSD sys/dev/mps at
+   <short> (<release>)" and tag `vendor/freebsd-mps-<short>`. Nothing else goes on this branch.
+3. On a branch from master: `git merge vendor/freebsd-mps`. Resolve conflicts keeping the
+   `/* XNU: ... */` deviations; upstream changes inside code we removed (not ported) show up as
+   conflicts against the removal and stay removed unless the port now needs them.
+4. Update `ref/FREEBSD_REF.txt`, compare `tools/diff-vs-freebsd.sh -s` with its output before
+   the merge (it diffs against `ref/freebsd-src` when present, else the vendor branch), run
+   `make -C test test`, and on the Mac `make -C kext && make -C kext check`. `core/mpi/` is not
+   modified by the port, but a header change can change structures that `test/mock_ioc.h`
+   models.
