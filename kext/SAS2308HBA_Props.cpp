@@ -410,6 +410,7 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Reinit failed attempts", st.reinit_failures);
     SetNumber(d, "Reinit max ms", st.reinit_max_ms);
     SetNumber(d, "Controller dead", ks.deadEvents);
+    SetNumber(d, "Transient all-ones reads", st.transient_allones);
     SetNumber(d, "Stale replies", st.stale_replies);
     SetNumber(d, "Bad replies", st.bad_replies);
     SetNumber(d, "Events", st.events);

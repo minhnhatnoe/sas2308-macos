@@ -561,14 +561,64 @@ mps_xnu_target_present(struct mps_softc *sc, u_int tid, uint16_t *handle)
 
 /* ---- surprise removal, controller disabled ----------------------------- */
 
+static void mps_xnu_gone_check(void *arg);
+
 void
 mps_xnu_gone(struct mps_softc *sc, uint32_t offset)
 {
-	if (sc->mps_flags & MPS_FLAGS_XNU_GONE)
+	/*
+	 * D11: one all-ones read (a Thunderbolt link retrain, a read racing a
+	 * reset) must not drop every disk for good: confirm first, from a
+	 * callout, MPS_XNU_GONE_TRIES times MPS_XNU_GONE_MS apart.  The
+	 * register read itself stays FreeBSD's.
+	 */
+	if ((sc->mps_flags & MPS_FLAGS_XNU_GONE) || sc->xnu.gone_tries != 0)
 		return;
+	sc->xnu.gone_offset = offset;
+	sc->xnu.gone_tries = 1;
+	mps_dprint(sc, MPS_RECOVERY, "register 0x%02x reads 0xffffffff: "
+	    "checking whether the controller is still there\n", offset);
+	callout_reset(&sc->xnu.gone_callout, MPS_XNU_GONE_MS * hz / 1000,
+	    mps_xnu_gone_check, sc);
+}
+
+/*
+ * The controller is there if its doorbell reads anything but all-ones, or
+ * if its PCI config space still answers (a diag reset in progress).  Only
+ * when every try fails is it gone.
+ */
+static void
+mps_xnu_gone_check(void *arg)
+{
+	struct mps_softc *sc = arg;
+	uint32_t db = 0xffffffff;
+
+	mtx_assert(&sc->mps_mtx, MA_OWNED);
+	if (sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) {
+		sc->xnu.gone_tries = 0;
+		return;
+	}
+	db = bus_space_read_4(sc->mps_btag, sc->mps_bhandle,
+	    MPI2_DOORBELL_OFFSET);
+	if (db != 0xffffffff || mps_os_pci_present(sc->mps_dev)) {
+		sc->xnu.gone_tries = 0;
+		if (sc->xnu.stats.transient_allones++ < 10)
+			mps_dprint(sc, MPS_INFO, "register 0x%02x read "
+			    "0xffffffff, but the controller is still there "
+			    "(doorbell 0x%08x): transient, ignored\n",
+			    sc->xnu.gone_offset, db);
+		return;
+	}
+	if (sc->xnu.gone_tries++ < MPS_XNU_GONE_TRIES) {
+		callout_reset(&sc->xnu.gone_callout,
+		    MPS_XNU_GONE_MS * hz / 1000, mps_xnu_gone_check, sc);
+		return;
+	}
+	sc->xnu.gone_tries = 0;
 	sc->mps_flags |= MPS_FLAGS_XNU_GONE;
-	mps_dprint(sc, MPS_FAULT, "register 0x%02x reads 0xffffffff: "
-	    "controller gone (surprise removal)\n", offset);
+	mps_dprint(sc, MPS_FAULT, "register 0x%02x reads 0xffffffff and the "
+	    "PCI config space does not answer: controller gone (surprise "
+	    "removal)\n", sc->xnu.gone_offset);
 	/* the reinit task fails everything (mps_reinit -> mps_xnu_disable) */
 	mps_xnu_request_reinit(sc, "surprise removal");
 }

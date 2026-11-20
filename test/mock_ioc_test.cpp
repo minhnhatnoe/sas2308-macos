@@ -1003,6 +1003,11 @@ int main()
     CHECK(g.Go(left) == kPosted);                    /* left outstanding */
     ioc.dead = true;
     g.Interrupt();                                   /* reads all-ones */
+    CHECK(!g.Gone());                                /* D11: confirmed first, from a callout */
+    for (int i = 0; i < 150 && !g.Gone(); i++) {
+        ioc.nowUs += 1000;
+        g.Callouts();
+    }
     CHECK(g.Gone());
     Io *tur = g.NewIo(0, 0, CAM_DIR_NONE, tur6, 6, {});
     CHECK(g.Go(tur) == kDone && tur->status == CAM_DEV_NOT_THERE);
@@ -1288,15 +1293,15 @@ static void AsyncTests()
         Io *t55 = g.ResetDev(1);
         CHECK(t55->done == 0);
         const int mur = m.murCount;
+        Io *late = g.Read(0x0009, 0, 7);                             /* built now: a reinit may clear the handles */
         m.dead = true;
-        HostAdvance(1100);                                           /* mps_periodic reads all-ones */
+        HostAdvance(1300);                                           /* mps_periodic reads all-ones (D11: confirmed) */
         CHECK(g.Gone() && !g.ReinitQueued());
         CHECK(HasLog(mark, "controller gone (surprise removal)") && HasLog(mark, "controller disabled"));
         CHECK(g.ForceReinit() == ENXIO);                             /* no register access, nothing twice */
         for (Io *io : {f0, f1, f2}) CHECK(io->status == CAM_DEV_NOT_THERE && io->done == 1);
         CHECK(t55->done == 1 && t55->status == CAM_DEV_NOT_THERE);
-        CHECK(!g.Recovering(0x0009) && g.TmsBusy() == 0 && g.HeldCount() == 0);
-        Io *late = g.Read(0x0009, 0, 7);
+        CHECK(g.TmsBusy() == 0 && g.HeldCount() == 0);
         CHECK(g.Go(late) == kDone && late->status == CAM_DEV_NOT_THERE);
         g.Detach();
         CHECK(m.murCount == mur);                                    /* nothing written to a dead device */
@@ -2643,6 +2648,30 @@ static void DeviationTests()
         CHECK(g.Go(r) == kPosted);
         g.Pump();
         CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
+    if (Want("D11")) {
+        /* one all-ones register read (a link retrain, not an unplug): confirmed before the controller is dropped */
+        Rig g;
+        MockIocModel &m = g.ioc;
+        const int resets = m.diagResetCount, dead = gHost.dead;
+        m.deadUntilUs = m.nowUs + 1000;                  /* MMIO reads all-ones for 1 ms, config space fine */
+        mps_lock(g.sc);
+        CHECK(mps_regread(g.sc, MPI2_DOORBELL_OFFSET) == 0xffffffff);
+        mps_unlock(g.sc);
+        HostAdvance(500);
+        CHECK(!g.Gone() && !g.sc->xnu.disabled && gHost.dead == dead);
+        CHECK(g.Stats().transient_allones == 1 && m.diagResetCount == resets);
+        Io *r = g.Read(0x0009, 0, 2);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+        /* unplugged: MMIO and config space read all-ones on every try */
+        m.dead = true;
+        HostAdvance(1100);
+        HostAdvance(200);
+        CHECK(g.Gone() && g.sc->xnu.disabled && gHost.dead == dead + 1);
+        CHECK(g.Stats().transient_allones == 1);
     }
 
     if (Want("D20b")) {

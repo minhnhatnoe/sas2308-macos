@@ -147,6 +147,7 @@ private:
     static void HostFreeInterrupts(void *hba);
     static int  HostPciRestore(void *hba);
     static void HostControllerDead(void *hba);
+    static int HostPciPresent(void *hba);
     static void HostDoneKick(void *hba);
 
     /* the gate and delivery live in fGlue (SAS2308Glue.cpp) */

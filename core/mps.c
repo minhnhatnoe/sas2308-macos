@@ -876,7 +876,10 @@ mps_reinit(struct mps_softc *sc)
 	/*
 	 * XNU: nothing to reset once gone, disabled or detaching; a
 	 * controller found gone is disabled here (everything completed).
+	 * An all-ones read still being confirmed (D11, <= 100 ms): wait.
 	 */
+	for (attempt = 0; sc->xnu.gone_tries != 0 && attempt < 50; attempt++)
+		msleep(&sc->xnu.gone_tries, &sc->mps_mtx, 0, "mpsgone", 1);
 	if (sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_SHUTDOWN)) {
 		if ((sc->mps_flags & MPS_FLAGS_XNU_GONE) && !sc->xnu.disabled)
 			mps_xnu_disable(sc, ENXIO);
@@ -1941,6 +1944,7 @@ mps_attach(struct mps_softc *sc)
 	mtx_init(&sc->mps_mtx, "MPT2SAS lock", NULL, MTX_DEF);
 	callout_init_mtx(&sc->periodic, &sc->mps_mtx, 0);
 	callout_init_mtx(&sc->device_check_callout, &sc->mps_mtx, 0);
+	callout_init_mtx(&sc->xnu.gone_callout, &sc->mps_mtx, 0);	/* XNU */
 	TAILQ_INIT(&sc->event_list);
 	timevalclear(&sc->lastfail);
 
@@ -2131,6 +2135,7 @@ mps_free(struct mps_softc *sc)
 	/* Lock must not be held for this */
 	callout_drain(&sc->periodic);
 	callout_drain(&sc->device_check_callout);
+	callout_drain(&sc->xnu.gone_callout);	/* XNU */
 
 	/* XNU: a reinit in progress gives up (MPS_FLAGS_SHUTDOWN); wait for it */
 	if (sc->mps_tq != NULL) {

@@ -574,6 +574,12 @@ void mps_os_controller_dead(device_t dev)
         h->controller_dead(h->hba);
 }
 
+int mps_os_pci_present(device_t dev)
+{
+    struct mps_kext_host *h = HostOf(dev);
+    return (h && h->pci_present) ? h->pci_present(h->hba) : 1;
+}
+
 } /* extern "C" */
 
 /* ======================================================================

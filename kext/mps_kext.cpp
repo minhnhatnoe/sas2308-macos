@@ -821,6 +821,9 @@ int mps_kext_check_present(struct mps_kext *k)
     mps_lock(sc);
     if ((sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) == 0)
         (void)mps_regread(sc, MPI2_DOORBELL_OFFSET);     /* all-ones: mps_xnu_gone */
+    /* D11: an all-ones read is confirmed from a callout (~100 ms); wait for the verdict */
+    for (int i = 0; sc->xnu.gone_tries != 0 && i < 50; i++)
+        (void)msleep(&sc->xnu.gone_tries, &sc->mps_mtx, 0, "mpsgone", 10);
     present = (sc->mps_flags & MPS_FLAGS_XNU_GONE) == 0;
     mps_unlock(sc);
     return present;

@@ -96,6 +96,18 @@ SAS2308HBA::HostPciRestore(void *hba)
 }
 
 //-----------------------------------------------------------------------------
+//	HostPciPresent - D11: does the device's config space still answer? An
+//	unplugged Thunderbolt device reads all-ones there too.			[PRIVATE]
+//-----------------------------------------------------------------------------
+
+int
+SAS2308HBA::HostPciPresent(void *hba)
+{
+    SAS2308HBA *self = (SAS2308HBA *)hba;
+    return self->fPCI && self->fPCI->configRead16(kIOPCIConfigVendorID) == 0x1000;
+}
+
+//-----------------------------------------------------------------------------
 //	HostControllerDead - mps_xnu_disable(): the controller is gone (surprise
 //	removal) or disabled (reinit failed); the core fails everything it held.
 //	Cut bus mastering so a wedged IOC cannot DMA any more.			[PRIVATE]
@@ -300,6 +312,7 @@ SAS2308HBA::InitializeController(void)
     fHost.free_interrupts = &SAS2308HBA::HostFreeInterrupts;
     fHost.pci_restore = &SAS2308HBA::HostPciRestore;
     fHost.controller_dead = &SAS2308HBA::HostControllerDead;
+    fHost.pci_present = &SAS2308HBA::HostPciPresent;
     fHost.io_done_kick = &SAS2308HBA::HostDoneKick;
     fHost.async = &SAS2308HBA::HostAsync;
     ApplyLogSettings();

@@ -44,6 +44,8 @@ struct mps_softc;
 #define MPS_XNU_SLEEP_STOP_MS	10000	/* sleep / detach: stop the IOC within */
 #define MPS_XNU_REINIT_STOP_MS	2000	/* suspend waits for a running reinit */
 #define MPS_XNU_RESUME_TRIES	20	/* all-ones tolerated 20 x 100 ms after wake */
+#define MPS_XNU_GONE_TRIES	5	/* an all-ones read is confirmed 5 times, */
+#define MPS_XNU_GONE_MS		20	/* 20 ms apart, before "gone" (D11) */
 #define MPS_XNU_RESET_REQUEUES	3	/* IO re-sent after our resets (M6, D20b) */
 
 /* ---- log levels: presets of the mps_dprint class mask ------------------ */
@@ -119,6 +121,9 @@ struct mps_xnu {
 	uint16_t		 ioerr_tid[MPS_XNU_RL_SLOTS];
 	int			 reinit_pending;	/* mps_reinit_task queued */
 	int			 disabled;		/* mps_xnu_disable() ran */
+	struct callout		 gone_callout;		/* confirms an all-ones read (D11) */
+	int			 gone_tries;		/* 0: no confirmation running */
+	uint32_t		 gone_offset;		/* the register that read all-ones */
 	uint16_t		 tid_handle[MPS_XNU_MAX_TARGETS]; /* last handle */
 	/*
 	 * Device identity behind a target id (SAS address from page 0, or the
@@ -270,6 +275,7 @@ int	mps_os_setup_interrupts(device_t dev);	/* after the queues exist */
 void	mps_os_free_interrupts(device_t dev);
 int	mps_os_pci_restore(device_t dev);	/* after a diag reset */
 void	mps_os_controller_dead(device_t dev);	/* stop bus mastering */
+int	mps_os_pci_present(device_t dev);	/* config space answers (vendor id) */
 
 #ifdef __cplusplus
 }

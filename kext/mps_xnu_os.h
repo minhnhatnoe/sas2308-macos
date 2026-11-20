@@ -56,6 +56,7 @@ struct mps_kext_host {
 	void	(*free_interrupts)(void *hba);
 	int	(*pci_restore)(void *hba);
 	void	(*controller_dead)(void *hba);
+	int	(*pci_present)(void *hba);	/* vendor id reads back (D11) */
 	/* completions were queued by a callout or the reinit task (mps_mtx held) */
 	void	(*io_done_kick)(void *hba);
 	/*

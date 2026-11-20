@@ -196,8 +196,17 @@ int mps_os_sleep(void *lock, void *chan, uint64_t timo_us)
         rc = 0;
     } else {
         CHECK(timo_us != 0);            /* nobody will wake us: a hang */
-        gHost.ioc->nowUs += timo_us;
-        HostRunPending();
+        /*
+         * Time passes in 1 ms steps, so callouts and other threads due
+         * meanwhile run (and may wake us) before the timeout, as on a
+         * real kernel.
+         */
+        for (uint64_t left = timo_us; left > 0 && !gHost.woken.count(chan);) {
+            const uint64_t step = left < 1000 ? left : 1000;
+            gHost.ioc->nowUs += step;
+            left -= step;
+            HostRunPending();
+        }
         rc = gHost.woken.erase(chan) ? 0 : EWOULDBLOCK;
     }
     mps_os_lock(lock);
@@ -370,6 +379,11 @@ int mps_os_pci_restore(device_t)
 void mps_os_controller_dead(device_t)
 {
     gHost.dead++;
+}
+
+int mps_os_pci_present(device_t)
+{
+    return gHost.ioc == nullptr || !gHost.ioc->dead;    /* config space: only an unplug */
 }
 
 } /* extern "C" */
