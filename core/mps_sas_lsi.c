@@ -361,10 +361,10 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
 	uint64_t parent_sas_address = 0;
 	u32 device_info, parent_devinfo = 0;
 	unsigned int id;
-	int error = 0;
+	int ret = 1, error = 0, i;
 	struct mpssas_lun *lun;
 	u8 is_SATA_SSD = 0;
-	int ret;
+	struct mps_command *cm;
 
 	sassc = sc->sassc;
 	mpssas_startup_increment(sassc);
@@ -511,6 +511,40 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
 	mps_dprint(sc, MPS_MAPPING, "Target id 0x%x added\n", targ->tid);
 	mps_xnu_readd_cancel(sc, handle);	/* XNU: no later retry */
 
+	/*
+	 * Check all commands to see if the SATA_ID_TIMEOUT flag has been set.
+	 * If so, send a Target Reset TM to the target that was just created.
+	 * An Abort Task TM should be used instead of a Target Reset, but that
+	 * would be much more difficult because targets have not been fully
+	 * discovered yet, and LUN's haven't been setup.  So, just reset the
+	 * target instead of the LUN.  The commands should complete once the
+	 * target has been reset.
+	 */
+	for (i = 1; i < sc->num_reqs; i++) {
+		cm = &sc->commands[i];
+		if (cm->cm_flags & MPS_CM_FLAGS_SATA_ID_TIMEOUT) {
+			targ->timeouts++;
+			cm->cm_flags |= MPS_CM_FLAGS_TIMEDOUT;
+
+			if ((targ->tm = mpssas_alloc_tm(sc)) != NULL) {
+				mps_dprint(sc, MPS_INFO, "%s: sending Target "
+				    "Reset for stuck SATA identify command "
+				    "(cm = %p)\n", __func__, cm);
+				targ->tm->cm_targ = targ;
+				mpssas_send_reset(sc, targ->tm,
+				    MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET);
+			} else {
+				mps_dprint(sc, MPS_ERROR, "Failed to allocate "
+				    "tm for Target Reset after SATA ID command "
+				    "timed out (cm %p)\n", cm);
+			}
+			/*
+			 * No need to check for more since the target is
+			 * already being reset.
+			 */
+			break;
+		}
+	}
 out:
 	mpssas_startup_decrement(sassc);
 	return (error);

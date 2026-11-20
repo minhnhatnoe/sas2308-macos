@@ -2599,4 +2599,42 @@ static void DeviationTests()
         g.Pump();
         CHECK(r->done && r->status == CAM_REQ_CMP);
     }
+
+    if (Want("D2")) {
+        /* hot-add of a SATA disk whose IDENTIFY never comes back (a bad disk) */
+        Rig g({0x0009});
+        MockIocModel &m = g.ioc;
+        m.sataSerial[0x000B] = "ZR50BAD0";
+        m.identifyStuck.insert(0x000B);
+        m.devices.push_back(0x000B);
+        const size_t tms = m.tms.size();
+        m.PostTopologyEvent({0x000B});
+        HostRunPending();
+        g.Pump();
+        HostRunPending();
+        CHECK(m.stuckIds.empty());                       /* the target reset made the IOC answer */
+        bool reset = false;
+        for (size_t i = tms; i < m.tms.size(); i++)
+            reset |= m.tms[i].dev == 0x000B && m.tms[i].type == kTgtT;
+        CHECK(reset);
+        CHECK(!g.sc->xnu.cfg_busy);                     /* the late completion gave the buffer back */
+        CHECK(g.TmsBusy() == 0);
+        /* page 0 reads and a second hot-add work again */
+        Mpi2ConfigReply_t mpi_reply;
+        Mpi2SasDevicePage0_t pg;
+        mps_lock(g.sc);
+        int rc = mps_config_get_sas_device_pg0(g.sc, &mpi_reply, &pg,
+            MPI2_SAS_DEVICE_PGAD_FORM_HANDLE, 0x0009);
+        mps_unlock(g.sc);
+        CHECK(rc == 0);
+        m.devices.push_back(0x000C);
+        m.PostTopologyEvent({0x000C});
+        HostRunPending();
+        CHECK(g.Targ(0x000C) != nullptr && g.Present(g.Tid(0x000C), 0x000C));
+        CHECK(g.Targ(0x000B) != nullptr && g.Present(g.Tid(0x000B), 0x000B));
+        Io *r = g.Read(0x000B, 0, 3);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
 }

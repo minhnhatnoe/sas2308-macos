@@ -112,6 +112,8 @@ struct MockIocModel {
     bool dropIdentify = false;                 /* lose IDENTIFY replies */
     std::set<uint16_t> identifyFail;           /* IDENTIFY of these handles fails */
     std::set<uint16_t> sataSsd;                /* IDENTIFY word 217 = 1 (non-rotating) */
+    std::set<uint16_t> identifyStuck;          /* the next IDENTIFY of these handles gets no reply ... */
+    std::vector<std::pair<uint16_t, uint16_t>> stuckIds;   /* ... (SMID, handle) until a TARGET_RESET */
     bool murIgnored = false;                   /* MUR never stops the IOC (wedged) */
     uint64_t deadUntilUs = 0;                  /* registers read all-ones until then */
     /*
@@ -477,6 +479,18 @@ struct MockIocModel {
                 if (match) { Terminate(pd); pending.erase(pending.begin() + i); n++; }
                 else i++;
             }
+            for (size_t i = 0; i < stuckIds.size();) {      /* a stuck IDENTIFY ends with a target reset */
+                if (t->TaskType != MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET || stuckIds[i].second != t->DevHandle) {
+                    i++;
+                    continue;
+                }
+                MPI2_SATA_PASSTHROUGH_REPLY r{};
+                r.MsgLength = sizeof(r) / 4; r.Function = MPI2_FUNCTION_SATA_PASSTHROUGH;
+                r.DevHandle = t->DevHandle; r.IOCStatus = MPI2_IOCSTATUS_SCSI_TASK_TERMINATED;
+                AddressReply(stuckIds[i].first, &r, sizeof(r));
+                stuckIds.erase(stuckIds.begin() + i);
+                n++;
+            }
         }
         MPI2_SCSI_TASK_MANAGE_REPLY tr{};
         tr.MsgLength = sizeof(tr) / 4; tr.Function = MPI2_FUNCTION_SCSI_TASK_MGMT; tr.DevHandle = t->DevHandle;
@@ -617,6 +631,7 @@ struct MockIocModel {
         CHECK(q->DataLength == 512);
         identifies++;
         if (dropIdentify) return;
+        if (identifyStuck.erase(q->DevHandle)) { stuckIds.push_back({smid, q->DevHandle}); return; }
         MPI2_SGE_SIMPLE64 sge; memcpy(&sge, &q->SGL, sizeof(sge));
         if (((sge.FlagsLength >> MPI2_SGE_FLAGS_SHIFT) & MPI2_SGE_FLAGS_ELEMENT_MASK) == MPI2_SGE_FLAGS_CHAIN_ELEMENT) {
             MPI2_SGE_CHAIN64 ce; memcpy(&ce, &q->SGL, sizeof(ce));
