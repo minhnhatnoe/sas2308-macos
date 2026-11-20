@@ -8,7 +8,8 @@
 #   tools/import-freebsd.sh <commit> <name>       any commit; tag vendor/freebsd-mps/<name>
 #
 # 1. Fetches the commit into ref/freebsd-src (blobless; created if missing)
-#    with the history since the current pin, so the log of step 4 is complete.
+#    with the history since the current release (--shallow-exclude), plus one
+#    generation, so the log of step 4 is complete and has no shallow artifacts.
 # 2. In a temporary worktree of vendor/freebsd-mps, copies every file of the
 #    path map in core/VENDOR.txt from that commit (`git show`, no checkout),
 #    removes core/mpi/ files upstream dropped, and updates the header of
@@ -54,14 +55,17 @@ case $spec in
 release/*) want="refs/tags/$spec:refs/tags/$spec" ;;
 *) want=$spec ;;
 esac
-git -C "$ref" fetch -q --filter=blob:none origin "$old"
+git -C "$ref" fetch -q --filter=blob:none --depth=1 origin "$old"
 if [ -n "$oldrel" ]; then
-	# every commit reachable from the new one but not from the old release
+	# the commits reachable from the new one but not from the old release
 	git -C "$ref" fetch -q --filter=blob:none --shallow-exclude="$oldrel" origin "$want"
 else
 	since=$(git -C "$ref" log -1 --format=%cs "$old")
 	git -C "$ref" fetch -q --filter=blob:none --shallow-since="$since" origin "$want"
 fi
+# one more generation, so the oldest fetched commits have their parents and
+# their diffs are real (a commit without parents looks like it adds every file)
+git -C "$ref" fetch -q --filter=blob:none --deepen=1 origin "$want"
 new=$(git -C "$ref" rev-parse "FETCH_HEAD^{commit}")
 short=$(echo "$new" | cut -c1-12)
 [ "$new" != "$old" ] || { echo "already at $new" >&2; exit 1; }
@@ -87,7 +91,7 @@ while read -r up ours; do
 done <<EOF
 $(sed -n 's|^\(sys/dev/mps/[^ ]*\) *-> *\(core/[^ ]*\).*|\1 \2|p' "$wt/.vendor.txt")
 EOF
-unported=$(sed -n '/^Upstream files not ported/,/^$/s|^\(sys/dev/mps/[^ ]*\).*|\1|p' "$wt/.vendor.txt")
+unported=$(sed -n '/^Upstream files not ported/,/^$/s|^\(sys/dev/mps/[^ ]*\).*|\1|p' "$wt/.vendor.txt" | tr '\n' ' ')
 rm "$wt/.vendor.txt"
 date=$(git -C "$ref" log -1 --format=%cs "$new")
 sed -i.bak -e "s|^Commit: .*|Commit:    $new|" -e "s|^Date: .*|Date:      $date|" \
@@ -104,7 +108,8 @@ for f in $(git -C "$ref" ls-tree --name-only "$new" sys/dev/mps/); do
 done
 
 # 4. upstream changes to the files we do not port
-log=$(git -C "$ref" log --format='%h %s' "$old..$new" -- $unported)
+# commits after the shallow boundary (= not reachable from the old release)
+log=$(git -C "$ref" log --format='%h %s' "$new" --not $(cat "$ref/.git/shallow") -- $unported)
 stat=$(git -C "$ref" diff --stat "$old" "$new" -- $unported)
 
 # 5. commit, tag
