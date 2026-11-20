@@ -651,6 +651,27 @@ int mps_kext_check_present(struct mps_kext *k)
     return present;
 }
 
+void mps_kext_disable_now(struct mps_kext *k)
+{
+    struct mps_softc *sc = &k->sc;
+    int start;
+
+    if (!k->attached)
+        return;
+    mps_lock(sc);
+    if (sc->mps_flags & MPS_FLAGS_XNU_GONE) {
+        /* every wait of mps_reinit checks GONE: it gives up at the next one */
+        start = ticks;
+        while (sc->xnu.reinit_running && (u_int)(ticks - start) < 10 * hz)
+            msleep(&sc->xnu.reinit_running, &sc->mps_mtx, 0, "mpsgone", hz / 100);
+        if (sc->xnu.reinit_running)
+            mps_dprint(sc, MPS_INIT | MPS_FAULT, "termination: the reinit did not stop in 10 s\n");
+        else
+            mps_xnu_disable(sc, ENXIO);
+    }
+    mps_unlock(sc);
+}
+
 int mps_kext_suspend(struct mps_kext *k, uint32_t drain_ms, int shutdown)
 {
     struct mps_softc *sc = &k->sc;

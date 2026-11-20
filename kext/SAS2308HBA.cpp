@@ -498,25 +498,20 @@ SAS2308HBA::ReleaseResources(void)
 
 //-----------------------------------------------------------------------------
 //	willTerminate - the provider is going away (unload, or a Thunderbolt
-//	surprise removal). Notice a removal now (all-ones registers: the core
-//	fails its IO at once), stop the hotplug thread and wait for a target
-//	creation in progress, then let the family destroy the targets; destroy
-//	what its loop misses (ID 63, SAS2308HBA_Targets.h).				[PROTECTED]
+//	surprise removal). SAS2308Glue::WillTerminate notices a removal now
+//	(all-ones registers), disables the controller synchronously and delivers
+//	every completion, so no IO is left on a nub; it stops the hotplug thread
+//	and waits for a target creation in progress. Then the family destroys
+//	the targets; we destroy what its loop misses (ID 63,
+//	SAS2308HBA_Targets.h).							[PROTECTED]
 //-----------------------------------------------------------------------------
 
 bool
 SAS2308HBA::willTerminate(IOService *provider, IOOptionBits options)
 {
-    bool present = true;
+    const bool present = fGlue.WillTerminate();
 
-    if (Enter()) {
-        present = mps_kext_check_present(fGlue.fMps) != 0;
-        Leave();
-        DeliverCompletions();
-    }
     Klog(MPSK_INIT | MPSK_INFO, "terminating (%s)", present ? "unload or stop" : "controller gone");
-    fGlue.StopTargets();
-    fGlue.QuiesceHotplug();
     const bool result = super::willTerminate(provider, options);
     fGlue.TerminateTargets((uint32_t)ReportHighestSupportedDeviceID());
     return result;

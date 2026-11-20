@@ -206,6 +206,13 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         CHECK(ioc->liveAllocs == 0);
     }
 
+    /* SAS2308HBA::willTerminate: our part, the family's destroy loop (IDs 0..62), ID 63 */
+    void WillTerminate() {
+        (void)glue.WillTerminate();
+        for (uint32_t id = 0; id < SAS2308Glue::kMaxTargets - 1; id++)
+            if (nubs.count(id)) DestroyTarget(id);
+        glue.TerminateTargets(SAS2308Glue::kMaxTargets - 1);
+    }
     FakeTask *NewRead(uint32_t target, uint32_t timeoutMs = 30000) {
         FakeTask *t = new FakeTask;
         tasks.push_back(t);
@@ -417,6 +424,29 @@ int main()
         CHECK(!f.nubs.count(t9));
         CHECK(a->completions == 1 && b->completions == 1);   /* CompleteTask checked: before the destroy */
         m.holdDev = 0;
+        f.Detach();
+    }
+
+    if (Want("D5")) {
+        /* Thunderbolt surprise removal with IO posted on two targets and held on a third */
+        MockIocModel m; m.devices = {0x0009, 0x000A, 0x000B}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        CHECK(f.nubs.size() == 3);
+        m.holdIo = true;
+        FakeTask *a = f.NewRead(f.Tid(0x0009)), *b = f.NewRead(f.Tid(0x000A));
+        CHECK(f.Submit(a) == SAS2308Glue::kInProcess && f.Submit(b) == SAS2308Glue::kInProcess);
+        RequestReinit("test: IO arriving now is held");
+        FakeTask *c = f.NewRead(f.Tid(0x000B));
+        CHECK(f.Submit(c) == SAS2308Glue::kInProcess);
+        CHECK(f.glue.fKStats.tasksHeld == 1);
+        m.dead = true;                              /* the dock is unplugged: registers read all-ones */
+        f.WillTerminate();
+        for (FakeTask *t : {a, b, c})               /* CompleteTask checks: before DestroyTargetForID */
+            CHECK(t->completions == 1 && t->done == SAS2308GluePort::kDoneGone);
+        CHECK(f.nubs.empty());
+        HostRunPending();                           /* the queued reinit finds nothing to do */
+        m.holdIo = false;
         f.Detach();
     }
 

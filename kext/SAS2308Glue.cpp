@@ -544,6 +544,42 @@ SAS2308Glue::Hotplug(void)
     }
 }
 
+//-----------------------------------------------------------------------------
+//	WillTerminate - our part of willTerminate, before the family's loop
+//	destroys the nubs. A surprise removal (all-ones doorbell) disables the
+//	controller now, so every posted and held ccb completes (DEV_NOT_THERE)
+//	and is delivered here; then each target gets the review M7 flush and
+//	drain (nothing should be left). FreeBSD: detach runs mps_free, which
+//	completes every ccb before the SIM and its periphs go. Then no new
+//	hotplug work, and wait for a CreateTargetForID in progress.
+//-----------------------------------------------------------------------------
+
+bool
+SAS2308Glue::WillTerminate(void)
+{
+    bool present = true;
+
+    if (Enter()) {
+        present = mps_kext_check_present(fMps) != 0;
+        if (!present)
+            mps_kext_disable_now(fMps);
+        Leave();
+        DeliverCompletions();
+        for (uint32_t id = 0; !present && id < kMaxTargets; id++) {
+            if (!Enter())
+                break;
+            const int left = mps_kext_target_drain(fMps, id, kDrainMs);
+            Leave();
+            DeliverCompletions();
+            if (left)
+                Klog(MPSK_MAPPING | MPSK_ERROR, "target %u: %d IOs still outstanding at termination", id, left);
+        }
+    }
+    StopTargets();
+    QuiesceHotplug();
+    return present;
+}
+
 void
 SAS2308Glue::StopTargets(void)
 {

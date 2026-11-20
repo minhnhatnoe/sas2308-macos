@@ -190,10 +190,18 @@ int	 mps_kext_tm(struct mps_kext *k, uint8_t type, uint32_t tid,
 
 /*
  * Termination: read the doorbell now, so a surprise removal (all-ones) is
- * noticed before the targets are torn down and IO to it fails at once.
- * Returns 0 if the controller is gone or disabled.
+ * noticed before the targets are torn down. Returns 0 if the controller is
+ * gone or disabled. Noticing only queues the reinit that fails the IO;
+ * mps_kext_disable_now fails it here.
  */
 int	 mps_kext_check_present(struct mps_kext *k);
+/*
+ * A gone controller: wait for a running reinit (it stops at its next
+ * wait), then mps_xnu_disable() now: every posted, held and TM ccb is
+ * completed CAM_DEV_NOT_THERE before this returns (FreeBSD: mps_free in
+ * detach completes every ccb before the SIM goes). No-op if present.
+ */
+void	 mps_kext_disable_now(struct mps_kext *k);
 
 /* ---- system sleep / shutdown (mps_xnu_suspend, mps_xnu_resume) ---------- */
 

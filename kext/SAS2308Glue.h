@@ -123,6 +123,7 @@ public:
     void ScheduleHotplug(void);         /* fLock held */
     void HotplugCallBody(void);         /* the hotplug thread call */
     void QuiesceHotplug(void);          /* fLock not held; may sleep */
+    bool WillTerminate(void);           /* before the family's willTerminate; false: controller gone */
     void StopTargets(void);             /* willTerminate: no new hotplug work */
     void TerminateTargets(uint32_t familyLimit);   /* after the family's willTerminate */
 
