@@ -112,6 +112,8 @@ static os_log_t LogFor(uint32_t cls)
  */
 static os_log_type_t LogType(uint32_t cls)
 {
+    if (cls == 0)       /* FreeBSD printf/device_printf (e.g. a config page read failure): console */
+        return OS_LOG_TYPE_DEFAULT;
     if (cls & (MPS_FAULT | MPS_ERROR))
         return OS_LOG_TYPE_ERROR;
     if (cls & (MPS_INFO | MPS_RECOVERY | MPS_INIT | MPS_EVENT | MPS_MAPPING))

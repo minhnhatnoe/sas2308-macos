@@ -770,6 +770,8 @@ int mps_restart(struct mps_softc *);
 int mps_update_events(struct mps_softc *, struct mps_event_handle *, u32 *);
 int mps_config_get_sas_device_pg0(struct mps_softc *, Mpi2ConfigReply_t *,
     Mpi2SasDevicePage0_t *, u32 , u16 );
+int mps_config_get_iounit_pg7(struct mps_softc *, Mpi2ConfigReply_t *,
+    Mpi2IOUnitPage7_t *);	/* XNU: IOC temperature */
 void mps_deregister_events(struct mps_softc *, struct mps_event_handle *);
 int mps_push_sge(struct mps_command *, void *, size_t, int);
 int mps_add_dmaseg(struct mps_command *, vm_paddr_t, size_t, u_int, int);

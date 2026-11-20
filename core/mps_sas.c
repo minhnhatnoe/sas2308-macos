@@ -806,6 +806,7 @@ mpssas_handle_reinit(struct mps_softc *sc)
 	sc->sassc->flags |= MPSSAS_IN_STARTUP;
 	sc->sassc->flags |= MPSSAS_IN_DISCOVERY;
 	mpssas_startup_increment(sc->sassc);
+	mps_xnu_readd_cancel(sc, 0);	/* XNU: the rediscovery adds them */
 
 	/* notify CAM of a bus reset */
 	mpssas_announce_reset(sc, AC_BUS_RESET, CAM_TARGET_WILDCARD, 

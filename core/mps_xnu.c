@@ -240,6 +240,7 @@ mps_xnu_asc_str(uint8_t asc, uint8_t ascq)
 		const char	*s;
 	} t[] = {
 		{ 0x00, 0x00, 0, "NO ADDITIONAL SENSE INFORMATION" },
+		{ 0x00, 0x1D, 0, "ATA PASS THROUGH INFORMATION AVAILABLE" },
 		{ 0x04, 0x00, 0, "LOGICAL UNIT NOT READY, CAUSE NOT REPORTABLE" },
 		{ 0x04, 0x01, 0, "LOGICAL UNIT IS IN PROCESS OF BECOMING READY" },
 		{ 0x04, 0x02, 0, "LOGICAL UNIT NOT READY, INITIALIZING COMMAND REQUIRED" },
@@ -611,6 +612,8 @@ mps_xnu_check_fault(struct mps_softc *sc)
 	mps_xnu_request_reinit(sc, "IOC fault");
 }
 
+static void	mps_xnu_queue_due(struct mps_softc *sc);
+
 void
 mps_xnu_periodic(struct mps_softc *sc)
 {
@@ -624,6 +627,7 @@ mps_xnu_periodic(struct mps_softc *sc)
 			    "%u similar IO error lines suppressed\n",
 			    sc->xnu.ioerr_tid[i], sc->xnu.ioerr_handle[i], sup);
 	}
+	mps_xnu_queue_due(sc);
 	mps_xnu_stats_update(sc);
 }
 
@@ -686,11 +690,28 @@ mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm, union ccb *ccb,
 	const char *ascs;
 	char li[64];
 	struct mpssas_target *targ = cm->cm_targ;
+	int sense, recovered;
+	uint32_t cls;
 
 	if (status == CAM_REQUEUE_REQ)		/* not done: comes back */
 		return;
 	if (rep != NULL)
 		ioc = le16toh(rep->IOCStatus) & MPI2_IOCSTATUS_MASK;
+	/* the IOC's sense buffer (FreeBSD copies it only for some IOCStatus) */
+	sense = rep != NULL &&
+	    (rep->SCSIState & MPI2_SCSI_STATE_AUTOSENSE_VALID) &&
+	    mps_xnu_parse_sense((const uint8_t *)cm->cm_sense,
+	    min(le32toh(rep->SenseCount), MPS_SENSE_LEN), &key, &asc, &ascq);
+	/*
+	 * CHECK CONDITION with RECOVERED ERROR: the command completed.  SAT
+	 * returns the ATA registers of an ATA PASS-THROUGH(12/16) with CK_COND
+	 * this way (ASC/ASCQ 0x00/0x1D, ATA PASS THROUGH INFORMATION
+	 * AVAILABLE): macOS SMART polling does it every few minutes.  Not an
+	 * error: counted apart, logged at xinfo.
+	 */
+	recovered = status == CAM_SCSI_STATUS_ERROR && sense &&
+	    csio->scsi_status == MPI2_SCSI_STATUS_CHECK_CONDITION &&
+	    key == SSD_KEY_RECOVERED_ERROR;
 	if (status == CAM_REQ_CMP || status == CAM_SCSI_STATUS_ERROR)
 		xfer = cm->cm_length - csio->resid;
 	lat = now - ccb->ccb_h.xnu_start_us;
@@ -708,7 +729,9 @@ mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm, union ccb *ccb,
 	case CAM_REQ_CMP:
 		break;
 	case CAM_SCSI_STATUS_ERROR:
-		if (csio->scsi_status == MPI2_SCSI_STATUS_CHECK_CONDITION)
+		if (recovered)
+			st->recovered_sense++;
+		else if (csio->scsi_status == MPI2_SCSI_STATUS_CHECK_CONDITION)
 			st->err_check_condition++;
 		else
 			st->err_scsi_status++;
@@ -741,17 +764,22 @@ mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm, union ccb *ccb,
 	/*
 	 * The failed-IO line: a reply frame with a real error (not a
 	 * termination by our own task management), rate limited per target.
+	 * A recovered error is an xinfo line, outside the rate limit.
 	 */
+	cls = recovered ? MPS_XINFO : MPS_ERROR;
 	if (rep == NULL || status == CAM_REQ_CMP ||
 	    ioc == MPI2_IOCSTATUS_SCSI_TASK_TERMINATED ||
-	    (sc->mps_debug & MPS_ERROR) == 0)
+	    (sc->mps_debug & cls) == 0)
 		return;
-	slot = targ->handle % MPS_XNU_RL_SLOTS;
-	sc->xnu.ioerr_handle[slot] = targ->handle;
-	sc->xnu.ioerr_tid[slot] = targ->tid;
-	if (!mps_xnu_ratelimit_allow(&sc->xnu.ioerr_rl[slot], now / 1000,
-	    MPS_XNU_RL_BURST, MPS_XNU_RL_WINDOW_MS, &sup))
-		return;
+	sup = 0;
+	if (!recovered) {
+		slot = targ->handle % MPS_XNU_RL_SLOTS;
+		sc->xnu.ioerr_handle[slot] = targ->handle;
+		sc->xnu.ioerr_tid[slot] = targ->tid;
+		if (!mps_xnu_ratelimit_allow(&sc->xnu.ioerr_rl[slot],
+		    now / 1000, MPS_XNU_RL_BURST, MPS_XNU_RL_WINDOW_MS, &sup))
+			return;
+	}
 	if (sup != 0)
 		mps_dprint(sc, MPS_ERROR, "target %u (handle 0x%04x): %u "
 		    "similar IO error lines suppressed\n", targ->tid,
@@ -764,18 +792,15 @@ mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm, union ccb *ccb,
 		mps_xnu_loginfo_str(le32toh(rep->IOCLogInfo), d, sizeof(d));
 		snprintf(li, sizeof(li), " loginfo %s", d);
 	}
-	/* the IOC's sense buffer (FreeBSD copies it only for some IOCStatus) */
-	if ((rep->SCSIState & MPI2_SCSI_STATE_AUTOSENSE_VALID) &&
-	    mps_xnu_parse_sense((const uint8_t *)cm->cm_sense,
-	    min(le32toh(rep->SenseCount), MPS_SENSE_LEN), &key, &asc, &ascq)) {
+	if (sense) {
 		ascs = mps_xnu_asc_str(asc, ascq);
-		mps_dprint(sc, MPS_ERROR, "target %u (handle 0x%04x) lun %ju "
-		    "SMID %u %s lba %ju blocks %u failed: IOCStatus %s "
+		mps_dprint(sc, cls, "target %u (handle 0x%04x) lun %ju "
+		    "SMID %u %s lba %ju blocks %u %s: IOCStatus %s "
 		    "(0x%04x)%s SCSI status %s (0x%02x) state 0x%02x sense %s "
 		    "(0x%x) ASC/ASCQ 0x%02x/0x%02x%s%s xfer %u/%u\n",
 		    targ->tid, targ->handle, (uintmax_t)ccb->ccb_h.target_lun,
 		    cm->cm_desc.Default.SMID, mps_xnu_cdb_str(cdb[0]),
-		    (uintmax_t)lba, blocks,
+		    (uintmax_t)lba, blocks, recovered ? "recovered" : "failed",
 		    mps_describe_table(mps_iocstatus_string, ioc), ioc, li,
 		    mps_describe_table(mps_scsi_status_string, rep->SCSIStatus),
 		    rep->SCSIStatus, rep->SCSIState, mps_xnu_sense_key_str(key),
@@ -870,7 +895,6 @@ mps_xnu_config_page(struct mps_softc *sc, struct mps_command *cm)
 	bzero(sc->xnu.cfg_page, cm->cm_length);
 	bus_dmamap_xnu_lend(cm->cm_dmamap, sc->xnu.cfg_map);
 	sc->xnu.cfg_busy = 1;
-	sc->xnu.stats.config_reads++;
 	return (sc->xnu.cfg_page);
 }
 
@@ -879,6 +903,271 @@ mps_xnu_config_page_done(struct mps_softc *sc, void *page)
 {
 	if (page != NULL && page == sc->xnu.cfg_page)
 		sc->xnu.cfg_busy = 0;
+}
+
+/*
+ * Nothing new may be started on the event queue: reset, gone, suspended,
+ * shutting down.
+ */
+static int
+mps_xnu_quiet(struct mps_softc *sc)
+{
+	return ((sc->mps_flags & (MPS_FLAGS_DIAGRESET | MPS_FLAGS_XNU_GONE |
+	    MPS_FLAGS_XNU_SUSPENDED | MPS_FLAGS_SHUTDOWN)) != 0 ||
+	    sc->xnu.suspending || sc->xnu.reinit_pending || sc->xnu.disabled);
+}
+
+/*
+ * A page read that failed on our side (no free command: EBUSY, the page
+ * buffer busy: ENOMEM) or that the IOC refused for now (BUSY, insufficient
+ * resources).  A wait error (timeout: mps_reinit ran; reset in progress) is
+ * not: the rediscovery after the reset adds the device; a firmware error
+ * (invalid page: the handle is gone) is final, as on FreeBSD.
+ */
+static int
+mps_xnu_config_retryable(int error, const Mpi2ConfigReply_t *reply)
+{
+	uint16_t ioc_status;
+
+	if (error == EBUSY || error == ENOMEM)
+		return (1);
+	ioc_status = le16toh(reply->IOCStatus) & MPI2_IOCSTATUS_MASK;
+	return (ioc_status == MPI2_IOCSTATUS_BUSY ||
+	    ioc_status == MPI2_IOCSTATUS_INSUFFICIENT_RESOURCES);
+}
+
+static const char *
+mps_xnu_errno_str(int error)
+{
+	switch (error) {
+	case EBUSY:	return ("no free command");
+	case ENOMEM:	return ("page buffer busy");
+	case ENXIO:	return ("no reply or IOC error");
+	default:	return ("error");
+	}
+}
+
+int
+mps_xnu_get_sas_device_pg0(struct mps_softc *sc, void *mpi_reply,
+    void *config_page, uint32_t form, uint16_t handle)
+{
+	int error, try;
+
+	for (try = 1; ; try++) {
+		bzero(mpi_reply, sizeof(Mpi2ConfigReply_t));
+		sc->xnu.stats.config_reads++;
+		error = mps_config_get_sas_device_pg0(sc, mpi_reply,
+		    config_page, form, handle);
+		if (error == 0 || try >= MPS_XNU_CFG_TRIES ||
+		    !mps_xnu_config_retryable(error, mpi_reply) ||
+		    mps_xnu_quiet(sc))
+			return (error);
+		sc->xnu.stats.config_retries++;
+		mps_dprint(sc, MPS_MAPPING | MPS_INFO, "handle 0x%04x: SAS "
+		    "device page0 read failed (error %d: %s, iocstatus 0x%x), "
+		    "retry %d/%d in %d ms\n", handle, error,
+		    mps_xnu_errno_str(error),
+		    le16toh(((Mpi2ConfigReply_t *)mpi_reply)->IOCStatus),
+		    try + 1, MPS_XNU_CFG_TRIES, 10 << (try - 1));
+		if (mtx_owned(&sc->mps_mtx))
+			(void)msleep(&sc->xnu.cfg_retry, &sc->mps_mtx, 0,
+			    "mpscfg", (hz / 100) << (try - 1));
+		else
+			pause("mpscfg", (hz / 100) << (try - 1));
+	}
+}
+
+static struct mps_xnu_readd *
+mps_xnu_readd_find(struct mps_softc *sc, uint16_t handle)
+{
+	int i;
+
+	for (i = 0; i < MPS_XNU_READD_SLOTS; i++)
+		if (sc->xnu.readd[i].handle == handle)
+			return (&sc->xnu.readd[i]);
+	return (NULL);
+}
+
+void
+mps_xnu_readd_schedule(struct mps_softc *sc, uint16_t handle,
+    uint8_t linkrate, int error, const void *mpi_reply)
+{
+	struct mps_xnu_readd *r;
+	uint16_t ioc_status;
+	uint32_t ms;
+
+	ioc_status = le16toh(((const Mpi2ConfigReply_t *)mpi_reply)->IOCStatus);
+	r = mps_xnu_readd_find(sc, handle);
+	if (!mps_xnu_config_retryable(error, mpi_reply) ||
+	    (r != NULL && r->tries >= MPS_XNU_READD_TRIES)) {
+		if (r != NULL)
+			bzero(r, sizeof(*r));
+		sc->xnu.stats.readd_given_up++;
+		mps_dprint(sc, MPS_FAULT, "handle 0x%04x: SAS device page0 "
+		    "read failed (error %d: %s, iocstatus 0x%x): device not "
+		    "added%s\n", handle, error, mps_xnu_errno_str(error),
+		    ioc_status, mps_xnu_config_retryable(error, mpi_reply) ?
+		    ", retries exhausted" : "");
+		return;
+	}
+	if (r == NULL && (r = mps_xnu_readd_find(sc, 0)) == NULL) {
+		sc->xnu.stats.readd_given_up++;
+		mps_dprint(sc, MPS_FAULT, "handle 0x%04x: SAS device page0 "
+		    "read failed (error %d: %s): no re-add slot, device not "
+		    "added\n", handle, error, mps_xnu_errno_str(error));
+		return;
+	}
+	r->handle = handle;
+	r->linkrate = linkrate;
+	r->tries++;
+	r->queued = 0;
+	ms = 1000 * min(r->tries, 5);
+	r->due_us = mps_os_uptime_us() + (uint64_t)ms * 1000;
+	sc->xnu.stats.readd_scheduled++;
+	mps_dprint(sc, MPS_FAULT, "handle 0x%04x: SAS device page0 read failed "
+	    "(error %d: %s, iocstatus 0x%x): add retried in %u ms (%u/%u)\n",
+	    handle, error, mps_xnu_errno_str(error), ioc_status, ms, r->tries,
+	    MPS_XNU_READD_TRIES);
+}
+
+void
+mps_xnu_readd_cancel(struct mps_softc *sc, uint16_t handle)
+{
+	struct mps_xnu_readd *r;
+
+	/* a READD event still queued finds no entry and does nothing */
+	if (handle == 0)
+		bzero(sc->xnu.readd, sizeof(sc->xnu.readd));
+	else if ((r = mps_xnu_readd_find(sc, handle)) != NULL)
+		bzero(r, sizeof(*r));
+}
+
+int
+mps_xnu_readd_begin(struct mps_softc *sc, uint16_t handle, uint8_t *linkrate)
+{
+	struct mps_xnu_readd *r;
+
+	r = mps_xnu_readd_find(sc, handle);
+	if (r == NULL || !r->queued)
+		return (0);			/* cancelled */
+	if (mpssas_find_target_by_handle(sc->sassc, 0, handle) != NULL ||
+	    mps_xnu_quiet(sc)) {
+		bzero(r, sizeof(*r));		/* added meanwhile / reset */
+		return (0);
+	}
+	mps_dprint(sc, MPS_MAPPING | MPS_INFO, "handle 0x%04x: adding the "
+	    "device again (%u/%u)\n", handle, r->tries, MPS_XNU_READD_TRIES);
+	r->queued = 0;
+	r->due_us = 0;
+	*linkrate = r->linkrate;
+	return (1);
+}
+
+void
+mps_xnu_readd_end(struct mps_softc *sc, uint16_t handle)
+{
+	struct mps_xnu_readd *r;
+
+	/* added, or failed for a reason that is not retried: forget it */
+	r = mps_xnu_readd_find(sc, handle);
+	if (r != NULL && r->due_us == 0)
+		bzero(r, sizeof(*r));
+}
+
+/* 1 s, mps_mtx held: queue the re-adds and the temperature read that are due */
+static void
+mps_xnu_queue_due(struct mps_softc *sc)
+{
+	struct mps_xnu_readd *r;
+	uint64_t now = mps_os_uptime_us();
+	int i;
+
+	if (mps_xnu_quiet(sc) || sc->sassc == NULL)
+		return;
+	for (i = 0; i < MPS_XNU_READD_SLOTS; i++) {
+		r = &sc->xnu.readd[i];
+		if (r->handle == 0 || r->queued ||
+		    now < r->due_us)
+			continue;
+		if (mpssas_xnu_queue_work(sc, MPS_XNU_EVENT_READD, &r->handle,
+		    sizeof(r->handle)) == 0)
+			r->queued = 1;
+	}
+	/*
+	 * The temperature: every MPS_XNU_TEMP_PERIOD_S, not before port enable
+	 * completed nor while firmware events wait (discovery comes first), never
+	 * two reads queued.  It runs on the event queue, so it cannot overlap a
+	 * page 0 read.  (Not MPSSAS_IN_DISCOVERY: only a discovery event clears
+	 * it.)
+	 */
+	if (sc->xnu.temp_absent || sc->xnu.temp_queued ||
+	    (sc->sassc->flags & MPSSAS_IN_STARTUP) ||
+	    !TAILQ_EMPTY(&sc->sassc->ev_queue) ||
+	    (sc->xnu.temp_last_us != 0 && now - sc->xnu.temp_last_us <
+	    (uint64_t)MPS_XNU_TEMP_PERIOD_S * 1000000))
+		return;
+	if (mpssas_xnu_queue_work(sc, MPS_XNU_EVENT_TEMP, NULL, 0) == 0)
+		sc->xnu.temp_queued = 1;
+}
+
+/* MPS_XNU_EVENT_TEMP on the event queue: IO Unit Page 7 */
+void
+mps_xnu_temperature(struct mps_softc *sc)
+{
+	Mpi2ConfigReply_t mpi_reply;
+	Mpi2IOUnitPage7_t pg;
+	struct mps_xnu_stats *st = &sc->xnu.stats;
+	int error, t;
+
+	sc->xnu.temp_queued = 0;
+	sc->xnu.temp_last_us = mps_os_uptime_us();
+	if (mps_xnu_quiet(sc))
+		return;
+	bzero(&mpi_reply, sizeof(mpi_reply));
+	bzero(&pg, sizeof(pg));
+	st->temp_reads++;
+	error = mps_config_get_iounit_pg7(sc, &mpi_reply, &pg);
+	if (error != 0) {
+		st->temp_failures++;
+		mps_dprint(sc, MPS_INFO, "IO Unit Page 7 read failed (error "
+		    "%d: %s, iocstatus 0x%x)\n", error,
+		    mps_xnu_errno_str(error), le16toh(mpi_reply.IOCStatus));
+		return;
+	}
+	t = le16toh(pg.IOCTemperature);
+	switch (pg.IOCTemperatureUnits) {
+	case MPI2_IOUNITPAGE7_IOC_TEMP_CELSIUS:
+		break;
+	case MPI2_IOUNITPAGE7_IOC_TEMP_FAHRENHEIT:
+		t = (t - 32) * 5 / 9;
+		break;
+	default:			/* NOT_PRESENT */
+		sc->xnu.temp_absent = 1;
+		st->ioc_temp_valid = 0;
+		mps_dprint(sc, MPS_INFO, "IOC temperature: no sensor (IO Unit "
+		    "Page 7 units 0x%x), not polled\n",
+		    pg.IOCTemperatureUnits);
+		return;
+	}
+	st->ioc_temp_c = t;
+	st->ioc_temp_valid = 1;
+	if (!sc->xnu.temp_logged) {
+		sc->xnu.temp_logged = 1;
+		mps_dprint(sc, MPS_INFO, "IOC temperature %d C (IO Unit Page 7, "
+		    "polled every %d s)\n", t, MPS_XNU_TEMP_PERIOD_S);
+	}
+	if (t >= MPS_XNU_TEMP_WARN_C && !sc->xnu.temp_warned) {
+		sc->xnu.temp_warned = 1;
+		st->temp_warnings++;
+		mps_dprint(sc, MPS_ERROR, "IOC temperature %d C: at or above "
+		    "%d C, check the enclosure's airflow\n", t,
+		    MPS_XNU_TEMP_WARN_C);
+	} else if (t < MPS_XNU_TEMP_REARM_C && sc->xnu.temp_warned) {
+		sc->xnu.temp_warned = 0;
+		mps_dprint(sc, MPS_INFO, "IOC temperature %d C: below %d C "
+		    "again\n", t, MPS_XNU_TEMP_REARM_C);
+	}
+	mps_dprint(sc, MPS_XINFO, "IOC temperature %d C\n", t);
 }
 
 void

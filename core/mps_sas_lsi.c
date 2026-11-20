@@ -107,6 +107,35 @@ mpssas_evt_handler(struct mps_softc *sc, uintptr_t data,
 
 }
 
+/*
+ * XNU: queue a pseudo event (MPS_XNU_EVENT_*) behind the firmware's events,
+ * as mpssas_evt_handler does; mps_mtx held.
+ */
+int
+mpssas_xnu_queue_work(struct mps_softc *sc, uint16_t event, const void *data,
+    size_t len)
+{
+	struct mps_fw_event_work *fw_event;
+
+	if (sc->sassc == NULL || sc->sassc->ev_tq == NULL)
+		return (ENXIO);
+	fw_event = malloc(sizeof(struct mps_fw_event_work), M_MPT2,
+	     M_ZERO|M_NOWAIT);
+	if (!fw_event)
+		return (ENOMEM);
+	fw_event->event_data = malloc(len ? len : 1, M_MPT2, M_ZERO|M_NOWAIT);
+	if (!fw_event->event_data) {
+		free(fw_event, M_MPT2);
+		return (ENOMEM);
+	}
+	if (len)
+		bcopy(data, fw_event->event_data, len);
+	fw_event->event = event;
+	TAILQ_INSERT_TAIL(&sc->sassc->ev_queue, fw_event, ev_link);
+	taskqueue_enqueue(sc->sassc->ev_tq, &sc->sassc->ev_task);
+	return (0);
+}
+
 static void
 mpssas_fw_event_free(struct mps_softc *sc, struct mps_fw_event_work *fw_event)
 {
@@ -159,6 +188,8 @@ mpssas_fw_work(struct mps_softc *sc, struct mps_fw_event_work *fw_event)
 				}
 				break;
 			case MPI2_EVENT_SAS_TOPO_RC_TARG_NOT_RESPONDING:
+				mps_xnu_readd_cancel(sc, le16toh(	/* XNU */
+				    phy->AttachedDevHandle));
 				mpssas_prepare_remove(sassc,le16toh( 
 					phy->AttachedDevHandle));
 				break;
@@ -240,6 +271,25 @@ mpssas_fw_work(struct mps_softc *sc, struct mps_fw_event_work *fw_event)
 		}
 		break;
 	}
+	/*
+	 * XNU: pseudo events queued by mps_xnu_periodic, run here so that no
+	 * two config page reads overlap: a device add that failed on our side,
+	 * the IOC temperature.
+	 */
+	case MPS_XNU_EVENT_READD:
+	{
+		u16 handle = *(u16 *)fw_event->event_data;
+		u8 linkrate;
+
+		if (mps_xnu_readd_begin(sc, handle, &linkrate)) {
+			(void)mpssas_add_device(sc, handle, linkrate);
+			mps_xnu_readd_end(sc, handle);
+		}
+		break;
+	}
+	case MPS_XNU_EVENT_TEMP:
+		mps_xnu_temperature(sc);
+		break;
 	case MPI2_EVENT_SAS_DEVICE_STATUS_CHANGE:
 	case MPI2_EVENT_SAS_BROADCAST_PRIMITIVE:
 	default:
@@ -283,12 +333,15 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
 
 	sassc = sc->sassc;
 	mpssas_startup_increment(sassc);
-	if (mps_config_get_sas_device_pg0(sc, &mpi_reply, &config_page,
-	    MPI2_SAS_DEVICE_PGAD_FORM_HANDLE, handle) != 0) {
+	/* XNU: retried in-line on local failures (mps_xnu.c) */
+	if ((error = mps_xnu_get_sas_device_pg0(sc, &mpi_reply, &config_page,
+	    MPI2_SAS_DEVICE_PGAD_FORM_HANDLE, handle)) != 0) {
 		mps_dprint(sc, MPS_INFO|MPS_MAPPING|MPS_FAULT,
 		    "Error reading SAS device %#x page0, iocstatus= 0x%x\n",
 		    handle, mpi_reply.IOCStatus);
 		sc->xnu.stats.config_failures++;	/* XNU */
+		/* XNU: tried again later when the failure was ours */
+		mps_xnu_readd_schedule(sc, handle, linkrate, error, &mpi_reply);
 		error = ENXIO;
 		goto out;
 	}
@@ -300,7 +353,7 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
 		Mpi2ConfigReply_t tmp_mpi_reply;
 		Mpi2SasDevicePage0_t parent_config_page;
 
-		if (mps_config_get_sas_device_pg0(sc, &tmp_mpi_reply,
+		if (mps_xnu_get_sas_device_pg0(sc, &tmp_mpi_reply,	/* XNU */
 		    &parent_config_page, MPI2_SAS_DEVICE_PGAD_FORM_HANDLE,
 		    le16toh(config_page.ParentDevHandle)) != 0) {
 			mps_dprint(sc, MPS_MAPPING|MPS_FAULT,
@@ -395,6 +448,7 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
 
 	mpssas_rescan_target(sc, targ);
 	mps_dprint(sc, MPS_MAPPING, "Target id 0x%x added\n", targ->tid);
+	mps_xnu_readd_cancel(sc, handle);	/* XNU: no later retry */
 
 	/* XNU: no SATA identify, so no MPS_CM_FLAGS_SATA_ID_TIMEOUT commands */
 out:

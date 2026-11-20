@@ -56,6 +56,19 @@ struct mps_xnu_stats {
 	uint32_t	suspended_access;	/* register accesses refused while suspended */
 	/* SAS Device Page 0 reads (mpssas_add_device) */
 	uint32_t	config_reads, config_failures;
+	uint32_t	config_retries;		/* in-line retries (no command, buffer busy) */
+	uint32_t	readd_scheduled;	/* device adds retried later */
+	uint32_t	readd_given_up;
+	/*
+	 * CHECK CONDITION with sense key RECOVERED ERROR (not an error; e.g.
+	 * SAT's ATA PASS-THROUGH status return): not in err_check_condition
+	 */
+	uint32_t	recovered_sense;
+	/* IOC temperature (IO Unit Page 7, mps_xnu_temperature) */
+	uint32_t	temp_reads, temp_failures;
+	uint32_t	temp_warnings;		/* crossings of MPS_XNU_TEMP_WARN_C */
+	uint32_t	ioc_temp_valid;		/* ioc_temp_c holds a reading */
+	int32_t		ioc_temp_c;		/* last reading, degrees C */
 };
 
 #endif /* !_MPS_XNU_STATS_H_ */

@@ -30,6 +30,12 @@ struct mps_softc;
 #define MPS_XNU_MAXIO_PAGES	256	/* 1 MiB */
 #define MPS_XNU_REINIT_TRIES	3	/* mps_reinit attempts on nested faults */
 #define MPS_XNU_MAX_TARGETS	64	/* target ids handed out */
+#define MPS_XNU_CFG_TRIES	3	/* page 0 attempts in a row (10, 20 ms apart) */
+#define MPS_XNU_READD_SLOTS	16	/* devices waiting for a later add */
+#define MPS_XNU_READD_TRIES	8	/* later attempts, 1 s .. 5 s apart */
+#define MPS_XNU_TEMP_PERIOD_S	30	/* IOC temperature poll */
+#define MPS_XNU_TEMP_WARN_C	85	/* warning above, */
+#define MPS_XNU_TEMP_REARM_C	80	/* re-armed below */
 
 /* ---- log levels: presets of the mps_dprint class mask ------------------ */
 
@@ -110,9 +116,51 @@ struct mps_xnu {
 	/* system sleep / shutdown: new IO held, OS TMs refused (mps.c) */
 	int			 suspending;
 	int			 suspended_logged;
+	/* SAS Device Page 0 retries: in-line backoff, then later re-adds */
+	int			 cfg_retry;		/* msleep channel */
+	struct mps_xnu_readd {
+		uint16_t	 handle;		/* 0: free slot */
+		uint8_t		 linkrate;
+		uint8_t		 tries;			/* deferred attempts made */
+		int		 queued;		/* on the event queue */
+		uint64_t	 due_us;
+	}			 readd[MPS_XNU_READD_SLOTS];
+	/* IOC temperature (IO Unit Page 7), read on the event queue */
+	int			 temp_queued;
+	int			 temp_absent;		/* units NOT_PRESENT: stop */
+	int			 temp_warned;		/* above the warning, not re-armed */
+	int			 temp_logged;		/* first reading logged */
+	uint64_t		 temp_last_us;
 };
 
 #define	MPS_XNU_CFG_PAGE_BYTES	1024	/* largest config page read */
+
+/*
+ * Pseudo events on the firmware event queue (mpssas_fw_work), so that they
+ * run one at a time with discovery: never two config page reads at once.
+ */
+#define	MPS_XNU_EVENT_READD	0xFF01	/* retry mpssas_add_device(handle) */
+#define	MPS_XNU_EVENT_TEMP	0xFF02	/* read IO Unit Page 7 */
+int	mpssas_xnu_queue_work(struct mps_softc *sc, uint16_t event,
+	    const void *data, size_t len);	/* mps_sas_lsi.c, mps_mtx held */
+
+/* mps_config_get_sas_device_pg0 with in-line retries for local failures */
+int	mps_xnu_get_sas_device_pg0(struct mps_softc *sc, void *mpi_reply,
+	    void *config_page, uint32_t form, uint16_t handle);
+/* page 0 of a device being added failed: retry later or give up (logged) */
+void	mps_xnu_readd_schedule(struct mps_softc *sc, uint16_t handle,
+	    uint8_t linkrate, int error, const void *mpi_reply);
+/* forget a pending re-add (handle 0: all) */
+void	mps_xnu_readd_cancel(struct mps_softc *sc, uint16_t handle);
+/*
+ * MPS_XNU_EVENT_READD on the event queue: 1 if the add is to be tried
+ * (*linkrate set); then mps_xnu_readd_end after mpssas_add_device
+ */
+int	mps_xnu_readd_begin(struct mps_softc *sc, uint16_t handle,
+	    uint8_t *linkrate);
+void	mps_xnu_readd_end(struct mps_softc *sc, uint16_t handle);
+/* MPS_XNU_EVENT_TEMP on the event queue */
+void	mps_xnu_temperature(struct mps_softc *sc);
 
 /* target id for a newly announced device handle (MPS_MAP_BAD_ID: none) */
 u_int	mps_xnu_get_tid(struct mps_softc *sc, uint16_t handle);

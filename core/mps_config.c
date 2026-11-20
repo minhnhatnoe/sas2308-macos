@@ -39,7 +39,121 @@
  * the other config page readers (IOC page 8, manufacturing page 10, DPM,
  * BIOS page 3, RAID volume/physical disk pages, WarpDrive) belong to
  * mps_mapping.c, IR and WarpDrive support, which are not ported.
+ * mps_config_get_iounit_pg7() (IOC temperature) is new, written like
+ * FreeBSD's mps_config_get_ioc_pg8() (a non-extended page).
  */
+
+/**
+ * mps_config_get_iounit_pg7 - obtain IO Unit page 7 (XNU: not in FreeBSD)
+ * @sc: per adapter object
+ * @mpi_reply: reply mf payload returned from firmware
+ * @config_page: contents of the config page
+ * Context: sleep.
+ *
+ * Returns 0 for success, non-zero for failure.
+ */
+int
+mps_config_get_iounit_pg7(struct mps_softc *sc, Mpi2ConfigReply_t *mpi_reply,
+    Mpi2IOUnitPage7_t *config_page)
+{
+	MPI2_CONFIG_REQUEST *request;
+	MPI2_CONFIG_REPLY *reply = NULL;
+	struct mps_command *cm;
+	MPI2_CONFIG_PAGE_IO_UNIT_7 *page = NULL;
+	int error = 0;
+	u16 ioc_status;
+
+	mps_dprint(sc, MPS_TRACE, "%s\n", __func__);
+
+	if ((cm = mps_alloc_command(sc)) == NULL) {
+		printf("%s: command alloc failed @ line %d\n", __func__,
+		    __LINE__);
+		error = EBUSY;
+		goto out;
+	}
+	request = (MPI2_CONFIG_REQUEST *)cm->cm_req;
+	bzero(request, sizeof(MPI2_CONFIG_REQUEST));
+	request->Function = MPI2_FUNCTION_CONFIG;
+	request->Action = MPI2_CONFIG_ACTION_PAGE_HEADER;
+	request->Header.PageType = MPI2_CONFIG_PAGETYPE_IO_UNIT;
+	request->Header.PageNumber = 7;
+	request->Header.PageVersion = MPI2_IOUNITPAGE7_PAGEVERSION;
+	cm->cm_desc.Default.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE;
+	cm->cm_data = NULL;
+	error = mps_wait_command(sc, &cm, 60, CAN_SLEEP);
+	if (cm != NULL)
+		reply = (MPI2_CONFIG_REPLY *)cm->cm_reply;
+	if (error || (reply == NULL)) {
+		printf("%s: request for header completed with error %d\n",
+		    __func__, error);
+		error = ENXIO;
+		goto out;
+	}
+	ioc_status = le16toh(reply->IOCStatus) & MPI2_IOCSTATUS_MASK;
+	bcopy(reply, mpi_reply, sizeof(MPI2_CONFIG_REPLY));
+	if (ioc_status != MPI2_IOCSTATUS_SUCCESS) {
+		printf("%s: header read with error; iocstatus = 0x%x\n",
+		    __func__, ioc_status);
+		error = ENXIO;
+		goto out;
+	}
+	mps_free_command(sc, cm);
+
+	if ((cm = mps_alloc_command(sc)) == NULL) {
+		printf("%s: command alloc failed @ line %d\n", __func__,
+		    __LINE__);
+		error = EBUSY;
+		goto out;
+	}
+	request = (MPI2_CONFIG_REQUEST *)cm->cm_req;
+	bzero(request, sizeof(MPI2_CONFIG_REQUEST));
+	request->Function = MPI2_FUNCTION_CONFIG;
+	request->Action = MPI2_CONFIG_ACTION_PAGE_READ_CURRENT;
+	request->Header.PageType = MPI2_CONFIG_PAGETYPE_IO_UNIT;
+	request->Header.PageNumber = 7;
+	request->Header.PageVersion = MPI2_IOUNITPAGE7_PAGEVERSION;
+	request->Header.PageLength = mpi_reply->Header.PageLength;
+	cm->cm_length =  le16toh(mpi_reply->Header.PageLength) * 4;
+	cm->cm_sge = &request->PageBufferSGE;
+	cm->cm_sglsize = sizeof(MPI2_SGE_IO_UNION);
+	cm->cm_flags = MPS_CM_FLAGS_SGE_SIMPLE | MPS_CM_FLAGS_DATAIN;
+	cm->cm_desc.Default.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE;
+	page = mps_xnu_config_page(sc, cm);	/* XNU: as sas_device_pg0 */
+	if (!page) {
+		printf("%s: page alloc failed\n", __func__);
+		error = ENOMEM;
+		goto out;
+	}
+	cm->cm_data = page;
+
+	error = mps_wait_command(sc, &cm, 60, CAN_SLEEP);
+	if (cm != NULL)
+		reply = (MPI2_CONFIG_REPLY *)cm->cm_reply;
+	if (error || (reply == NULL)) {
+		printf("%s: request for page completed with error %d\n",
+		    __func__, error);
+		error = ENXIO;
+		goto out;
+	}
+	ioc_status = le16toh(reply->IOCStatus) & MPI2_IOCSTATUS_MASK;
+	bcopy(reply, mpi_reply, sizeof(MPI2_CONFIG_REPLY));
+	if (ioc_status != MPI2_IOCSTATUS_SUCCESS) {
+		printf("%s: page read with error; iocstatus = 0x%x\n",
+		    __func__, ioc_status);
+		error = ENXIO;
+		goto out;
+	}
+	bcopy(page, config_page, MIN(cm->cm_length,
+	    (sizeof(Mpi2IOUnitPage7_t))));
+
+out:
+	mps_xnu_config_page_done(sc, page);	/* XNU: instead of free() */
+	if (cm) {
+		bus_dmamap_unload(sc->buffer_dmat, cm->cm_dmamap);	/* XNU */
+		mps_free_command(sc, cm);
+	}
+	return (error);
+}
 
 /**
  * mps_config_get_sas_device_pg0 - obtain sas device page 0

@@ -93,6 +93,10 @@ struct MockIocModel {
      */
     std::vector<std::vector<uint16_t>> topologyOnConfig;
     std::vector<uint16_t> portEnableList;      /* non-empty: port enable announces only these */
+    /* IO Unit Page 7: the IOC temperature */
+    uint16_t iocTemp = 52;
+    uint8_t  iocTempUnits = MPI2_IOUNITPAGE7_IOC_TEMP_CELSIUS;
+    int      iounit7Headers = 0, iounit7Reads = 0;
 
     /* ---- IOC-side view of the queues (from IOCInit) ---- */
     uint64_t reqBase = 0, postBase = 0, freeBase = 0;
@@ -468,6 +472,38 @@ struct MockIocModel {
         }
         AddressReply(0, buf, sizeof(buf));
     }
+    /* IO Unit Page 7 (not extended): header, then READ_CURRENT; one simple SGE. */
+    void AnswerIoUnit7(MPI2_CONFIG_REQUEST *q, uint16_t smid) {
+        CHECK(q->Header.PageNumber == 7 && q->Header.PageVersion == MPI2_IOUNITPAGE7_PAGEVERSION);
+        MPI2_CONFIG_REPLY cr{};
+        cr.MsgLength = sizeof(cr) / 4; cr.Function = MPI2_FUNCTION_CONFIG; cr.Action = q->Action;
+        cr.Header.PageType = MPI2_CONFIG_PAGETYPE_IO_UNIT; cr.Header.PageNumber = 7;
+        cr.Header.PageVersion = MPI2_IOUNITPAGE7_PAGEVERSION;
+        cr.Header.PageLength = sizeof(Mpi2IOUnitPage7_t) / 4;
+        if (q->Action == MPI2_CONFIG_ACTION_PAGE_HEADER) {
+            iounit7Headers++;
+            AddressReply(smid, &cr, sizeof(cr));
+            return;
+        }
+        CHECK(q->Action == MPI2_CONFIG_ACTION_PAGE_READ_CURRENT);
+        CHECK(q->Header.PageLength == sizeof(Mpi2IOUnitPage7_t) / 4);
+        iounit7Reads++;
+        MPI2_SGE_SIMPLE64 sge; memcpy(&sge, &q->PageBufferSGE, sizeof(sge));
+        if (((sge.FlagsLength >> MPI2_SGE_FLAGS_SHIFT) & MPI2_SGE_FLAGS_ELEMENT_MASK) == MPI2_SGE_FLAGS_CHAIN_ELEMENT) {
+            MPI2_SGE_CHAIN64 ce; memcpy(&ce, &q->PageBufferSGE, sizeof(ce));
+            memcpy(&sge, Ptr(((uint64_t)ce.Address.High << 32) | ce.Address.Low, sizeof(sge)), sizeof(sge));
+        }
+        const uint32_t fl = sge.FlagsLength >> MPI2_SGE_FLAGS_SHIFT;
+        CHECK((fl & MPI2_SGE_FLAGS_ELEMENT_MASK) == MPI2_SGE_FLAGS_SIMPLE_ELEMENT && !(fl & MPI2_SGE_FLAGS_HOST_TO_IOC));
+        CHECK((sge.FlagsLength & 0xFFFFFF) == sizeof(Mpi2IOUnitPage7_t));
+        Mpi2IOUnitPage7_t pg{};
+        pg.Header = cr.Header;
+        pg.PCIeWidth = MPI2_IOUNITPAGE7_PCIE_WIDTH_X8; pg.PCIeSpeed = MPI2_IOUNITPAGE7_PCIE_SPEED_8_0_GBPS;
+        pg.IOCTemperature = iocTemp; pg.IOCTemperatureUnits = iocTempUnits;
+        pg.IOCSpeed = MPI2_IOUNITPAGE7_IOC_SPEED_FULL;
+        memcpy(Ptr(((uint64_t)sge.Address.High << 32) | sge.Address.Low, sizeof(pg)), &pg, sizeof(pg));
+        AddressReply(smid, &cr, sizeof(cr));
+    }
     /* MPI2_FUNCTION_CONFIG: header, then READ_CURRENT of SAS Device Page 0 (FreeBSD mps_config.c). */
     void AnswerConfig(uint8_t *f, uint16_t smid, uint8_t descType) {
         auto *q = (MPI2_CONFIG_REQUEST *)f;
@@ -478,6 +514,7 @@ struct MockIocModel {
         }
         if (dropConfigOnce) { dropConfigOnce = false; return; }
         CHECK(descType == MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE);
+        if (q->Header.PageType == MPI2_CONFIG_PAGETYPE_IO_UNIT) { AnswerIoUnit7(q, smid); return; }
         CHECK(q->Header.PageType == MPI2_CONFIG_PAGETYPE_EXTENDED);
         CHECK(q->ExtPageType == MPI2_CONFIG_EXTPAGETYPE_SAS_DEVICE && q->Header.PageNumber == 0);
         MPI2_CONFIG_REPLY cr{};
@@ -597,7 +634,20 @@ struct MockIocModel {
                 pending.push_back(pd);
                 return;
             }
-            if (q->CDB.CDB32[0] == 0x00) {          /* TEST UNIT READY -> CHECK CONDITION */
+            if (q->CDB.CDB32[0] == 0xA1 || q->CDB.CDB32[0] == 0x85) {
+                /*
+                 * ATA PASS-THROUGH with CK_COND (SMART): SAT returns the ATA
+                 * registers as CHECK CONDITION, descriptor sense, RECOVERED
+                 * ERROR, 0x00/0x1D, ATA Status Return descriptor.
+                 */
+                uint8_t *s = Ptr(((uint64_t)senseHigh << 32) | q->SenseBufferLowAddress, 22);
+                memset(s, 0, 22); s[0] = 0x72; s[1] = 0x01; s[2] = 0x00; s[3] = 0x1D; s[7] = 14;
+                s[8] = 0x09; s[9] = 0x0C; s[11] = 0x00; s[21] = 0x50;   /* ATA status: DRDY|DSC */
+                MPI2_SCSI_IO_REPLY sr{};
+                sr.MsgLength = sizeof(sr) / 4; sr.Function = fn; sr.DevHandle = q->DevHandle;
+                sr.SCSIStatus = 0x02; sr.SCSIState = MPI2_SCSI_STATE_AUTOSENSE_VALID; sr.SenseCount = 22;
+                AddressReply(smid, &sr, sizeof(sr));
+            } else if (q->CDB.CDB32[0] == 0x00) {   /* TEST UNIT READY -> CHECK CONDITION */
                 uint8_t *s = Ptr(((uint64_t)senseHigh << 32) | q->SenseBufferLowAddress, 18);
                 memset(s, 0, 18); s[0] = 0x70; s[2] = 0x02; s[7] = 10; s[12] = 0x04;
                 MPI2_SCSI_IO_REPLY sr{};

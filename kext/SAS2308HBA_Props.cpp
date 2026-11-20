@@ -288,7 +288,8 @@ SAS2308HBA::PublishStats(bool force)
                          st.faults + st.reinits + st.reinit_failures + st.stale_replies + st.bad_replies + st.events +
                          st.chain_alloc_fail + ks.tasks + ks.tasksRejected + ks.familyTimeouts + ks.tmRequests +
                          snap.held + snap.tms_busy + (gone ? 1 : 0) + (resetting ? 2 : 0) + (fSuspended ? 4 : 0) + mask +
-                         st.suspends + st.resumes + st.config_reads;
+                         st.suspends + st.resumes + st.config_reads + st.config_retries + st.readd_scheduled +
+                         st.recovered_sense + st.temp_reads + (uint32_t)st.ioc_temp_c;
     IOLockLock(fLock);
     if (!force && sig == fLastPublishedSig) {
         IOLockUnlock(fLock);
@@ -352,6 +353,18 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Suspend drain left", st.suspend_drain_left);
     SetNumber(d, "Config page reads", st.config_reads);
     SetNumber(d, "Config page failures", st.config_failures);
+    SetNumber(d, "Config page retries", st.config_retries);
+    SetNumber(d, "Device re-adds scheduled", st.readd_scheduled);
+    SetNumber(d, "Device re-adds given up", st.readd_given_up);
+    SetNumber(d, "Recovered sense (not errors)", st.recovered_sense);
+    SetNumber(d, "IOC temperature reads", st.temp_reads);
+    SetNumber(d, "IOC temperature read failures", st.temp_failures);
+    SetNumber(d, "IOC temperature warnings", st.temp_warnings);
+    if (st.ioc_temp_valid && st.ioc_temp_c >= 0) {
+        SetNumber(d, "IOC temperature (C)", (UInt64)st.ioc_temp_c);
+        /* also a top-level property: ioreg -l -k "IOC Temperature (C)" */
+        setProperty(kIocTemperatureKey, (unsigned long long)st.ioc_temp_c, 32);
+    }
     SetNumber(d, "Debug mask", mask);
     OSString *state = OSString::withCString(gone ? "gone" : fSuspended ? "suspended" : resetting ? "resetting" : "operational");
     if (state) {

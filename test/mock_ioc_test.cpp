@@ -459,6 +459,9 @@ static void AsyncTests();
 static void LoggingTests();
 static void ConfigTests();
 static void HotplugTests();
+static void RetryTests();
+static void TemperatureTests();
+static void RecoveredSenseTests();
 static void SleepTests();
 
 int main()
@@ -1000,6 +1003,9 @@ int main()
     LoggingTests();
     ConfigTests();
     HotplugTests();
+    RetryTests();
+    TemperatureTests();
+    RecoveredSenseTests();
     SleepTests();
     printf("PASS (%llu SGLs walked, %zu log lines checked)\n", (unsigned long long)ioc.sglChecked, gHost.log.size());
     return 0;
@@ -1648,6 +1654,281 @@ static void HotplugTests()
         for (uint16_t h : all) CHECK(g.Targ(h) != nullptr && g.Present(g.Tid(h), h));
         CHECK(g.Stats().config_failures == 0 && g.Stats().config_reads == 14);
     }
+}
+
+/* Every normal command taken (the pool exhausted, as by IO plus event acks). */
+static std::vector<struct mps_command *> TakeCommands(Rig &g)
+{
+    std::vector<struct mps_command *> v;
+    mps_lock(g.sc);
+    for (struct mps_command *cm; (cm = mps_alloc_command(g.sc)) != nullptr; )
+        v.push_back(cm);
+    mps_unlock(g.sc);
+    return v;
+}
+
+static void GiveCommands(Rig &g, std::vector<struct mps_command *> &v)
+{
+    mps_lock(g.sc);
+    for (struct mps_command *cm : v)
+        mps_free_command(g.sc, cm);
+    mps_unlock(g.sc);
+    v.clear();
+}
+
+static int ReaddPending(Rig &g)
+{
+    int n = 0;
+    for (const auto &r : g.sc->xnu.readd) n += r.handle != 0;
+    return n;
+}
+
+static uint32_t LogClass(size_t mark, const char *sub)
+{
+    for (size_t i = mark; i < gHost.log.size(); i++)
+        if (gHost.log[i].line.find(sub) != std::string::npos) return gHost.log[i].cls;
+    return 0;
+}
+
+static void RetryTests()
+{
+    printf("page0 retry: command pool exhausted -> in-line retries, then the add is retried later\n");
+    {
+        Rig g({0x0009});
+        MockIocModel &m = g.ioc;
+        size_t mark = LogMark();
+        std::vector<struct mps_command *> held = TakeCommands(g);
+        CHECK(!held.empty());
+        m.devices.push_back(0x000B);
+        m.PostTopologyEvent({0x000B});
+        HostRunPending();
+        CHECK(g.Targ(0x000B) == nullptr);
+        CHECK(g.Stats().config_retries == MPS_XNU_CFG_TRIES - 1);
+        CHECK(g.Stats().readd_scheduled == 1 && ReaddPending(g) == 1);
+        CHECK(HasLog(mark, "retry 2/3 in 10 ms") && HasLog(mark, "retry 3/3 in 20 ms"));
+        CHECK(HasLog(mark, "handle 0x000b: SAS device page0 read failed (error 16: no free command, "
+                           "iocstatus 0x0): add retried in 1000 ms (1/8)"));
+        CHECK(LogClass(mark, "add retried in 1000 ms") & MPS_FAULT);
+        HostAdvance(2100);                      /* 1 s + the 1 s callout: still no command */
+        CHECK(g.Targ(0x000B) == nullptr && g.Stats().readd_scheduled == 2);
+        CHECK(HasLog(mark, "adding the device again (1/8)") && HasLog(mark, "add retried in 2000 ms (2/8)"));
+        GiveCommands(g, held);
+        HostAdvance(3100);
+        CHECK(g.Targ(0x000B) != nullptr && g.Present(g.Tid(0x000B), 0x000B));
+        CHECK(g.Targ(0x000B)->sasaddr == MockIocModel::SasAddrOf(0x000B));
+        CHECK(ReaddPending(g) == 0 && g.Stats().readd_given_up == 0);
+        Io *io = g.Read(0x000B);
+        CHECK(g.Go(io) == kPosted);
+        g.Pump();
+        CHECK(io->status == CAM_REQ_CMP && !g.sc->xnu.cfg_busy);
+    }
+
+    printf("page0 retry: device gone before the later add -> cancelled; reinit -> rediscovery adds it\n");
+    {
+        Rig g({0x0009});
+        MockIocModel &m = g.ioc;
+        size_t mark = LogMark();
+        std::vector<struct mps_command *> held = TakeCommands(g);
+        m.devices.push_back(0x000B);
+        m.PostTopologyEvent({0x000B});
+        HostRunPending();
+        CHECK(ReaddPending(g) == 1);
+        GiveCommands(g, held);
+        m.devices.pop_back();
+        m.PostTopologyEvent({0x000B}, MPI2_EVENT_SAS_TOPO_RC_TARG_NOT_RESPONDING);
+        HostRunPending();
+        CHECK(ReaddPending(g) == 0);
+        HostAdvance(3000);
+        CHECK(!HasLog(mark, "adding the device again") && g.Targ(0x000B) == nullptr);
+
+        held = TakeCommands(g);
+        m.devices.push_back(0x000C);
+        m.PostTopologyEvent({0x000C});
+        HostRunPending();
+        CHECK(ReaddPending(g) == 1);
+        GiveCommands(g, held);
+        CHECK(g.ForceReinit() == 0);
+        CHECK(ReaddPending(g) == 0);
+        HostRunPending();                       /* rediscovery */
+        CHECK(g.Targ(0x000C) != nullptr && g.Present(g.Tid(0x000C), 0x000C));
+        HostAdvance(3000);
+        CHECK(!HasLog(mark, "adding the device again"));
+    }
+
+    printf("page0 retry: pool exhausted for good -> retries exhausted, fault line, nothing leaked\n");
+    {
+        Rig g({0x0009});
+        MockIocModel &m = g.ioc;
+        size_t mark = LogMark();
+        std::vector<struct mps_command *> held = TakeCommands(g);
+        m.devices.push_back(0x000B);
+        m.PostTopologyEvent({0x000B});
+        HostRunPending();
+        HostAdvance(50000);
+        CHECK(g.Stats().readd_scheduled == MPS_XNU_READD_TRIES && g.Stats().readd_given_up == 1);
+        CHECK(HasLog(mark, "handle 0x000b: SAS device page0 read failed (error 16: no free command, "
+                           "iocstatus 0x0): device not added, retries exhausted"));
+        CHECK(ReaddPending(g) == 0 && g.Targ(0x000B) == nullptr);
+        GiveCommands(g, held);
+        HostAdvance(3000);
+        CHECK(g.Targ(0x000B) == nullptr && !g.sc->xnu.cfg_busy);
+    }
+
+    printf("page0: firmware error (invalid page) is final, as on FreeBSD: no retry\n");
+    {
+        size_t mark = LogMark();
+        Rig g({0x0009, 0x000A}, [](Rig &r) { r.ioc.configFailHandle = 0x000A; });
+        CHECK(g.Targ(0x000A) == nullptr && g.Stats().config_retries == 0);
+        CHECK(g.Stats().readd_scheduled == 0 && g.Stats().readd_given_up == 1);
+        CHECK(HasLog(mark, "handle 0x000a: SAS device page0 read failed (error 6: no reply or IOC error, "
+                           "iocstatus 0x22): device not added"));
+    }
+}
+
+static void TemperatureTests()
+{
+    printf("temperature: IO Unit Page 7 read from the event queue every 30 s, published in the statistics\n");
+    {
+        Rig g({0x0009});
+        MockIocModel &m = g.ioc;
+        size_t mark = LogMark();
+        const uint32_t reads = g.Stats().config_reads;
+        HostAdvance(1100);
+        CHECK(m.iounit7Reads == 1 && m.iounit7Headers == 1);
+        CHECK(g.Stats().temp_reads == 1 && g.Stats().temp_failures == 0);
+        CHECK(g.Stats().ioc_temp_valid == 1 && g.Stats().ioc_temp_c == 52);
+        CHECK(g.Stats().config_reads == reads);              /* page0 count untouched */
+        CHECK(HasLog(mark, "IOC temperature 52 C (IO Unit Page 7, polled every 30 s)"));
+        CHECK(LogClass(mark, "IOC temperature 52 C (IO Unit") & MPS_INFO);
+        HostAdvance(20000);
+        CHECK(m.iounit7Reads == 1);
+        HostAdvance(11000);
+        CHECK(m.iounit7Reads == 2 && gHost.Count(mark, "polled every 30 s") == 1);
+
+        printf("temperature: warning at 85 C once, re-armed below 80 C\n");
+        mark = LogMark();
+        m.iocTemp = 86;
+        HostAdvance(30000);
+        CHECK(g.Stats().ioc_temp_c == 86 && g.Stats().temp_warnings == 1);
+        CHECK(HasLog(mark, "IOC temperature 86 C: at or above 85 C"));
+        CHECK(LogClass(mark, "at or above 85 C") & MPS_ERROR);
+        m.iocTemp = 90;
+        HostAdvance(30000);
+        m.iocTemp = 82;                                     /* hysteresis: still armed off */
+        HostAdvance(30000);
+        CHECK(g.Stats().ioc_temp_c == 82 && g.Stats().temp_warnings == 1);
+        CHECK(gHost.Count(mark, "at or above 85 C") == 1 && !HasLog(mark, "below 80 C again"));
+        m.iocTemp = 79;
+        HostAdvance(30000);
+        CHECK(HasLog(mark, "IOC temperature 79 C: below 80 C again"));
+        m.iocTemp = 85;
+        HostAdvance(30000);
+        CHECK(g.Stats().temp_warnings == 2 && gHost.Count(mark, "at or above 85 C") == 2);
+        m.iocTemp = 185;                                    /* Fahrenheit: 85 C */
+        m.iocTempUnits = MPI2_IOUNITPAGE7_IOC_TEMP_FAHRENHEIT;
+        HostAdvance(30000);
+        CHECK(g.Stats().ioc_temp_c == 85 && g.Stats().temp_warnings == 2);
+
+        printf("temperature: not read while suspended\n");
+        const int before = m.iounit7Reads;
+        mps_lock(g.sc);
+        CHECK(mps_xnu_suspend(g.sc, 1000) == 0);
+        mps_unlock(g.sc);
+        HostAdvance(65000);
+        CHECK(m.iounit7Reads == before);
+        mps_lock(g.sc);
+        CHECK(mps_xnu_resume(g.sc) == 0);
+        mps_unlock(g.sc);
+        HostRunPending();
+        HostAdvance(31000);
+        CHECK(m.iounit7Reads > before && g.Present(g.Tid(0x0009), 0x0009));
+    }
+
+    printf("temperature: no sensor (units NOT_PRESENT) -> logged once, no more polls\n");
+    {
+        Rig g({0x0009}, [](Rig &r) { r.ioc.iocTempUnits = MPI2_IOUNITPAGE7_IOC_TEMP_NOT_PRESENT; });
+        size_t mark = LogMark();
+        HostAdvance(1100);
+        CHECK(g.ioc.iounit7Reads == 1 && g.Stats().ioc_temp_valid == 0);
+        CHECK(HasLog(mark, "IOC temperature: no sensor (IO Unit Page 7 units 0x0), not polled"));
+        HostAdvance(95000);
+        CHECK(g.ioc.iounit7Reads == 1 && g.Stats().temp_reads == 1);
+    }
+
+    printf("temperature: due during a hot-plug page read -> runs after it, no page0 failure\n");
+    {
+        Rig g({0x000A});
+        MockIocModel &m = g.ioc;
+        HostAdvance(1100);                                  /* first read done */
+        CHECK(m.iounit7Reads == 1);
+        /*
+         * The 1 s callout fires (30 s after the last read) while the event
+         * task sleeps in a page 0 read: first with the next topology list
+         * waiting (deferred), then during the last device's read (queued
+         * behind it, read after it).
+         */
+        int fired = 0, lastPage = -1;
+        const int base = m.configReads;
+        gHost.onOtherThreads = [&]() {
+            if (!g.sc->xnu.cfg_busy || m.configReads == lastPage) return;
+            lastPage = m.configReads;
+            if (lastPage != base + 1 && lastPage != base + 3) return;   /* 0x0009, 0x000B pages */
+            fired++;
+            mps_lock(g.sc);
+            g.sc->xnu.temp_last_us = 0;                         /* due */
+            mps_xnu_periodic(g.sc);
+            CHECK(g.sc->xnu.temp_queued == (fired == 1 ? 0 : 1));   /* events waiting: deferred */
+            mps_unlock(g.sc);
+            CHECK(m.iounit7Reads == 1);
+        };
+        for (uint16_t h : {0x0009, 0x000B}) m.devices.push_back(h);
+        m.topologyOnConfig = {{0x000B}};
+        m.PostTopologyEvent({0x0009});
+        HostRunPending();
+        gHost.onOtherThreads = nullptr;
+        CHECK(fired == 2 && m.iounit7Reads == 2 && g.Stats().temp_failures == 0);
+        for (uint16_t h : {0x0009, 0x000B}) CHECK(g.Targ(h) != nullptr && g.Present(g.Tid(h), h));
+        CHECK(g.Stats().config_failures == 0 && g.Stats().config_retries == 0 && !g.sc->xnu.cfg_busy);
+    }
+}
+
+static void RecoveredSenseTests()
+{
+    printf("ATA PASS-THROUGH(12/16) with RECOVERED ERROR (SAT status return): xinfo line, not an error\n");
+    Rig g({0x0009});
+    size_t mark = LogMark();
+    const struct mps_xnu_stats before = g.Stats();
+    for (uint8_t op : {(uint8_t)0xA1, (uint8_t)0x85}) {
+        uint8_t cdb[16] = {op};
+        Io *io = g.NewIo(g.Tid(0x0009), 0, CAM_DIR_NONE, cdb, op == 0xA1 ? 12 : 16, {});
+        CHECK(g.Go(io) == kPosted);
+        g.Pump();
+        CHECK(io->done && io->status == CAM_SCSI_STATUS_ERROR && io->scsiStatus == 0x02);
+        CHECK(io->senseLen >= 4 && io->sense[0] == 0x72 && io->sense[1] == 0x01 && io->sense[3] == 0x1D);
+    }
+    CHECK(g.Stats().recovered_sense == before.recovered_sense + 2);
+    CHECK(g.Stats().err_check_condition == before.err_check_condition);
+    CHECK(HasLog(mark, "ATA PASS-THROUGH(12) lba 0 blocks 0 recovered: IOCStatus success"));
+    CHECK(HasLog(mark, "ASC/ASCQ 0x00/0x1d ATA PASS THROUGH INFORMATION AVAILABLE"));
+    CHECK(LogClass(mark, "ATA PASS-THROUGH(12) lba 0 blocks 0 recovered") == MPS_XINFO);
+    CHECK(LogClass(mark, "ATA PASS-THROUGH(16) lba 0 blocks 0 recovered") == MPS_XINFO);
+    for (size_t i = mark; i < gHost.log.size(); i++) CHECK(!(gHost.log[i].cls & MPS_ERROR));
+    g.sc->mps_debug = mps_xnu_level_mask(MPS_LEVEL_INFO);   /* default level: silent */
+    mark = LogMark();
+    uint8_t cdb[12] = {0xA1};
+    Io *io = g.NewIo(g.Tid(0x0009), 0, CAM_DIR_NONE, cdb, 12, {});
+    CHECK(g.Go(io) == kPosted);
+    g.Pump();
+    CHECK(io->done && !HasLog(mark, "ATA PASS-THROUGH"));
+    g.sc->mps_debug = MPS_DEBUG_ALL;
+    /* a real CHECK CONDITION is still an error line */
+    mark = LogMark();
+    uint8_t tur[6] = {0x00};
+    io = g.NewIo(g.Tid(0x0009), 0, CAM_DIR_NONE, tur, 6, {});
+    CHECK(g.Go(io) == kPosted);
+    g.Pump();
+    CHECK(g.Stats().err_check_condition == before.err_check_condition + 1);
+    CHECK(LogClass(mark, "TEST UNIT READY lba 0 blocks 0 failed") & MPS_ERROR);
 }
 
 /* ---- system sleep and shutdown (mps_xnu_suspend / mps_xnu_resume) ------------ */

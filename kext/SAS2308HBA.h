@@ -54,6 +54,7 @@ public:
     static constexpr const char *kIOLogKey      = "SAS2308LogToIOLog";  /* bool: IOLog instead of os_log */
     static constexpr const char *kResetStatsKey = "SAS2308ResetStats";
     static constexpr const char *kStatsKey      = "SAS2308Statistics";
+    static constexpr const char *kIocTemperatureKey = "IOC Temperature (C)";   /* IO Unit Page 7 */
 
     /* IOService (start/stop belong to the family: "shall not be overridden") */
     virtual IOReturn    setPowerState(unsigned long powerStateOrdinal, IOService *whatDevice) APPLE_KEXT_OVERRIDE;
