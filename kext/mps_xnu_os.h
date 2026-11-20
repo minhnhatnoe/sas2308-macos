@@ -187,12 +187,14 @@ void	*mps_kext_next_done(struct mps_kext *k, struct mps_kext_io_result *res);
 int	 mps_kext_timeout(struct mps_kext *k, void *td, void *os_task,
 	    uint32_t timeout_ms, uint32_t *rearm_ms);
 
-/* ---- task management: XPT_XNU_TM, waits for the completion ------------- */
+/* ---- OS task management (D10): FreeBSD's paths, waits for the end ------ */
 
 enum { MPSK_TM_COMPLETE, MPSK_TM_REJECTED, MPSK_TM_FAILED };
 /*
- * abort_*: ABORT_TASK only, the task as submitted (td, os_task, os_tag);
- * a task that already completed is "complete". why: a reason for the log.
+ * ABORT_TASK (abort_*: the task as submitted; one already completed is
+ * "complete"): the task's timeout recovery, returns when it is back; LUN
+ * and TARGET RESET: XPT_RESET_DEV (a target reset); anything else
+ * REJECTED. why: a reason for the log.
  */
 int	 mps_kext_tm(struct mps_kext *k, uint8_t type, uint32_t tid,
 	    uint64_t lun, void *abort_td, void *abort_task, uint64_t abort_tag,

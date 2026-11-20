@@ -286,8 +286,12 @@ xpt_action(union ccb *ccb)
 		ccb->ccb_h.xnu_seq = ++sim->seq;
 		ccb->ccb_h.xnu_start_us = mps_os_uptime_us();
 	}
-	/* Only SCSI IO is queued (held while frozen); the rest goes through. */
-	if (ccb->ccb_h.func_code == XPT_SCSI_IO &&
+	/*
+	 * Device-queued ccbs (cam_xpt.c xpt_action_default: SCSI IO, reset
+	 * device) are held while frozen; the rest goes through.
+	 */
+	if ((ccb->ccb_h.func_code == XPT_SCSI_IO ||
+	    ccb->ccb_h.func_code == XPT_RESET_DEV) &&
 	    (cam_xnu_blocked(sim, ccb) || !TAILQ_EMPTY(&sim->held))) {
 		cam_xnu_hold(sim, ccb);
 		if (!cam_xnu_blocked(sim, ccb))

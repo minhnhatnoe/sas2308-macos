@@ -74,7 +74,7 @@ struct mps_kext_task {
     bus_dma_segment_t       segs[MPSK_TASK_MAXSEGS];
 };
 
-/* An OS task-management request (XPT_XNU_TM). */
+/* An OS target reset (XPT_RESET_DEV, D10). */
 struct mps_kext_tmreq {
     union ccb               ccb;
     struct cam_path         path;
@@ -693,76 +693,115 @@ int mps_kext_timeout(struct mps_kext *k, void *td, void *os_task, uint32_t timeo
 }
 
 /*
- * OS task management. IOSCSIParallelFamily's *Request methods are
- * synchronous: wait for the ccb with mps_mtx dropped, pumping the reply queue
- * every 10 ms (the work loop that runs the interrupt may be gated by our
- * caller). Bounded by the core's TM timeouts (5 s abort, 30 s resets) and by
- * mps_kext_stop_waiters().
+ * OS task management (D10), the FreeBSD way: CAM sends the SIM only
+ * XPT_RESET_DEV (mpssas_action_resetdev: a target reset; FreeBSD has no OS
+ * LUN reset) and fakes XPT_ABORT; timeouts escalate abort -> LUN reset ->
+ * target reset with one TM per target (targ->tm). So:
+ *   - ABORT TASK of a posted task: that task's timeout recovery
+ *     (mps_xnu_ccb_timeout, queued behind a recovery already running on the
+ *     target); the request returns when the task is back. A held task (it
+ *     never reached the IOC) completes CAM_REQ_ABORTED at once.
+ *   - LUN RESET, TARGET RESET: XPT_RESET_DEV, held behind a frozen device
+ *     queue (a recovery, a reinit) like CAM's devq.
+ *   - ABORT TASK SET, CLEAR TASK SET, CLEAR ACA: rejected.
+ * IOSCSIParallelFamily's *Request methods are synchronous: wait with mps_mtx
+ * dropped. The wait pumps the reply queue every 10 ms (KEEP, D43): FreeBSD's
+ * own NO_SLEEP waits (mps_wait_command) poll mps_intr_locked, and our
+ * completions are delivered in the work loop gate (HandleInterruptRequest ->
+ * DeliverCompletions), so a completion handler that issues a TM
+ * synchronously holds the gate the interrupt needs. Bounded by the recovery
+ * (TM timeouts, then a reinit) and by mps_kext_stop_waiters().
  */
+static int mps_kext_tm_wait(struct mps_kext *k, const volatile int *done, struct mps_kext_task *t, uint64_t seq)
+{
+    struct mps_softc *sc = &k->sc;
+
+    for (;;) {
+        if (done ? *done : (t->state != MPSK_T_POSTED || t->ccb.ccb_h.xnu_seq != seq))
+            return 1;
+        if (k->stopping)
+            return 0;
+        (void)msleep(&k->tm_chan, &sc->mps_mtx, 0, "mpstm", 10);
+        if ((sc->mps_flags & (MPS_FLAGS_DIAGRESET | MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) == 0)
+            mps_intr_locked(sc);
+    }
+}
+
 int mps_kext_tm(struct mps_kext *k, uint8_t type, uint32_t tid, uint64_t lun, void *abort_td,
                 void *abort_task, uint64_t abort_tag, char *why, size_t whylen)
 {
     struct mps_softc *sc = &k->sc;
-    struct mps_kext_tmreq *w;
+    struct mps_kext_tmreq *w = nullptr;
     struct mps_kext_task *t = (struct mps_kext_task *)abort_td;
     int result = MPSK_TM_FAILED;
 
-    w = (struct mps_kext_tmreq *)mps_os_malloc(sizeof(*w), 1);
-    if (w == nullptr) {
-        snprintf(why, whylen, "no memory");
-        return MPSK_TM_FAILED;
+    (void)lun;
+    switch (type) {
+    case MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK:
+    case MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET:
+    case MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET:
+        break;
+    default:
+        snprintf(why, whylen, "not supported (FreeBSD sends only aborts and target resets)");
+        return MPSK_TM_REJECTED;
     }
-    memset_zero(w, sizeof(*w));
-    w->k = k;
+    if (type != MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK) {
+        w = (struct mps_kext_tmreq *)mps_os_malloc(sizeof(*w), 1);
+        if (w == nullptr) {
+            snprintf(why, whylen, "no memory");
+            return MPSK_TM_FAILED;
+        }
+        memset_zero(w, sizeof(*w));
+        w->k = k;
+    }
 
     mps_lock(sc);
-    if (!k->attached || k->stopping) {
+    if (!k->attached || k->stopping || (sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_SHUTDOWN))) {
         mps_unlock(sc);
-        mps_os_free(w, sizeof(*w));
+        if (w)
+            mps_os_free(w, sizeof(*w));
         snprintf(why, whylen, "controller stopping");
         return MPSK_TM_FAILED;
     }
-    if (type == MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK &&
-        (t == nullptr || t->os_task != abort_task || t->os_tag != abort_tag ||
-         t->state != MPSK_T_POSTED)) {
-        mps_unlock(sc);
-        mps_os_free(w, sizeof(*w));
-        snprintf(why, whylen, "nothing to abort (task already completed)");
-        return MPSK_TM_COMPLETE;
-    }
-    w->path.path_id = cam_sim_path(sc->sassc->sim);
-    w->path.target_id = tid;
-    w->path.lun_id = lun;
-    xpt_setup_ccb(&w->ccb.ccb_h, &w->path, CAM_PRIORITY_NORMAL);
-    w->ccb.ccb_h.func_code = XPT_XNU_TM;
-    w->ccb.ccb_h.cbfcnp = mps_kext_tm_done;
-    w->ccb.ccb_h.ppriv_ptr0 = w;
-    w->ccb.xtm.task_type = type;
-    w->ccb.xtm.abort_ccb = (type == MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK) ? &t->ccb : NULL;
-
     k->tm_waiters++;
-    xpt_action(&w->ccb);
-    while (!w->done && !k->stopping) {
-        (void)msleep(&k->tm_chan, &sc->mps_mtx, 0, "mpstm", 10);
-        if (!w->done && !k->stopping)
-            mps_intr_locked(sc);             /* the reply may wait behind a gated work loop */
-    }
-    if (w->done) {
-        const uint32_t st = w->ccb.ccb_h.status & CAM_STATUS_MASK;
-        const uint8_t rsp = w->ccb.xtm.response_code;
-        if (st == CAM_REQ_CMP)
+    if (type == MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK) {
+        if (t == nullptr || t->os_task != abort_task || t->os_tag != abort_tag || t->state != MPSK_T_POSTED) {
+            snprintf(why, whylen, "nothing to abort (task already completed)");
             result = MPSK_TM_COMPLETE;
-        else if (st == CAM_REQ_INVALID || st == CAM_LUN_INVALID || st == CAM_FUNC_NOTAVAIL ||
-                 rsp == MPI2_SCSITASKMGMT_RSP_TM_NOT_SUPPORTED || rsp == MPI2_SCSITASKMGMT_RSP_INVALID_FRAME ||
-                 rsp == MPI2_SCSITASKMGMT_RSP_TM_INVALID_LUN)
-            result = MPSK_TM_REJECTED;
-        snprintf(why, whylen, "CAM status 0x%x, IOCStatus 0x%x, response %s, %u terminated", st,
-                 w->ccb.xtm.ioc_status, mps_describe_table(mps_scsi_taskmgmt_string, rsp),
-                 w->ccb.xtm.termination_count);
+        } else if (cam_xnu_cancel_held(sc->sassc->sim, &t->ccb, CAM_REQ_ABORTED)) {
+            snprintf(why, whylen, "held, never sent: completed aborted");
+            result = MPSK_TM_COMPLETE;
+        } else {
+            const uint64_t seq = t->ccb.ccb_h.xnu_seq;
+            (void)mps_xnu_ccb_timeout(sc, &t->ccb);
+            if (mps_kext_tm_wait(k, nullptr, t, seq)) {
+                snprintf(why, whylen, "returned by the target's recovery");
+                result = MPSK_TM_COMPLETE;
+            } else {
+                snprintf(why, whylen, "controller stopping");
+            }
+        }
+    } else if (tid >= sc->sassc->maxtargets || sc->sassc->targets[tid].handle == 0) {
+        snprintf(why, whylen, "no device");
     } else {
-        w->orphan = 1;                       /* mps_free() completes it; mps_kext_tm_done frees it */
-        w = nullptr;
-        snprintf(why, whylen, "controller stopping");
+        w->path.path_id = cam_sim_path(sc->sassc->sim);
+        w->path.target_id = tid;
+        w->path.lun_id = 0;
+        xpt_setup_ccb(&w->ccb.ccb_h, &w->path, CAM_PRIORITY_NORMAL);
+        w->ccb.ccb_h.func_code = XPT_RESET_DEV;
+        w->ccb.ccb_h.cbfcnp = mps_kext_tm_done;
+        w->ccb.ccb_h.ppriv_ptr0 = w;
+        xpt_action(&w->ccb);
+        if (mps_kext_tm_wait(k, &w->done, nullptr, 0)) {
+            const uint32_t st = w->ccb.ccb_h.status & CAM_STATUS_MASK;
+            if (st == CAM_REQ_CMP)
+                result = MPSK_TM_COMPLETE;
+            snprintf(why, whylen, "target reset (XPT_RESET_DEV), CAM status 0x%x", st);
+        } else {
+            w->orphan = 1;                   /* mps_free() completes it; mps_kext_tm_done frees it */
+            w = nullptr;
+            snprintf(why, whylen, "controller stopping");
+        }
     }
     if (--k->tm_waiters == 0)
         wakeup(&k->tm_waiters);

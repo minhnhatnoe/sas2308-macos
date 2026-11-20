@@ -16,6 +16,7 @@
  *     second, concurrent invocation: test/mps_host_os.h HostThreadCall).
  * Built with ASan/UBSan/LSan. KGLUE_ONLY=<id> runs one scenario.
  */
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -691,6 +692,85 @@ int main()
         m.ReleasePending();
         HostRunPending();
         CHECK(fmt->completions == 1 && fmt->done == SAS2308GluePort::kDoneStatus);
+        f.Detach();
+    }
+
+    if (Want("D10")) {
+        /*
+         * OS task management goes through FreeBSD's paths: an abort of a
+         * posted task joins the target's timeout recovery (one TM per
+         * target at a time), a target or LUN reset is XPT_RESET_DEV (held
+         * behind a recovery like CAM's device queue), an abort of a held
+         * task completes it, ABORT TASK SET / CLEAR TASK SET / CLEAR ACA
+         * are rejected.
+         */
+        MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009), ta = f.Tid(0x000A);
+        char why[192];
+        m.holdDev = 0x0009;
+        m.tmDeferMask = (1u << MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK) |
+                        (1u << MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET) |
+                        (1u << MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET);
+        FakeTask *a = f.NewRead(t9), *b = f.NewRead(t9);
+        CHECK(f.Submit(a) == SAS2308Glue::kInProcess);
+        f.Run(5000);
+        CHECK(f.Submit(b) == SAS2308Glue::kInProcess);
+        f.Run(26000);                               /* a's timer: the recovery's ABORT_TASK, not answered yet */
+        CHECK(a->timeouts == 1 && m.deferredTm.size() == 1);
+        const size_t tms0 = m.tms.size();
+        size_t maxDeferred = 0;
+        uint64_t lastRelease = m.nowUs;
+        gHost.onOtherThreads = [&]() {              /* the IOC answers each TM 1 s after it arrived */
+            maxDeferred = std::max(maxDeferred, m.deferredTm.size());
+            if (!m.deferredTm.empty() && m.nowUs - lastRelease >= 1000000) {
+                lastRelease = m.nowUs;
+                m.ReleaseTm();
+            }
+        };
+        CHECK(mps_kext_tm(f.k, MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK, t9, 0, b->td.data(), b, b->tag, why,
+                          sizeof(why)) == MPSK_TM_COMPLETE);
+        HostRunPending();
+        CHECK(maxDeferred == 1);                    /* one TM at a time on the target */
+        CHECK(a->completions == 1 && b->completions == 1);
+        for (size_t i = tms0 - 1; i < m.tms.size(); i++)
+            CHECK(m.tms[i].type == MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK && m.tms[i].dev == 0x0009);
+        /* a target reset while a recovery runs on that target waits for it */
+        FakeTask *c = f.NewRead(t9);
+        CHECK(f.Submit(c) == SAS2308Glue::kInProcess);
+        f.Run(31000);                               /* c's recovery starts */
+        maxDeferred = 0;
+        const size_t tms1 = m.tms.size();
+        CHECK(mps_kext_tm(f.k, MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET, t9, 0, nullptr, nullptr, 0, why,
+                          sizeof(why)) == MPSK_TM_COMPLETE);
+        CHECK(maxDeferred == 1 && m.tms.size() == tms1 + 1);
+        CHECK(m.tms.back().type == MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET);
+        CHECK(m.tms.back().msgFlags == MPI2_SCSITASKMGMT_MSGFLAGS_LINK_RESET);
+        /* a LUN reset is FreeBSD's XPT_RESET_DEV too: a target reset */
+        CHECK(mps_kext_tm(f.k, MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET, ta, 0, nullptr, nullptr, 0, why,
+                          sizeof(why)) == MPSK_TM_COMPLETE);
+        CHECK(m.tms.back().type == MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET && m.tms.back().dev == 0x000A);
+        gHost.onOtherThreads = nullptr;
+        HostRunPending();
+        CHECK(c->completions == 1);
+        /* the rest: rejected, no TM */
+        const size_t tms2 = m.tms.size();
+        for (uint8_t type : {MPI2_SCSITASKMGMT_TASKTYPE_ABRT_TASK_SET, MPI2_SCSITASKMGMT_TASKTYPE_CLEAR_TASK_SET,
+                             MPI2_SCSITASKMGMT_TASKTYPE_CLR_ACA})
+            CHECK(mps_kext_tm(f.k, type, ta, 0, nullptr, nullptr, 0, why, sizeof(why)) == MPSK_TM_REJECTED);
+        CHECK(m.tms.size() == tms2);
+        /* an abort of a held task completes it without the IOC */
+        m.holdDev = 0; m.tmDeferMask = 0;
+        CHECK(mps_kext_suspend(f.k, 1000, 0) == 0);
+        FakeTask *h = f.NewRead(ta);
+        CHECK(f.Submit(h) == SAS2308Glue::kInProcess);
+        CHECK(mps_kext_tm(f.k, MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK, ta, 0, h->td.data(), h, h->tag, why,
+                          sizeof(why)) == MPSK_TM_COMPLETE);
+        HostRunPending();
+        CHECK(h->completions == 1 && h->done == SAS2308GluePort::kDoneRetry && m.tms.size() == tms2);
+        CHECK(mps_kext_resume(f.k) == 0);
+        f.Run(3000);
         f.Detach();
     }
 

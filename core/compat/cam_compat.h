@@ -119,9 +119,7 @@ typedef enum {
 	XPT_SCAN_BUS		= 0x14,
 	XPT_SCAN_LUN		= 0x16,
 	XPT_SMP_IO		= 0x1b,
-	XPT_SCAN_TGT		= 0x1E,
-	/* XNU: OS-requested task management (struct ccb_xnu_tm) */
-	XPT_XNU_TM		= 0x7E
+	XPT_SCAN_TGT		= 0x1E
 } xpt_opcode;
 
 /* async codes (cam_ccb.h ac_code) */
@@ -227,24 +225,9 @@ struct ccb_scsiio {
 	u_int		init_id;
 };
 
-/*
- * XNU: task management requested by the OS (IOSCSIParallelFamily's abort
- * task, abort task set, clear task set, clear ACA, LUN reset and target
- * reset).  ccb_h.target_id/target_lun address it; completes asynchronously.
- */
-struct ccb_xnu_tm {
-	struct ccb_hdr	ccb_h;
-	uint8_t		task_type;	/* MPI2_SCSITASKMGMT_TASKTYPE_* */
-	union ccb	*abort_ccb;	/* ABORT_TASK: the XPT_SCSI_IO */
-	uint16_t	ioc_status;	/* from the reply */
-	uint8_t		response_code;
-	uint32_t	termination_count;
-};
-
 union ccb {
 	struct ccb_hdr		ccb_h;
 	struct ccb_scsiio	csio;
-	struct ccb_xnu_tm	xtm;	/* XNU */
 };
 
 /* ---- devq / sim ------------------------------------------------------------ */

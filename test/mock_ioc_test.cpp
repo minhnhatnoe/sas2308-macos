@@ -135,10 +135,6 @@ struct Io {
     uint8_t sense[32]{};
     uint16_t smid = 0;                      /* SMID it was posted with (0: never) */
     uint64_t startUs = 0, doneUs = 0;
-    /* XPT_XNU_TM results */
-    uint16_t iocStatus = 0;
-    uint8_t response = 0;
-    uint32_t terminated = 0;
     int deadAtDone = -1;                    /* gHost.dead (bus mastering off) when it completed */
 };
 
@@ -153,12 +149,8 @@ static void IoDone(struct cam_periph *, union ccb *ccb)
     io->fullStatus = ccb->ccb_h.status;
     io->status = ccb->ccb_h.status & CAM_STATUS_MASK;
     io->doneUs = gNowUs();
-    if (ccb->ccb_h.func_code == XPT_XNU_TM) {
-        io->iocStatus = ccb->xtm.ioc_status;
-        io->response = ccb->xtm.response_code;
-        io->terminated = ccb->xtm.termination_count;
+    if (ccb->ccb_h.func_code != XPT_SCSI_IO)
         return;
-    }
     io->scsiStatus = ccb->csio.scsi_status;
     io->resid = ccb->csio.resid;
     if (ccb->ccb_h.status & CAM_AUTOSNS_VALID) {
@@ -362,18 +354,17 @@ struct Rig {
         return NewIo(Tid(handle), lun, CAM_DIR_IN, cdb, 10,
                      {MockSeg{rbuf.iova + (uint64_t)(seed % 16) * 4096, 4096}});
     }
-    Io *Tm(uint8_t type, target_id_t tid, uint64_t lun, Io *abortIo = nullptr) {
+    /* the OS's target or LUN reset (D10): XPT_RESET_DEV, as CAM sends it */
+    Io *ResetDev(target_id_t tid) {
         Io *io = new Io;
         ios.push_back(io);
         union ccb *ccb = xpt_alloc_ccb();
         io->ccb = ccb;
-        CHECK(xpt_create_path(&ccb->ccb_h.path, NULL, cam_sim_path(sc->sassc->sim), tid, lun) == CAM_REQ_CMP);
+        CHECK(xpt_create_path(&ccb->ccb_h.path, NULL, cam_sim_path(sc->sassc->sim), tid, 0) == CAM_REQ_CMP);
         xpt_setup_ccb(&ccb->ccb_h, ccb->ccb_h.path, CAM_PRIORITY_NORMAL);
-        ccb->ccb_h.func_code = XPT_XNU_TM;
+        ccb->ccb_h.func_code = XPT_RESET_DEV;
         ccb->ccb_h.cbfcnp = IoDone;
         ccb->ccb_h.ppriv_ptr0 = io;
-        ccb->xtm.task_type = type;
-        ccb->xtm.abort_ccb = abortIo ? abortIo->ccb : nullptr;
         Go(io);
         return io;
     }
@@ -402,9 +393,9 @@ struct Rig {
         mps_unlock(sc);
         return rc;
     }
-    /* Task management, waited for the way a family TM request does. */
-    Io *TmSync(uint8_t type, target_id_t tid, uint64_t lun, Io *abortIo = nullptr) {
-        Io *t = Tm(type, tid, lun, abortIo);
+    /* A target reset, waited for the way a family TM request does. */
+    Io *ResetDevSync(target_id_t tid) {
+        Io *t = ResetDev(tid);
         for (int i = 0; i < 64 && !t->done; i++) {
             Pump();
             if (!t->done) HostAdvance(100);
@@ -639,10 +630,10 @@ int main()
         CHECK(StartData(g, CAM_DIR_IN, s17, big, 1, &a) == kPosted);
         CHECK(StartData(g, CAM_DIR_OUT, sMax, big, 2, &b) == kPosted);
         CHECK(g.ChainsFree() == g.ChainsTotal() - 2 - 29);
-        Io *tm = g.TmSync(kAbortT, 0, 0, a);
-        CHECK(tm->status == CAM_REQ_CMP && a->status == CAM_REQ_ABORTED);
+        g.Escalate(a);                              /* the OS's abort: a's recovery (D10) */
+        CHECK(a->status == CAM_CMD_TIMEOUT);
         CHECK(g.ChainsFree() == g.ChainsTotal() - 29);
-        tm = g.TmSync(kLunT, 0, 0);
+        Io *tm = g.ResetDevSync(0);
         CHECK(tm->status == CAM_REQ_CMP && b->status == CAM_REQ_ABORTED);
         CHECK(g.ChainsFree() == g.ChainsTotal());
         /* abort that reaches the IOC after the IO completed: no double release */
@@ -737,38 +728,26 @@ int main()
         CHECK(g.Go(r) == kPosted);
         g.Pump();
         CHECK(r->done == 0 && g.IoOutstanding(r));
-        Io *tm = g.TmSync(kAbortT, 0, 0, r);
-        CHECK(tm->status == CAM_REQ_CMP && tm->response == MPI2_SCSITASKMGMT_RSP_TM_COMPLETE && tm->terminated == 1);
+        g.Escalate(r);
         CHECK(!g.IoOutstanding(r) && r->done == 1);
-        CHECK(r->status == CAM_REQ_ABORTED);
+        CHECK(r->status == CAM_CMD_TIMEOUT);
         const auto &rec = ioc.tms.back();
         CHECK(rec.type == kAbortT && rec.mid == r->smid && rec.dev == 0x0009);
         CHECK(rec.descFlags == MPI2_REQ_DESCRIPT_FLAGS_HIGH_PRIORITY);
-        CHECK(g.Tm(kAbortT, 0, 0, r)->status == CAM_REQ_INVALID);   /* not outstanding */
-        CHECK(g.Tm(0x7F, 0, 0)->status == CAM_REQ_INVALID);
-        CHECK(g.Tm(kLunT, 5, 0)->status == CAM_DEV_NOT_THERE);       /* no device on that id */
+        CHECK(g.Timeout(r) == ENOENT);                               /* not outstanding */
         CHECK(g.TmsBusy() == 0);
     }
 
-    printf("LUN reset, target reset, clear task set\n");
+    printf("target reset (XPT_RESET_DEV)\n");
     {
         Io *a = ioAt(0), *b = ioAt(0), *c = ioAt(3);
         CHECK(g.Go(a) == kPosted && g.Go(b) == kPosted && g.Go(c) == kPosted);
         CHECK(g.Outstanding(0x0009) == 3 && g.Outstanding(0x0009, 3) == 1);
-        Io *tm = g.TmSync(kLunT, 0, 3);
-        CHECK(tm->status == CAM_REQ_CMP && tm->terminated == 1);
-        CHECK(memcmp(ioc.tms.back().lun, lun3, 8) == 0);
-        CHECK(!g.IoOutstanding(c) && g.Outstanding(0x0009) == 2);
-        tm = g.TmSync(kTgtT, 0, 0);
-        CHECK(tm->status == CAM_REQ_CMP && tm->terminated == 2);
-        CHECK(ioc.tms.back().msgFlags == MPI2_SCSITASKMGMT_MSGFLAGS_LINK_RESET);
-        CHECK(g.Outstanding(0x0009) == 0);
-        CHECK(a->status == CAM_REQ_ABORTED);
-        Io *d = ioAt(0);
-        CHECK(g.Go(d) == kPosted);
-        tm = g.TmSync(MPI2_SCSITASKMGMT_TASKTYPE_CLEAR_TASK_SET, 0, 0);
+        Io *tm = g.ResetDevSync(0);
         CHECK(tm->status == CAM_REQ_CMP);
-        CHECK(tm->terminated == 1 && g.Outstanding(0x0009) == 0);
+        CHECK(ioc.tms.back().type == kTgtT && ioc.tms.back().msgFlags == MPI2_SCSITASKMGMT_MSGFLAGS_LINK_RESET);
+        CHECK(g.Outstanding(0x0009) == 0);
+        CHECK(a->status == CAM_REQ_ABORTED && b->status == CAM_REQ_ABORTED && c->status == CAM_REQ_ABORTED);
         CHECK(g.Stats().reinits == kReinits0);
     }
 
@@ -855,7 +834,6 @@ int main()
         Io *c = ioAt(0);
         CHECK(g.Go(c) == kHeld);                                     /* held until the reinit is done */
         CHECK(c->ccb->ccb_h.xnu_held && g.HeldCount() == 1);
-        CHECK(g.Tm(kTgtT, 0, 0)->status == CAM_BUSY);
         CHECK(g.RunReinit() == 0 && !g.Faulted());
         CheckResent(a);
         CheckResent(b);
@@ -1136,7 +1114,8 @@ static void AsyncTests()
         CHECK(g.ReinitQueued() && !g.InReset() && g.IoOutstanding(f));
         Io *f5 = g.Read(0x000A, 0, 12);
         CHECK(g.Go(f5) == kHeld);                                    /* reinit pending: held */
-        CHECK(g.Tm(kTgtT, 1, 0)->status == CAM_BUSY);
+        Io *tmr = g.ResetDev(1);
+        CHECK(tmr->ccb->ccb_h.xnu_held);                                 /* XPT_RESET_DEV: device-queued, as CAM */
         int during = 0;
         Io *f6 = nullptr, *tmd = nullptr;
         gHost.onOtherThreads = [&] {                                 /* other threads while the reinit sleeps */
@@ -1144,8 +1123,8 @@ static void AsyncTests()
             f6 = g.Read(0x000A, 0, 13);
             CHECK(g.Go(f6) == kHeld);
             g.Interrupt();                                           /* ignored */
-            tmd = g.Tm(kTgtT, 1, 0);
-            CHECK(tmd->status == CAM_BUSY);
+            tmd = g.ResetDev(1);
+            CHECK(tmd->ccb->ccb_h.xnu_held);
             CHECK(g.Timeout(f5) == 0);                               /* held: completed at once */
             CHECK(g.ForceReinit() == 0);                             /* "Reset already in progress" */
         };
@@ -1157,7 +1136,9 @@ static void AsyncTests()
         CHECK(f5->status == CAM_CMD_TIMEOUT);
         CHECK(f6->done == 1 && f6->status == CAM_REQ_CMP && g.HeldCount() == 0);   /* sent after the reinit */
         CHECK(m.portEnables == 2);
-        for (Io *io : {f, f5, f6}) CHECK(io->done == 1);
+        g.Pump();
+        for (Io *io : {f, f5, f6, tmr, tmd}) CHECK(io->done == 1);
+        CHECK(tmr->status == CAM_REQ_CMP && tmd->status == CAM_REQ_CMP);   /* sent after the reinit */
         const struct mps_xnu_stats &st = g.Stats();
         CHECK(st.reinits == 1 && st.held_timeouts == 1 && st.aborts == 1 && st.lun_resets == 1 && st.target_resets == 1);
         CHECK(st.recovered_abort + st.recovered_lun_reset + st.recovered_target_reset == 0);
@@ -1214,24 +1195,25 @@ static void AsyncTests()
         CHECK(again->status == CAM_REQ_CMP);
     }
 
-    printf("async: OS TM times out -> CAM_CMD_TIMEOUT, reinit reclaims the TMs\n");
+    printf("async: OS target reset times out -> reinit completes it\n");
     {
         Rig g;
         MockIocModel &m = g.ioc;
-        m.tmIgnoreMask = 1u << kLunT; m.tmDeferMask = 1u << kTgtT;
-        Io *t41 = g.Tm(kLunT, 0, 0), *t42 = g.Tm(kTgtT, 1, 0);
+        m.tmIgnoreMask = 1u << kTgtT;
+        Io *t41 = g.ResetDev(0), *t42 = g.ResetDev(1);
         CHECK(t41->done == 0 && t42->done == 0);
         CHECK(g.TmsBusy() == 2);
         m.nowUs += 30 * 1000000ull;
         g.Callouts();
-        CHECK(t41->done == 1 && t42->done == 1 && t41->status == CAM_CMD_TIMEOUT && t42->status == CAM_CMD_TIMEOUT);
-        CHECK(t41->doneUs - t41->startUs == 30 * 1000000ull);
-        CHECK(g.RunReinit() == 0 && g.TmsBusy() == 0);                /* lost TMs freed, no second completion */
-        Io *t43 = g.Tm(kTgtT, 1, 0);
+        CHECK(t41->done == 0 && g.ReinitQueued());                   /* mpssas_tm_timeout: the IOC owns it */
+        CHECK(g.RunReinit() == 0 && g.TmsBusy() == 0);                /* lost TMs freed by the reset */
+        CHECK(t41->done == 1 && t42->done == 1 && t41->status == CAM_REQ_ABORTED && t42->status == CAM_REQ_ABORTED);
+        m.tmIgnoreMask = 0; m.tmDeferMask = 1u << kTgtT;
+        Io *t43 = g.ResetDev(1);
         m.ReleaseTm(); g.Pump();
         CHECK(t43->done == 1 && t43->status == CAM_REQ_CMP);
         /* a TM in flight when a reinit happens: CAM_REQ_ABORTED */
-        Io *t44 = g.Tm(kTgtT, 1, 0);
+        Io *t44 = g.ResetDev(1);
         m.Fault(0x2100);
         m.nowUs += 1100000;
         g.Callouts();                                                /* mps_periodic */
@@ -1297,13 +1279,13 @@ static void AsyncTests()
         Rig g;
         MockIocModel &m = g.ioc;
         const size_t mark = LogMark();
-        m.holdIo = true; m.tmDeferMask = (1u << kAbortT) | (1u << kLunT);
+        m.holdIo = true; m.tmDeferMask = (1u << kAbortT) | (1u << kTgtT);
         Io *f0 = g.Read(0x0009, 0, 7), *f1 = g.Read(0x0009, 0, 8);
         CHECK(g.Go(f0) == kPosted && g.Go(f1) == kPosted);
         CHECK(g.Timeout(f0) == 0);
         Io *f2 = g.Read(0x0009, 0, 9);
         CHECK(g.Go(f2) == kHeld);
-        Io *t55 = g.Tm(kLunT, 1, 0);
+        Io *t55 = g.ResetDev(1);
         CHECK(t55->done == 0);
         const int mur = m.murCount;
         m.dead = true;
@@ -1377,7 +1359,7 @@ static void AsyncTests()
         CHECK(g.Timeout(f) == 0);
         Io *f1 = g.Read(0x0009, 0, 8);
         CHECK(g.Go(f1) == kHeld);
-        Io *t66 = g.Tm(kTgtT, 1, 0);
+        Io *t66 = g.ResetDev(1);
         const int mur = m.murCount, freed = gHost.interruptsFreed;
         g.Detach();                                                  /* mps_free */
         CHECK(m.murCount == mur + 1);                                /* IOC stopped before buffers are returned */
@@ -2218,14 +2200,15 @@ static void SleepTests()
         Io *r = g.Read(0x0009, 0, 3), *n = g.Read(0x000A, 0, 4), *t = g.Read(0x000A, 0, 5);
         CHECK(g.Go(r) == kHeld && g.Go(n) == kHeld && g.Go(t) == kHeld && g.HeldCount() == 4);
         CHECK(g.Timeout(t) == 0 && t->done && t->status == CAM_CMD_TIMEOUT && g.HeldCount() == 3);
-        Io *tm = g.Tm(MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET, g.Tid(0x0009), 0);
-        CHECK(tm->done && tm->status == CAM_BUSY);                    /* no TMs while asleep */
+        Io *tm = g.ResetDev(g.Tid(0x000A));
+        CHECK(tm->ccb->ccb_h.xnu_held && g.HeldCount() == 4);               /* no TMs while asleep: held */
         g.Pump(); HostAdvance(2000);
         CHECK(!r->done && !n->done && (int)m.sglChecked == posted && g.Stats().suspended_access == 0);
         CHECK(Resume(g) == 0);
         g.Pump();
         CHECK(r->done && r->status == CAM_REQ_CMP && n->done && n->status == CAM_REQ_CMP);
         CHECK(a->done && a->status == CAM_REQ_CMP);
+        CHECK(tm->done && tm->status == CAM_REQ_CMP);
         CHECK(g.HeldCount() == 0 && g.sc->io_cmds_active == 0);
     }
 
@@ -2252,10 +2235,9 @@ static void SleepTests()
         m.holdDev = 0x0009; m.tmIgnoreMask = 1u << kAbortT;
         Io *a = g.Read(0x0009, 0, 6);
         CHECK(g.Go(a) == kPosted);
-        Io *tm = g.Tm(kAbortT, g.Tid(0x0009), 0, a);
-        CHECK(!tm->done && g.TmsBusy() == 1);
+        CHECK(g.Timeout(a) == 0);                                    /* its recovery: an ABORT_TASK */
+        CHECK(g.TmsBusy() == 1);
         CHECK(Suspend(g, 100) == 0);
-        CHECK(tm->done && tm->status == CAM_REQ_ABORTED);
         CHECK(!a->done && a->ccb->ccb_h.xnu_resets == 1 && g.TmsBusy() == 0);   /* requeued (D20b) */
         m.holdDev = 0; m.tmIgnoreMask = 0;
         CHECK(Resume(g) == 0);
@@ -2610,7 +2592,7 @@ static void DeviationTests()
         CHECK(g.Targ(0x000B)->flags & MPS_TARGET_IS_SATA_SSD);
         const int removes = m.removeDevices;
         const size_t tms = m.tms.size();
-        Io *t = g.TmSync(kLunT, g.Tid(0x0009), 0);       /* an OS TM on the other disk */
+        Io *t = g.ResetDevSync(g.Tid(0x0009));          /* an OS TM on the other disk */
         CHECK(t->status == CAM_REQ_CMP);
         HostRunPending();
         g.Pump();

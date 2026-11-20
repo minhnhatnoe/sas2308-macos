@@ -10,8 +10,8 @@
  * silicon); hardware results and known gaps are in docs/design.md.
  *
  * The core is FreeBSD's sys/dev/mps (core/), reached through
- * mps_xnu_os.{h,cpp}: SCSI tasks become XPT_SCSI_IO ccbs, task-management
- * requests XPT_XNU_TM ccbs, the reinit runs on the core's taskqueue and the
+ * mps_xnu_os.{h,cpp}: SCSI tasks become XPT_SCSI_IO ccbs, target and LUN
+ * resets XPT_RESET_DEV, aborts the task's timeout recovery, the reinit runs on the core's taskqueue and the
  * timers (mps_periodic, TM and IO timeouts) are the core's callouts.
  *
  * Locking (docs/design.md "Locking rules"):
@@ -731,12 +731,13 @@ SAS2308HBA::HandleTimeout(SCSIParallelTaskIdentifier task)
 #endif
 
 //-----------------------------------------------------------------------------
-//	SendTaskMgmt - task management requested by the family (XPT_XNU_TM ccb:
-//	the core's mpssas_action_xnu_tm, built like mpssas_send_abort/_reset).
-//	The family API is synchronous, the core is not: mps_kext_tm() waits with
-//	mps_mtx dropped and pumps the reply queue every 10 ms itself, so
-//	completion does not depend on the work loop (the caller may hold its
-//	gate). Bounded by the TM timeout (5 s / 30 s) and by StopController.
+//	SendTaskMgmt - task management requested by the family, mapped as
+//	FreeBSD does (D10, mps_kext_tm): target/LUN reset -> XPT_RESET_DEV,
+//	abort -> the task's timeout recovery, the rest rejected. The family API
+//	is synchronous, the core is not: mps_kext_tm() waits with mps_mtx
+//	dropped and pumps the reply queue every 10 ms itself, so completion
+//	does not depend on the work loop (the caller may hold its gate).
+//	Bounded by the recovery (TM timeouts, reinit) and by StopController.
 //																	[PRIVATE]
 //-----------------------------------------------------------------------------
 

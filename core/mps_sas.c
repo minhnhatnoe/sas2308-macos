@@ -62,8 +62,6 @@ static void mpssas_scsiio_complete(struct mps_softc *, struct mps_command *);
 static void mpssas_action_resetdev(struct mpssas_softc *, union ccb *);
 static void mpssas_resetdev_complete(struct mps_softc *, struct mps_command *);
 /* XNU: OS task management, queued recoveries */
-static void mpssas_action_xnu_tm(struct mpssas_softc *, union ccb *);
-static void mpssas_xnu_tm_complete(struct mps_softc *, struct mps_command *);
 static void mpssas_xnu_retry_recovery(struct mps_softc *);
 static int mpssas_send_portenable(struct mps_softc *sc);
 static void mpssas_portenable_complete(struct mps_softc *sc,
@@ -733,9 +731,6 @@ mpssas_action(struct cam_sim *sim, union ccb *ccb)
 	case XPT_SCSI_IO:
 		mpssas_action_scsiio(sassc, ccb);
 		return;
-	case XPT_XNU_TM:	/* XNU: OS-requested task management */
-		mpssas_action_xnu_tm(sassc, ccb);
-		return;
 	default:
 		mpssas_set_ccbstatus(ccb, CAM_FUNC_NOTAVAIL);
 		break;
@@ -876,7 +871,6 @@ mpssas_tm_timeout(void *data)
 {
 	struct mps_command *tm = data;
 	struct mps_softc *sc = tm->cm_sc;
-	union ccb *ccb;		/* XNU */
 
 	mtx_assert(&sc->mps_mtx, MA_OWNED);
 
@@ -889,18 +883,12 @@ mpssas_tm_timeout(void *data)
 	tm->cm_state = MPS_CM_STATE_BUSY;
 	/*
 	 * XNU: the IOC still owns the TM until the reinit: a reply that
-	 * arrives meanwhile is counted as late and ignored (mps_intr_locked).
-	 * An OS-requested TM completes its ccb now; the reinit frees the TM.
-	 * mps_reinit() sleeps, so it runs on the reinit taskqueue.
+	 * arrives meanwhile is counted as late and ignored (mps_intr_locked);
+	 * the reinit completes the TM.  mps_reinit() sleeps, so it runs on
+	 * the reinit taskqueue.
 	 */
 	tm->cm_flags |= MPS_CM_FLAGS_XNU_TM_TIMEDOUT;
 	sc->xnu.stats.tm_timeouts++;
-	if (tm->cm_complete == mpssas_xnu_tm_complete &&
-	    (ccb = tm->cm_complete_data) != NULL) {
-		tm->cm_complete_data = NULL;
-		mpssas_set_ccbstatus(ccb, CAM_CMD_TIMEOUT);
-		xpt_done(ccb);
-	}
 	mps_xnu_request_reinit(sc, "task management timeout");
 }
 
@@ -2161,6 +2149,13 @@ mpssas_action_resetdev(struct mpssas_softc *sassc, union ccb *ccb)
 	tm->cm_complete_data = ccb;
 	tm->cm_targ = targ;
 
+	/*
+	 * XNU: the OS waits for it synchronously (IOSCSIParallelFamily's
+	 * TargetResetRequest), so time it like mpssas_send_reset does: the
+	 * reinit then completes it.
+	 */
+	callout_reset(&tm->cm_callout, MPS_RESET_TIMEOUT * hz,
+	    mpssas_tm_timeout, tm);
 	mpssas_prepare_for_tm(sc, tm, targ, CAM_LUN_WILDCARD);
 	mps_map_command(sc, tm);
 }
@@ -2176,6 +2171,7 @@ mpssas_resetdev_complete(struct mps_softc *sc, struct mps_command *tm)
 
 	resp = (MPI2_SCSI_TASK_MANAGE_REPLY *)tm->cm_reply;
 	ccb = tm->cm_complete_data;
+	callout_stop(&tm->cm_callout);	/* XNU: mpssas_action_resetdev */
 
 	/*
 	 * Currently there should be no way we can hit this case.  It only
@@ -2195,9 +2191,11 @@ mpssas_resetdev_complete(struct mps_softc *sc, struct mps_command *tm)
 		goto bailout;
 	}
 
-	/* XNU: no reply frame (reset, or the IOC answered without one) */
+	/* XNU: no reply frame (reset, gone, or no reply from the IOC) */
 	if (resp == NULL) {
-		mpssas_set_ccbstatus(ccb, MPS_XNU_RESETTING(sc) ?
+		mpssas_set_ccbstatus(ccb, (sc->mps_flags &
+		    (MPS_FLAGS_XNU_GONE | MPS_FLAGS_SHUTDOWN)) ?
+		    CAM_DEV_NOT_THERE : MPS_XNU_RESETTING(sc) ?
 		    CAM_REQ_ABORTED : CAM_REQ_CMP_ERR);
 		if (!MPS_XNU_RESETTING(sc))
 			mps_xnu_request_reinit(sc, "NULL target reset reply");
@@ -2221,178 +2219,6 @@ bailout:
 
 	mpssas_free_tm(sc, tm);
 	xpt_done(ccb);
-}
-
-/*
- * XNU: task management requested by the OS (XPT_XNU_TM): abort task, abort
- * task set, clear task set, clear ACA, LUN reset, target reset.  Built like
- * mpssas_action_resetdev; completes the ccb when the IOC answers, with
- * CAM_CMD_TIMEOUT if it does not within the FreeBSD TM timeouts (the TM is
- * then reclaimed by the reinit mpssas_tm_timeout requests).  An abort of a
- * ccb still held by the thin CAM completes it without involving the IOC.
- */
-static void
-mpssas_action_xnu_tm(struct mpssas_softc *sassc, union ccb *ccb)
-{
-	MPI2_SCSI_TASK_MANAGE_REQUEST *req;
-	struct ccb_xnu_tm *xtm = &ccb->xtm;
-	struct mps_softc *sc = sassc->sc;
-	struct mps_command *tm, *cm = NULL;
-	struct mpssas_target *targ;
-	uint8_t type = xtm->task_type;
-
-	mtx_assert(&sc->mps_mtx, MA_OWNED);
-	xtm->ioc_status = 0;
-	xtm->response_code = 0;
-	xtm->termination_count = 0;
-
-	if (type != MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK &&
-	    type != MPI2_SCSITASKMGMT_TASKTYPE_ABRT_TASK_SET &&
-	    type != MPI2_SCSITASKMGMT_TASKTYPE_CLEAR_TASK_SET &&
-	    type != MPI2_SCSITASKMGMT_TASKTYPE_CLR_ACA &&
-	    type != MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET &&
-	    type != MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET) {
-		mpssas_set_ccbstatus(ccb, CAM_REQ_INVALID);
-		xpt_done(ccb);
-		return;
-	}
-	if (ccb->ccb_h.target_id >= sassc->maxtargets ||
-	    (sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_SHUTDOWN))) {
-		mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
-		xpt_done(ccb);
-		return;
-	}
-	targ = &sassc->targets[ccb->ccb_h.target_id];
-	if (type == MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK) {
-		if (xtm->abort_ccb == NULL) {
-			mpssas_set_ccbstatus(ccb, CAM_REQ_INVALID);
-			xpt_done(ccb);
-			return;
-		}
-		if (cam_xnu_cancel_held(sassc->sim, xtm->abort_ccb,
-		    CAM_REQ_ABORTED)) {
-			mps_dprint(sc, MPS_USER|MPS_RECOVERY, "abort of a held "
-			    "IO for target %u: completed without the IOC\n",
-			    targ->tid);
-			xtm->response_code = MPI2_SCSITASKMGMT_RSP_TM_COMPLETE;
-			xtm->termination_count = 1;
-			mpssas_set_ccbstatus(ccb, CAM_REQ_CMP);
-			xpt_done(ccb);
-			return;
-		}
-		cm = xtm->abort_ccb->ccb_h.spriv_ptr1;
-		if (cm == NULL || cm->cm_ccb != xtm->abort_ccb ||
-		    cm->cm_state != MPS_CM_STATE_INQUEUE) {
-			mpssas_set_ccbstatus(ccb, CAM_REQ_INVALID);
-			xpt_done(ccb);
-			return;
-		}
-	}
-	if (targ->handle == 0) {
-		mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
-		xpt_done(ccb);
-		return;
-	}
-	if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) || sc->xnu.reinit_pending ||
-	    sc->xnu.suspending) {
-		mpssas_set_ccbstatus(ccb, CAM_BUSY);
-		xpt_done(ccb);
-		return;
-	}
-	tm = mpssas_alloc_tm(sc);
-	if (tm == NULL) {
-		mps_dprint(sc, MPS_ERROR,
-		    "command alloc failure in mpssas_action_xnu_tm\n");
-		mpssas_set_ccbstatus(ccb, CAM_RESRC_UNAVAIL);
-		xpt_done(ccb);
-		return;
-	}
-
-	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)tm->cm_req;
-	req->DevHandle = htole16(targ->handle);
-	req->TaskType = type;
-	tm->cm_lun = ccb->ccb_h.target_lun;
-	if (type == MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET) {
-		/* SAS Hard Link Reset / SATA Link Reset */
-		req->MsgFlags = MPI2_SCSITASKMGMT_MSGFLAGS_LINK_RESET;
-	} else if (MPS_SET_LUN(req->LUN, ccb->ccb_h.target_lun) != 0) {
-		mpssas_free_tm(sc, tm);
-		mpssas_set_ccbstatus(ccb, CAM_LUN_INVALID);
-		xpt_done(ccb);
-		return;
-	}
-	if (cm != NULL)
-		req->TaskMID = htole16(cm->cm_desc.Default.SMID);
-
-	tm->cm_data = NULL;
-	tm->cm_complete = mpssas_xnu_tm_complete;
-	tm->cm_complete_data = ccb;
-	tm->cm_targ = targ;
-
-	mps_dprint(sc, MPS_USER|MPS_RECOVERY, "OS requested %s for target %u "
-	    "lun %ju (SMID %u%s)\n", mps_xnu_tm_type_str(type), targ->tid,
-	    (uintmax_t)ccb->ccb_h.target_lun, tm->cm_desc.Default.SMID,
-	    cm != NULL ? ", aborting an IO" : "");
-	callout_reset(&tm->cm_callout, ((type ==
-	    MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK) ? MPS_ABORT_TIMEOUT :
-	    MPS_RESET_TIMEOUT) * hz, mpssas_tm_timeout, tm);
-	mpssas_prepare_for_tm(sc, tm, targ,
-	    (type == MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET) ?
-	    CAM_LUN_WILDCARD : ccb->ccb_h.target_lun);
-	mps_map_command(sc, tm);
-}
-
-static void
-mpssas_xnu_tm_complete(struct mps_softc *sc, struct mps_command *tm)
-{
-	MPI2_SCSI_TASK_MANAGE_REPLY *resp;
-	MPI2_SCSI_TASK_MANAGE_REQUEST *req;
-	union ccb *ccb;
-	uint16_t ioc_status;
-
-	mtx_assert(&sc->mps_mtx, MA_OWNED);
-	callout_stop(&tm->cm_callout);
-	resp = (MPI2_SCSI_TASK_MANAGE_REPLY *)tm->cm_reply;
-	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)tm->cm_req;
-	ccb = tm->cm_complete_data;	/* NULL: timed out, completed */
-
-	if (resp == NULL) {
-		if (ccb != NULL)
-			mpssas_set_ccbstatus(ccb, (sc->mps_flags &
-			    (MPS_FLAGS_XNU_GONE | MPS_FLAGS_SHUTDOWN)) ?
-			    CAM_DEV_NOT_THERE : MPS_XNU_RESETTING(sc) ?
-			    CAM_REQ_ABORTED : CAM_REQ_CMP_ERR);
-		if (!MPS_XNU_RESETTING(sc))
-			mps_xnu_request_reinit(sc, "NULL task management reply");
-	} else {
-		mps_xnu_tm_done(sc, tm);
-		ioc_status = le16toh(resp->IOCStatus) & MPI2_IOCSTATUS_MASK;
-		if (ccb != NULL) {
-			ccb->xtm.ioc_status = ioc_status;
-			ccb->xtm.response_code = resp->ResponseCode;
-			ccb->xtm.termination_count =
-			    le32toh(resp->TerminationCount);
-			if (ioc_status == MPI2_IOCSTATUS_SUCCESS &&
-			    (resp->ResponseCode ==
-			    MPI2_SCSITASKMGMT_RSP_TM_COMPLETE ||
-			    resp->ResponseCode ==
-			    MPI2_SCSITASKMGMT_RSP_TM_SUCCEEDED))
-				mpssas_set_ccbstatus(ccb, CAM_REQ_CMP);
-			else
-				mpssas_set_ccbstatus(ccb, CAM_REQ_CMP_ERR);
-		}
-		if (ioc_status == MPI2_IOCSTATUS_SUCCESS &&
-		    (req->TaskType == MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET ||
-		    req->TaskType ==
-		    MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET))
-			mpssas_announce_reset(sc, AC_SENT_BDR,
-			    tm->cm_targ->tid, req->TaskType ==
-			    MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET ?
-			    CAM_LUN_WILDCARD : tm->cm_lun);
-	}
-	mpssas_free_tm(sc, tm);
-	if (ccb != NULL)
-		xpt_done(ccb);
 }
 
 /*

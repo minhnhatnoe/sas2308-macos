@@ -129,7 +129,7 @@ protected:
     virtual SCSIServiceResponse ProcessParallelTask(SCSIParallelTaskIdentifier parallelRequest) APPLE_KEXT_OVERRIDE;
     virtual void HandleTimeout(SCSIParallelTaskIdentifier parallelRequest) APPLE_KEXT_OVERRIDE;
 
-    /* task management (XPT_XNU_TM ccbs: asynchronous in the core, the family API waits) */
+    /* task management (D10: XPT_RESET_DEV / the timeout recovery; the family API waits) */
     virtual SCSIServiceResponse AbortTaskRequest(SCSITargetIdentifier theT, SCSILogicalUnitNumber theL,
                                                  SCSITaggedTaskIdentifier theQ) APPLE_KEXT_OVERRIDE;
     virtual SCSIServiceResponse AbortTaskSetRequest(SCSITargetIdentifier theT, SCSILogicalUnitNumber theL) APPLE_KEXT_OVERRIDE;
