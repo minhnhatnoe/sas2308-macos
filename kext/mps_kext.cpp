@@ -575,6 +575,11 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
     ccb->csio.sense_len = SSD_FULL_SIZE;
     ccb->csio.cdb_len = cdblen;
     memcpy(ccb->csio.cdb_io.cdb_bytes, cdb, cdblen);
+    /*
+     * No periodic ORDERED tag (scsi_da.c's da_send_ordered): SATL has no
+     * ordered NCQ, and the worst latency measured under random load was
+     * 1.22 s against the 30 s timeout (D46; the task's attribute: batch D).
+     */
     ccb->csio.tag_action = MSG_SIMPLE_Q_TAG;
 
     /*
@@ -863,8 +868,13 @@ int mps_kext_target_drain(struct mps_kext *k, uint32_t tid, uint32_t reinit_ms)
                 mps_xnu_request_reinit(sc, "removed target's IO not returned");
             }
             (void)msleep(&k->drain_chan, &sc->mps_mtx, 0, "mpsdrain", 10);
+            /*
+             * Pump the reply queue (FreeBSD's NO_SLEEP waits poll it too);
+             * completions still go to the done queue and are delivered
+             * from the thread call (D43).
+             */
             if ((sc->mps_flags & (MPS_FLAGS_DIAGRESET | MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) == 0)
-                mps_intr_locked(sc);         /* the work loop may be busy elsewhere */
+                mps_intr_locked(sc);
         }
         left = (int)sc->sassc->targets[tid].outstanding;
     }

@@ -1646,7 +1646,11 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 		bcopy(csio->cdb_io.cdb_bytes, &req->CDB.CDB32[0],csio->cdb_len);
 	req->IoFlags = htole16(csio->cdb_len);
 
-	/* XNU: no EEDP (protection information): sc->eedp_enabled is 0 */
+	/*
+	 * XNU: EEDP (T10 PI) not ported: it needs CAM's advinfo (READ
+	 * CAPACITY 16 protection bits).  sc->eedp_enabled is set from
+	 * IOCCapabilities but unused (D28).
+	 */
 
 	cm->cm_length = csio->dxfer_len;
 	if (cm->cm_length != 0) {
