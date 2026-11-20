@@ -2674,6 +2674,18 @@ static void DeviationTests()
         CHECK(g.Stats().transient_allones == 1);
     }
 
+    if (Want("D19")) {
+        /* a reinit whose first attempt fails: PCI state restored after each diag reset */
+        Rig g;
+        MockIocModel &m = g.ioc;
+        const int restores = gHost.pciRestores, resets = m.diagResetCount;
+        m.faultOnIocInitOnce = true;
+        RequestReinit(g, "test");
+        HostAdvance(5000);
+        CHECK(!g.Gone() && m.diagResetCount == resets + 2);
+        CHECK(gHost.pciRestores == restores + 2);
+    }
+
     if (Want("D20b")) {
         /* READ/WRITE killed by our own reset: re-sent (CAM requeues it uncounted), bounded */
         Rig g;

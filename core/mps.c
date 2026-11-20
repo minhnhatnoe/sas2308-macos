@@ -912,10 +912,10 @@ mps_reinit(struct mps_softc *sc)
 			mps_dprint(sc, MPS_INIT|MPS_FAULT, "%s hard reset "
 			    "failed with error %d\n", __func__, error);
 
-		if (attempt == 1) {
-			/* Restore the PCI state, including the MSI-X registers */
-			mps_pci_restore(sc);
+		/* Restore the PCI state, including the MSI-X registers */
+		mps_pci_restore(sc);	/* XNU: after every diag reset (D19) */
 
+		if (attempt == 1) {	/* XNU */
 			/* Give the I/O subsystem special priority to get itself prepared */
 			mpssas_handle_reinit(sc);
 		}

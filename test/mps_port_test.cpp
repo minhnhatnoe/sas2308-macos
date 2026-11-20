@@ -448,7 +448,7 @@ static void TestReinitRetry(struct mps_softc *sc)
     T(!(sc->mps_flags & (MPS_FLAGS_DIAGRESET | MPS_FLAGS_XNU_GONE)) && gHost.dead == 0);
     T(gIoc.state == MPI2_IOC_STATE_OPERATIONAL);
     T(Present(sc, 0, 0x0009) && Present(sc, 1, 0x000A));
-    T(sc->sassc->sim->freeze == 0 && gHost.pciRestores == 2);
+    T(sc->sassc->sim->freeze == 0 && gHost.pciRestores == 3);   /* 1 + both attempts here (D19) */
 }
 
 static void TestRemoval(struct mps_softc *sc)
