@@ -176,8 +176,15 @@ int	 mps_kext_submit(struct mps_kext *k, void *td, void *os_task,
 #define	MPSK_BACKSTOP_MS	10000	/* core timeout = task timeout + this */
 /* pop one completed task (NULL: none); usable until mps_kext_destroy */
 void	*mps_kext_next_done(struct mps_kext *k, struct mps_kext_io_result *res);
-/* the OS timer of a task fired: mps_xnu_ccb_timeout */
-int	 mps_kext_timeout(struct mps_kext *k, void *td, void *os_task);
+/*
+ * The OS timer of a task fired. D4: FreeBSD times a ccb from its post to
+ * the IOC (callout_reset_sbt in mpssas_action_scsiio); the family timer was
+ * armed at submit. A task still held, or posted less than timeout_ms ago,
+ * is not timed out: *rearm_ms (>= 1) is what is left, for
+ * SetTimeoutForTask. Otherwise mps_xnu_ccb_timeout, *rearm_ms = 0.
+ */
+int	 mps_kext_timeout(struct mps_kext *k, void *td, void *os_task,
+	    uint32_t timeout_ms, uint32_t *rearm_ms);
 
 /* ---- task management: XPT_XNU_TM, waits for the completion ------------- */
 

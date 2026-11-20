@@ -260,9 +260,10 @@ SAS2308Glue::ProcessTask(void *task)
      * (SCSIParallelTimer; Apple's iSCSI HBA does the same in its
      * ProcessParallelTask); 0 = the task's own timeout. Once armed, only
      * CompleteParallelTask removes the timer entry, so from here on every
-     * outcome, a synchronous refusal too, completes through it.
+     * outcome, a synchronous refusal too, completes through it. HandleTimeout
+     * re-arms it while the task waits outside the IOC (D4).
      */
-    fPort->SetTimeoutForTask(task);
+    fPort->SetTimeoutForTask(task, 0);
     struct mps_kext_io_result res;
     const int rc = mps_kext_submit(fMps, d.td, task, d.tag, d.target, d.lun, d.cdb, d.cdbLen, d.dir, nsegs,
                                    d.length, d.timeoutMs, gen, &res);
@@ -289,14 +290,17 @@ SAS2308Glue::ProcessTask(void *task)
 
 //-----------------------------------------------------------------------------
 //	HandleTimeout - mpssas_scsiio_timeout() through mps_xnu_ccb_timeout(),
-//	asynchronous: the task completes (ProtocolTimeoutOccurred) when the IOC
-//	gives it back; a task the thin CAM was still holding completes now.
+//	asynchronous: the task completes (TaskTimeoutOccurred) when the IOC
+//	gives it back. D4: a task still held, or posted less than its timeout
+//	ago, is re-armed for the rest instead (FreeBSD times only the IOC's
+//	ownership).
 //-----------------------------------------------------------------------------
 
 void
 SAS2308Glue::HandleTimeout(void *task)
 {
     SAS2308GluePort::TaskDesc d;
+    uint32_t rearm = 0;
 
     if (!Enter()) {
         Klog(MPSK_RECOVERY | MPSK_ERROR, "timeout while stopping: the stop path completes the task");
@@ -305,8 +309,17 @@ SAS2308Glue::HandleTimeout(void *task)
     Lock();
     fKStats.familyTimeouts++;
     Unlock();
-    const int rc = fPort->TaskDescribe(task, &d) ? mps_kext_timeout(fMps, d.td, task) : -1;
+    const int rc = fPort->TaskDescribe(task, &d) ? mps_kext_timeout(fMps, d.td, task, d.timeoutMs, &rearm) : -1;
     Leave();
+    /*
+     * Re-armed before any completion of this task reaches the family:
+     * HandleTimeout runs in the work loop gate, CompleteParallelTask
+     * takes it (and removes the timer entry), and our own delivery comes
+     * after this. The timer took the task off its list before calling us
+     * (SCSIParallelTimer::GetExpiredTask), so this is a first arm again.
+     */
+    if (rc == 0 && rearm != 0)
+        fPort->SetTimeoutForTask(task, rearm);
     if (rc != 0)
         Klog(MPSK_RECOVERY | MPSK_ERROR, "timeout for a task that is not outstanding, ignored");
     DeliverCompletions();

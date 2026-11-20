@@ -61,7 +61,7 @@ public:
     virtual bool TaskMapBegin(void *task, uint64_t length) = 0;
     virtual bool TaskMapNext(void *task, uint64_t *offset, struct mps_kext_seg *chunk, uint32_t *n) = 0;
     virtual void TaskUnmap(void *task) = 0;
-    virtual void SetTimeoutForTask(void *task) = 0;
+    virtual void SetTimeoutForTask(void *task, uint32_t ms) = 0;  /* 0: the task's own timeout */
     virtual void CompleteTask(void *task, int done, uint8_t scsiStatus, uint64_t transferred,
                               const uint8_t *sense, uint32_t senseLen) = 0;
     virtual bool CreateTarget(uint32_t id) = 0;     /* false: not created (also when terminating) */

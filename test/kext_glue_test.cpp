@@ -76,7 +76,7 @@ struct FakeTask {
     /* family state */
     bool outstanding = false, armed = false, mapped = false;
     uint64_t deadline = 0;
-    int completions = 0, done = -1, response = -1;
+    int completions = 0, done = -1, response = -1, timeouts = 0;
     uint8_t scsiStatus = 0xFF;
     uint32_t destroysAtSubmit = 0;
 };
@@ -125,12 +125,13 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         CHECK(f->mapped);
         f->mapped = false;
     }
-    void SetTimeoutForTask(void *t) override {
+    void SetTimeoutForTask(void *t, uint32_t ms) override {
         FakeTask *f = (FakeTask *)t;
         CHECK(f->outstanding);
         if (ignoreTimeouts) return;
-        f->armed = f->timeoutMs != 0;
-        f->deadline = ioc->nowUs + (uint64_t)f->timeoutMs * 1000;
+        const uint32_t d = ms ? ms : f->timeoutMs;  /* 0: the task's own (SCSIParallelTimer::SetTimeout) */
+        f->armed = d != 0;
+        f->deadline = ioc->nowUs + (uint64_t)d * 1000;
     }
     void CompleteTask(void *t, int done, uint8_t scsiStatus, uint64_t, const uint8_t *, uint32_t) override {
         FakeTask *f = (FakeTask *)t;
@@ -239,7 +240,10 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
             if (t->armed && t->deadline <= ioc->nowUs) {
                 t->armed = false;
                 timeouts++;
+                t->timeouts++;
                 glue.HandleTimeout(t);
+                /* re-armed from HandleTimeout: not expired again in the same GetExpiredTask loop (D4) */
+                CHECK(!t->armed || t->deadline > ioc->nowUs);
             }
         }
     }
@@ -605,6 +609,56 @@ int main()
         HostRunPending();
         CHECK(t->completions == 1 && t->done == SAS2308GluePort::kDoneStatus && t->scsiStatus == 0x02);
         m.autosenseFailDev = 0;
+        f.Detach();
+    }
+
+    if (Want("D4")) {
+        /*
+         * IO held 25 s (the controller asleep), then posted to an IOC that
+         * keeps it 10 s: the family timer counts from the post, as FreeBSD's
+         * callout does (no TM). A held-then-posted task that really is
+         * stuck times out once, 30 s after its post.
+         */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009);
+        auto heldThenPosted = [&](FakeTask *t) {
+            CHECK(mps_kext_suspend(f.k, 1000, 0) == 0);
+            const uint32_t held = f.glue.fKStats.tasksHeld;
+            CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+            CHECK(f.glue.fKStats.tasksHeld == held + 1);
+            f.Run(25000);
+            CHECK(t->completions == 0);
+            m.holdIo = true;                        /* the firmware keeps it */
+            CHECK(mps_kext_resume(f.k) == 0);
+            f.Run(3000);                            /* reinit, rediscovery: posted */
+            CHECK(m.pending.size() == 1 && t->completions == 0);
+        };
+        FakeTask *a = f.NewRead(t9);
+        heldThenPosted(a);
+        size_t tms = m.tms.size();
+        f.Run(10000);                               /* 38 s after the submit, 10 s after the post */
+        CHECK(a->timeouts >= 1);                    /* the family's timer fired ... */
+        CHECK(m.tms.size() == tms && a->completions == 0);   /* ... and was re-armed: no abort */
+        m.holdIo = false;
+        m.ReleasePending();
+        HostRunPending();
+        CHECK(a->completions == 1 && a->done == SAS2308GluePort::kDoneStatus && a->scsiStatus == 0);
+
+        FakeTask *b = f.NewRead(t9);
+        heldThenPosted(b);
+        tms = m.tms.size();
+        const uint64_t posted = m.nowUs;
+        f.Run(26000);                               /* 29 s after the post */
+        CHECK(m.tms.size() == tms && b->completions == 0);
+        f.Run(4000);
+        CHECK(m.tms.size() == tms + 1 && m.tms.back().type == MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK);
+        HostRunPending();
+        CHECK(b->completions == 1 && b->done == SAS2308GluePort::kDoneTimeout);
+        CHECK(b->timeouts == 2);                    /* re-armed once, then timed out once */
+        CHECK(m.nowUs - posted >= 30000000ull);
+        m.holdIo = false;
         f.Detach();
     }
 

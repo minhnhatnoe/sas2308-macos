@@ -387,6 +387,7 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Err transport", st.err_transport);
     SetNumber(d, "IO timeouts", st.io_timeouts);
     SetNumber(d, "Family timeouts", ks.familyTimeouts);
+    SetNumber(d, "Family timer re-arms", st.timer_rearms);
     SetNumber(d, "TM abort task", st.tm_sent[kTmAbortTask]);
     SetNumber(d, "TM abort task set", st.tm_sent[kTmAbortTaskSet]);
     SetNumber(d, "TM clear task set", st.tm_sent[kTmClearTaskSet]);

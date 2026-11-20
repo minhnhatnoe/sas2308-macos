@@ -56,7 +56,7 @@ public:
     bool TaskMapBegin(void *task, uint64_t length) override;
     bool TaskMapNext(void *task, uint64_t *offset, struct mps_kext_seg *chunk, uint32_t *n) override;
     void TaskUnmap(void *task) override;
-    void SetTimeoutForTask(void *task) override;
+    void SetTimeoutForTask(void *task, uint32_t ms) override;
     void CompleteTask(void *task, int done, uint8_t scsiStatus, uint64_t transferred,
                       const uint8_t *sense, uint32_t senseLen) override;
     bool CreateTarget(uint32_t id) override;

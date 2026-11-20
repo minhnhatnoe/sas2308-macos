@@ -632,18 +632,40 @@ void *mps_kext_next_done(struct mps_kext *k, struct mps_kext_io_result *res)
     return t->os_task;
 }
 
-int mps_kext_timeout(struct mps_kext *k, void *td, void *os_task)
+int mps_kext_timeout(struct mps_kext *k, void *td, void *os_task, uint32_t timeout_ms, uint32_t *rearm_ms)
 {
     struct mps_softc *sc = &k->sc;
     struct mps_kext_task *t = (struct mps_kext_task *)td;
     int rc;
 
+    *rearm_ms = 0;
     if (!k->attached)
         return ENOENT;
     mps_lock(sc);
     if (t->os_task != os_task || t->state != MPSK_T_POSTED) {
         mps_unlock(sc);
         return ENOENT;                       /* already completed */
+    }
+    /*
+     * D4: CAM never times a ccb that waits in a frozen queue, and the
+     * callout covers only the time the IOC owns the command (qos.sim_data:
+     * when mpssas_action_scsiio posted it). Time held behind a recovery,
+     * a reinit or a sleep does not count.
+     */
+    if (timeout_ms != 0) {
+        uint64_t owned_ms = 0;
+        if (!t->ccb.ccb_h.xnu_held && t->ccb.ccb_h.qos.sim_data != 0)
+            owned_ms = (uint64_t)(sbinuptime() - (sbintime_t)t->ccb.ccb_h.qos.sim_data) / SBT_1MS;
+        if (t->ccb.ccb_h.xnu_held || t->ccb.ccb_h.qos.sim_data == 0 || owned_ms < timeout_ms) {
+            /* never 0: SetTimeoutForTask(task, 0) means the task's own timeout */
+            *rearm_ms = owned_ms + 1 < timeout_ms ? timeout_ms - (uint32_t)owned_ms : 1;
+            mps_dprint(sc, MPS_RECOVERY | MPS_XINFO, "IO for target %u: family timer after %ju ms with the "
+                       "IOC%s, re-armed for %u ms\n", t->ccb.ccb_h.target_id, (uintmax_t)owned_ms,
+                       t->ccb.ccb_h.xnu_held ? " (held)" : "", *rearm_ms);
+            sc->xnu.stats.timer_rearms++;
+            mps_unlock(sc);
+            return 0;
+        }
     }
     k->inline_owner = mps_os_curthread();
     rc = mps_xnu_ccb_timeout(sc, &t->ccb);

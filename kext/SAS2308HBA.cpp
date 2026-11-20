@@ -144,7 +144,7 @@ bool SAS2308HBAPort::TaskMapNext(void *t, uint64_t *off, struct mps_kext_seg *c,
 }
 void SAS2308HBAPort::TaskUnmap(void *t) { fHba->PortTaskUnmap((SCSIParallelTaskIdentifier)t); }
 /* 0: the task's own timeout (SCSIParallelTimer::SetTimeout); only CompleteParallelTask disarms it */
-void SAS2308HBAPort::SetTimeoutForTask(void *t) { fHba->SetTimeoutForTask((SCSIParallelTaskIdentifier)t, 0); }
+void SAS2308HBAPort::SetTimeoutForTask(void *t, uint32_t ms) { fHba->SetTimeoutForTask((SCSIParallelTaskIdentifier)t, ms); }
 void SAS2308HBAPort::CompleteTask(void *t, int done, uint8_t st, uint64_t xfer, const uint8_t *sense, uint32_t slen)
 {
     fHba->PortCompleteTask((SCSIParallelTaskIdentifier)t, done, st, xfer, sense, slen);
@@ -709,8 +709,9 @@ SAS2308HBA::ProcessParallelTask(SCSIParallelTaskIdentifier task)
 //	tasks given to SetTimeoutForTask are timed). Asynchronous: the core
 //	starts (or queues on) its target's recovery - ABORT_TASK, then LUN
 //	reset, target reset, controller reinit - and this returns at once. The
-//	task is completed (ProtocolTimeoutOccurred) when the IOC gives it back;
-//	a task the thin CAM was still holding is completed right away.
+//	task is completed (ProtocolTimeoutOccurred) when the IOC gives it back.
+//	A task still held, or posted less than its timeout ago, is re-armed for
+//	the rest (D4: FreeBSD's callout runs from the post).
 //																	[PROTECTED]
 //-----------------------------------------------------------------------------
 

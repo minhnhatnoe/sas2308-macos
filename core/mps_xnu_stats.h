@@ -79,6 +79,7 @@ struct mps_xnu_stats {
 	uint32_t	sata_identify_failures;
 	/* FreeBSD deviation fixes */
 	uint32_t	ua_retries;		/* UNIT ATTENTION 29/xx after our reset, re-sent (D3) */
+	uint32_t	timer_rearms;		/* family timer re-armed: held, or IOC owned it less long (D4) */
 };
 
 #endif /* !_MPS_XNU_STATS_H_ */
