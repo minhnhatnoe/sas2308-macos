@@ -1,6 +1,12 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
+ * Copyright (c) 2026 Minh Nhat Noe
+ * Decoder tables derived from FreeBSD sys/cam/scsi/scsi_all.c:
+ * Copyright (c) 1997, 1998, 1999 Justin T. Gibbs.
+ * Copyright (c) 1997, 1998, 2003 Kenneth D. Merry.
+ * All rights reserved.
+ *
  * mps_xnu.c - see mps_xnu.h.  The decoder tables follow CAM's scsi_all.c
  * (scsi_op_desc, scsi_sense_key_text, asc_table) in content, not in code.
  */

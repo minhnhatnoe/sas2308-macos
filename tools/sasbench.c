@@ -1,4 +1,8 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
  * sasbench: raw-disk benchmark and data-integrity checker for the SAS2308HBA kext.
  *
  * Each "job" is one device + mode + zone driven by N threads (= queue depth).

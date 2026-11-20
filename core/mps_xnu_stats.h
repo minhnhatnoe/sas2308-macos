@@ -1,7 +1,9 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * mps_xnu_stats.h - the M4 statistics (sc->xnu.stats).  Only <stdint.h>, so
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
+ * mps_xnu_stats.h - the driver statistics (sc->xnu.stats).  Only <stdint.h>, so
  * that the kext's IOKit translation unit (which cannot include the compat
  * headers, see docs/design.md) can read a snapshot of them.
  */

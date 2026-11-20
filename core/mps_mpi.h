@@ -1,4 +1,8 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
  * mps_mpi.h - single include point for the MPI2 message headers.
  *
  * The headers in mpi/ are unmodified copies from FreeBSD sys/dev/mps/mpi

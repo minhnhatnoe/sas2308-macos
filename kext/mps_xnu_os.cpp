@@ -1,4 +1,8 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
  * mps_xnu_os.cpp - the FreeBSD-shaped core on xnu.
  *
  * 1. The mps_os_*() platform hooks of core/compat/mps_compat.h and

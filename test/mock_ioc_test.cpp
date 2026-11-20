@@ -1,5 +1,10 @@
-/*
- * mock_ioc_test.cpp - the M1-M4 scenarios against the FreeBSD-shaped core
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
+ * mock_ioc_test.cpp - the scenario groups M1-M4 (named after the development
+ * milestones, docs/design.md) against the FreeBSD-shaped core
  * (core/mps*.c behind core/compat), driven the way the kext drives it: SCSI
  * IO and task management as ccbs through xpt_action(), OS timeouts through
  * mps_xnu_ccb_timeout(), interrupts / callouts / taskqueues as "other

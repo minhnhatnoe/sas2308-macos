@@ -1,4 +1,8 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
  * mps_xnu_os.h - the interface between the IOKit class (SAS2308HBA.cpp) and
  * the FreeBSD-shaped core, implemented in mps_xnu_os.cpp.
  *

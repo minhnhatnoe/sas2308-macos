@@ -1,4 +1,8 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
  * mps_port_test.cpp - smoke test of the FreeBSD-shaped core (core/mps*.c,
  * core/compat) against the software IOC model (mock_ioc.h), with the host
  * mps_os_* hooks (mps_host_os.cpp).  Built with ASan/UBSan/LSan.

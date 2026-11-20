@@ -1,6 +1,8 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
  * mps_xnu.h - additions with no counterpart in FreeBSD sys/dev/mps:
  * log-level presets on top of the mps_dprint classes, %b replacement,
  * CDB/sense/ASC/loginfo decoders (FreeBSD gets these from CAM), the

@@ -1,4 +1,8 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
  * SAS2308Glue.h - the IOKit-free half of the SAS2308HBA class: the task
  * slots and the gate around the core, ProcessParallelTask / HandleTimeout /
  * completion delivery, the hotplug thread and its target table.

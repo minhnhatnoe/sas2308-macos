@@ -1,6 +1,8 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
  * cam_compat.c - the thin CAM behind cam_compat.h (see the semantics there).
  * All entry points except the allocation helpers expect the SIM's mutex
  * (mps_mtx) to be held.

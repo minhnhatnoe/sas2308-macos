@@ -1,4 +1,8 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
  * sas2308ctl - change SAS2308HBA logging at runtime and read its counters.
  *
  *   sas2308ctl show                     level, debug mask, sink

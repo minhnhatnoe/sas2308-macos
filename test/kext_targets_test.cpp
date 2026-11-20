@@ -1,4 +1,8 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
  * kext_targets_test.cpp - the kext's target table (kext/SAS2308HBA_Targets.h)
  * on the host: hotplug decisions, termination with targets 0..63 (the
  * family's willTerminate loop stops at 62), and the hotplug thread racing

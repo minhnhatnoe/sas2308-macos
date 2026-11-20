@@ -1,4 +1,8 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
  * SAS2308HBA_PM.cpp - power management and shutdown.
  *
  * IOSCSIParallelInterfaceController has no power management of its own

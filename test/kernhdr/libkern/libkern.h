@@ -1,3 +1,8 @@
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Noe
+ */
 /* Stand-in for Kernel.framework <libkern/libkern.h>: freestanding compile check only. */
 #ifndef _KERNHDR_LIBKERN_H_
 #define _KERNHDR_LIBKERN_H_

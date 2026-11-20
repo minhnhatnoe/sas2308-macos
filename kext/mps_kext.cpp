@@ -1,4 +1,8 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
  * mps_kext.cpp - the mps_kext_*() calls of mps_xnu_os.h: the IOKit class's
  * view of the FreeBSD-shaped core (FreeBSD mps_pci.c's role): the call
  * sequence of test/mock_ioc_test.cpp `Rig', ccbs for SCSI IO and task

@@ -1,4 +1,8 @@
-/*
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Noe
+ *
  * SAS2308HBA.h - IOKit driver for the LSI/Broadcom SAS2308 SAS HBA
  * (SAS 9207-8i, PCI 1000:0087, MPI 2.0 IT firmware).
  *
