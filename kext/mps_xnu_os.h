@@ -37,7 +37,6 @@ extern "C" {
 #define MPSK_LEVEL_INFO		2	/* default */
 #define MPSK_LEVEL_TRACE	4
 #define MPSK_MAX_TARGETS	64	/* MPS_XNU_MAX_TARGETS: target ids 0..63 */
-#define MPSK_MAX_TASKS		64	/* MPS_XNU_IO_CMDS: ReportMaximumTaskCount */
 
 struct mps_kext;			/* softc + device_t + glue state */
 
@@ -86,6 +85,41 @@ void	 mps_kext_detach(struct mps_kext *k);
 /* after detach or a failed attach; the done queue must be drained */
 void	 mps_kext_destroy(struct mps_kext *k);
 uint32_t mps_kext_max_segs(struct mps_kext *k);		/* per IO */
+uint32_t mps_kext_max_tasks(struct mps_kext *k);	/* ReportMaximumTaskCount, from IOCFacts */
+
+/*
+ * The IOCFacts limits and what mps_resize_queues made of them (the kext's
+ * "Controller Limits" property); 0 if not attached. Memory: what the core
+ * allocated for these sizes (DMA: bus_dmamem_alloc sizes before page
+ * rounding; heap: commands, chain trackers, command DMA maps).
+ */
+struct mps_kext_limits {
+	/* IOCFacts (MPI2_IOC_FACTS_REPLY) */
+	uint16_t	request_credit;
+	uint16_t	high_priority_credit;
+	uint16_t	max_reply_post_depth;	/* MaxReplyDescriptorPostQueueDepth */
+	uint8_t		max_chain_depth;
+	uint8_t		max_msix_vectors;
+	uint32_t	req_frame_bytes;	/* IOCRequestFrameSize * 4 */
+	uint32_t	reply_frame_bytes;	/* ReplyFrameSize * 4 */
+	uint16_t	max_targets;
+	uint16_t	max_volumes;
+	/* effective (mps_resize_queues) */
+	uint32_t	req_frames;		/* normal request frames (num_reqs - num_prireqs) */
+	uint32_t	pri_req_frames;		/* high-priority (task management) frames */
+	uint32_t	reply_frames;		/* num_replies */
+	uint32_t	post_queue_depth;	/* pqdepth */
+	uint32_t	chain_frames;		/* num_chains */
+	uint32_t	os_commands;		/* xnu.io_cmds */
+	uint32_t	max_segs;		/* buffer_dmat nsegments */
+	uint64_t	dma_bytes;
+	uint64_t	heap_bytes;
+};
+int	 mps_kext_limits(struct mps_kext *k, struct mps_kext_limits *l);	/* 0 = filled */
+
+/* zeroed heap memory for the glue (M_WAITOK context: may block); NULL = none */
+void	*mps_kext_zalloc(size_t size);
+void	 mps_kext_zfree(void *ptr, size_t size);
 uint64_t mps_kext_max_seg_bytes(void);			/* one SGE */
 
 /* ---- interrupts -------------------------------------------------------- */

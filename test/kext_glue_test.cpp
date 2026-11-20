@@ -173,8 +173,10 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         glue.fMps = k;
         CHECK(mps_kext_attach(k, MPSK_DEBUG_ALL) == 0);
         gHost.sc = (struct mps_softc *)mps_kext_softc(k);
-        glue.Lock(); glue.fCoreAttached = true; glue.Unlock();
-        glue.fMaxSegs = mps_kext_max_segs(k);
+        CHECK(glue.Attached());
+        CHECK(glue.fSlots != nullptr);
+        CHECK(glue.fCoreAttached && glue.fMaxSegs == mps_kext_max_segs(k));
+        CHECK(glue.fMaxTasks == mps_kext_max_tasks(k) && glue.fMaxTasks == (uint32_t)gHost.sc->xnu.io_cmds);
         glue.Start();
         CHECK(glue.Enter());
         mps_kext_start(k);
@@ -265,7 +267,7 @@ int main()
 
     if (Want("basic")) {
         MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
-        m.tmSmidLo = 1; m.tmSmidHi = 1 + MPS_XNU_PRI_REQ_FRAMES;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         Family f; f.Attach(&m);
         CHECK(f.nubs.size() == 2);
         FakeTask *t = f.NewRead(f.Tid(0x0009));
@@ -275,10 +277,45 @@ int main()
         f.Detach();
     }
 
+    if (Want("tasks")) {
+        /* ReportMaximumTaskCount = min(RequestCredit, 2048) - internal: that many at once, then refused */
+        MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        m.requestCredit = 10240; m.replyPostDepth = 65520;
+        Family f; f.Attach(&m);
+        CHECK(f.glue.fMaxTasks == MPS_REQ_FRAMES - MPS_XNU_INTERNAL_CMDS && f.glue.fMaxTasks == 2040);
+        struct mps_kext_limits l;
+        CHECK(mps_kext_limits(f.k, &l) == 0);
+        CHECK(l.request_credit == 10240 && l.high_priority_credit == MockIocModel::kHighPriorityCredit &&
+              l.max_reply_post_depth == 65520 && l.req_frames == MPS_REQ_FRAMES && l.os_commands == 2040 &&
+              l.pri_req_frames == MockIocModel::kHighPriorityCredit && l.reply_frames >= l.req_frames + l.pri_req_frames &&
+              l.chain_frames == MPS_CHAIN_FRAMES && l.req_frame_bytes == 128 && l.max_segs == MPS_XNU_MAXIO_PAGES + 1);
+        printf("  limits: %u request + %u high-priority frames, %u replies (post queue %u), %u chains, %u OS tasks; "
+               "DMA %llu B, core heap %llu B, slots %zu B, task data %zu B\n",
+               l.req_frames, l.pri_req_frames, l.reply_frames, l.post_queue_depth, l.chain_frames, f.glue.fMaxTasks,
+               (unsigned long long)l.dma_bytes, (unsigned long long)l.heap_bytes,
+               sizeof(SAS2308Glue::Slot) * f.glue.fMaxTasks, mps_kext_task_size() * f.glue.fMaxTasks);
+        m.holdIo = true;
+        std::vector<FakeTask *> v;
+        for (uint32_t i = 0; i < f.glue.fMaxTasks; i++) {
+            v.push_back(f.NewRead(f.Tid(i % 2 ? 0x000A : 0x0009)));
+            CHECK(f.Submit(v.back()) == SAS2308Glue::kInProcess);
+        }
+        CHECK(m.pending.size() == f.glue.fMaxTasks && f.glue.fKStats.tasksHeld == 0);
+        FakeTask *extra = f.NewRead(f.Tid(0x0009));
+        CHECK(f.Submit(extra) == SAS2308Glue::kRejected);
+        m.holdIo = false;
+        m.ReleasePending();
+        HostRunPending();
+        for (FakeTask *t : v)
+            CHECK(t->completions == 1 && t->done == SAS2308GluePort::kDoneStatus && t->scsiStatus == 0);
+        f.Detach();
+    }
+
     if (Want("C1")) {
         /* a reply that never comes: the family's timer must be armed, recovery completes the task */
         MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
-        m.tmSmidLo = 1; m.tmSmidHi = 1 + MPS_XNU_PRI_REQ_FRAMES;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         Family f; f.Attach(&m);
         m.holdIo = true;                            /* the firmware keeps it until a TM */
         FakeTask *t = f.NewRead(f.Tid(0x0009), 10000);
@@ -294,7 +331,7 @@ int main()
     if (Want("C1-backstop")) {
         /* the family timer is lost: the core's own callout (timeout + 10 s) still recovers */
         MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
-        m.tmSmidLo = 1; m.tmSmidHi = 1 + MPS_XNU_PRI_REQ_FRAMES;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         Family f; f.Attach(&m);
         f.ignoreTimeouts = true;
         m.holdIo = true;
@@ -309,7 +346,7 @@ int main()
     if (Want("L1")) {
         /* a refusal inside xpt_action (no such target) completes through CompleteParallelTask */
         MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
-        m.tmSmidLo = 1; m.tmSmidHi = 1 + MPS_XNU_PRI_REQ_FRAMES;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         Family f; f.Attach(&m);
         FakeTask *t = f.NewRead(17);
         CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
@@ -321,7 +358,7 @@ int main()
     if (Want("H1")) {
         /* the device goes while its nub is being created (CreateTargetForID probes): the destroy is not lost */
         MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
-        m.tmSmidLo = 1; m.tmSmidHi = 1 + MPS_XNU_PRI_REQ_FRAMES;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         Family f;
         bool pulled = false;
         f.onCreate = [&](uint32_t) {
@@ -341,7 +378,7 @@ int main()
     if (Want("C2")) {
         /* the same id comes back for a different disk (identity unknown): never the old nub */
         MockIocModel m; m.devices = {0x0009, 0x000B}; m.maxTargets = 32; m.strictEventMasks = false;
-        m.tmSmidLo = 1; m.tmSmidHi = 1 + MPS_XNU_PRI_REQ_FRAMES;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         m.sataSerial[0x0009] = "ZR50AAAA"; m.sataSerial[0x000B] = "ZR50BBBB";
         Family f; f.Attach(&m);
         const uint32_t tb = f.Tid(0x000B);
@@ -365,7 +402,7 @@ int main()
     if (Want("M7")) {
         /* a removed disk's IO completes before its nub is destroyed */
         MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
-        m.tmSmidLo = 1; m.tmSmidHi = 1 + MPS_XNU_PRI_REQ_FRAMES;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         Family f; f.Attach(&m);
         const uint32_t t9 = f.Tid(0x0009);
         m.holdDev = 0x0009;

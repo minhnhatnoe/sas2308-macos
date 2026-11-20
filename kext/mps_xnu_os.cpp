@@ -65,7 +65,7 @@ static_assert(MPSK_DEVINFO_SSP_TARGET == MPI2_SAS_DEVICE_INFO_SSP_TARGET &&
               MPSK_DEVINFO_STP_TARGET == MPI2_SAS_DEVICE_INFO_STP_TARGET &&
               MPSK_DEVINFO_SATA_DEVICE == MPI2_SAS_DEVICE_INFO_SATA_DEVICE, "device info bits");
 static_assert(MPSK_LEVEL_INFO == MPS_LEVEL_INFO && MPSK_LEVEL_TRACE == MPS_LEVEL_TRACE, "levels");
-static_assert(MPSK_MAX_TARGETS == MPS_XNU_MAX_TARGETS && MPSK_MAX_TASKS == MPS_XNU_IO_CMDS, "sizes");
+static_assert(MPSK_MAX_TARGETS == MPS_XNU_MAX_TARGETS, "sizes");
 static_assert(sizeof(struct mps_kext_seg) == sizeof(bus_dma_segment_t) &&
               offsetof(struct mps_kext_seg, len) == offsetof(bus_dma_segment_t, ds_len), "segments");
 

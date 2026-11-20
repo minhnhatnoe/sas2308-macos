@@ -69,7 +69,6 @@ class SAS2308HBA : public IOSCSIParallelInterfaceController
 
 public:
     static constexpr uint32_t kMaxTargets = MPSK_MAX_TARGETS;   /* target IDs 0..63 */
-    static constexpr uint32_t kMaxTasks = MPSK_MAX_TASKS;       /* ReportMaximumTaskCount */
     static constexpr uint32_t kMaxLun = 255;                    /* peripheral LUN addressing */
     static constexpr uint32_t kStatsPublishMs = 1000;           /* statistics timer */
     static constexpr uint32_t kSleepDrainMs = 10000;            /* system sleep: IO drain bound */
@@ -82,6 +81,7 @@ public:
     static constexpr const char *kResetStatsKey = "SAS2308ResetStats";
     static constexpr const char *kStatsKey      = "SAS2308Statistics";
     static constexpr const char *kIocTemperatureKey = "IOC Temperature (C)";   /* IO Unit Page 7 */
+    static constexpr const char *kLimitsKey     = "Controller Limits";  /* IOCFacts + queue sizes */
 
     /* IOService (start/stop belong to the family: "shall not be overridden") */
     virtual IOReturn    setPowerState(unsigned long powerStateOrdinal, IOService *whatDevice) APPLE_KEXT_OVERRIDE;
@@ -180,6 +180,7 @@ private:
     void PublishControllerCharacteristics(void);
     bool Snapshot(struct mps_kext_snapshot *snap);
     void PublishStats(bool force);
+    void PublishLimits(bool log);
     void LogCounters(const char *why);
     static void StatsTimerFired(OSObject *owner, IOTimerEventSource *sender);
     static void SetNumber(OSDictionary *dict, const char *key, UInt64 value);
@@ -207,6 +208,7 @@ private:
     uint32_t       fUnit = 0;
     uint64_t       fLastPublishUs = 0;
     uint64_t       fLastPublishedSig = ~0ull;
+    uint64_t       fLimitsSig = ~0ull;      /* reinits + resumes when "Controller Limits" was published */
 
     /*
      * Task slots, the gate, the target table, fLock and the glue counters:

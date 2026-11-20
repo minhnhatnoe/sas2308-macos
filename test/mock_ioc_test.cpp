@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <functional>
 #include <string>
 #include <vector>
@@ -183,7 +184,7 @@ struct Rig {
         ioc.maxTargets = 32;
         ioc.strictEventMasks = false;       /* mpssas registers IR events too */
         ioc.tmSmidLo = 1;                   /* high-priority SMIDs 1..num_prireqs */
-        ioc.tmSmidHi = 1 + MPS_XNU_PRI_REQ_FRAMES;
+        ioc.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         if (prevIoc) ioc.nowUs = prevIoc->nowUs;
         gHost.ioc = &ioc;
         sc = (struct mps_softc *)calloc(1, sizeof(*sc));
@@ -495,12 +496,12 @@ int main()
     CHECK(g.attachRc == 0);
     CHECK(ioc.murCount + ioc.diagResetCount >= 1);       /* OPERATIONAL from the boot ROM -> READY */
     CHECK(ioc.state == MPI2_IOC_STATE_OPERATIONAL);
-    CHECK(g.sc->num_reqs - g.sc->num_prireqs - 1 == MPS_XNU_REQ_FRAMES - 1);   /* normal SMIDs */
+    CHECK(g.sc->num_reqs - g.sc->num_prireqs - 1 == ioc.requestCredit - 1);   /* normal SMIDs */
     /* 128-byte frames: FreeBSD maxio 1 MiB -> 257 segments; 1 SGE + chain in the request frame, 9 + chain per chain frame. */
     CHECK(g.MaxSegs() == MPS_XNU_MAXIO_PAGES + 1);
     CHECK(ChainsFor(1) == 0 && ChainsFor(2) == 1 && ChainsFor(10) == 1 &&
           ChainsFor(11) == 2 && ChainsFor(256) == 29 && ChainsFor(257) == 29);
-    CHECK(g.ChainsTotal() == MPS_XNU_REQ_FRAMES * 29 && g.ChainsFree() == g.ChainsTotal());
+    CHECK(g.ChainsTotal() == ioc.requestCredit * 29 && g.ChainsFree() == g.ChainsTotal());
     CHECK(ioc.him & MPI2_HIM_RIM);                  /* still masked */
 
     printf("port enable + discovery event + ack\n");
@@ -643,7 +644,7 @@ int main()
         CHECK(a->status == CAM_SCSI_BUS_RESET);
         CHECK(b->status == CAM_SCSI_BUS_RESET);
         CHECK(c->status == CAM_SCSI_BUS_RESET);
-        CHECK(g.ChainsFree() == g.ChainsTotal() && g.ChainsTotal() == MPS_XNU_REQ_FRAMES * 29);
+        CHECK(g.ChainsFree() == g.ChainsTotal() && g.ChainsTotal() == ioc.requestCredit * 29);
         CHECK(g.MaxSegs() == MPS_XNU_MAXIO_PAGES + 1);
         ioc.holdIo = false;
         DataIo(g, CAM_DIR_IN, sMax, big, 7);
@@ -1433,7 +1434,8 @@ static void LoggingTests()
         Rig g;
         CHECK(HasLog(mark, "Firmware: 20.00.00.00, Driver: "));
         CHECK(HasLog(mark, "IOCCapabilities: "));
-        CHECK(HasLog(mark, "Sized queues to q=1 reqs=80 replies=111"));
+        CHECK(HasLog(mark, "Sized queues to q=1 reqs=108 replies=127"));
+        CHECK(HasLog(mark, "RequestCredit 100 HighPriorityCredit 8 ReplyPostQueueDepth 128: 92 OS commands, 2900 chain frames"));
         CHECK(HasLog(mark, "FWVersion= 20-0-0-0") && HasLog(mark, "HighPriorityCredit: 8"));
         CHECK(HasLog(mark, "IOCInit"));
         CHECK(HasLog(mark, "reply frames busaddr") && HasLog(mark, "sense frames busaddr"));
@@ -1866,6 +1868,60 @@ static void TemperatureTests()
         HostRunPending();
         HostAdvance(31000);
         CHECK(m.iounit7Reads > before && g.Present(g.Tid(0x0009), 0x0009));
+    }
+
+    printf("sizing: FreeBSD defaults (%d + %d frames) bounded by IOCFacts; OS commands = normal frames - %d\n",
+           MPS_REQ_FRAMES, MPS_PRI_REQ_FRAMES, MPS_XNU_INTERNAL_CMDS);
+    {
+        struct Case { uint16_t credit, hpc, depth; int replyTune; int prireq, reqcr, io; const char *what; } cases[] = {
+            {100, 8, 128, 0, 8, 100, 92, "the model's default"},
+            {10240, 8, 65520, 0, 8, 2048, 2040, "credit above 2048: min() = MPS_REQ_FRAMES"},
+            {2049, 8, 65520, 0, 8, 2048, 2040, "credit 2049"},
+            {2047, 8, 65520, 0, 8, 2047, 2039, "credit 2047: min() = RequestCredit"},
+            {1500, 8, 65520, 0, 8, 1500, 1492, "credit below 2048"},
+            {10240, 200, 65520, 0, 128, 2048, 2040, "HighPriorityCredit above 128: replies cover 2176 frames"},
+            {10240, 8, 65520, 64, 8, 2048, 2040, "max_replyframes tuned to 64: replies still cover every frame"},
+            {10240, 8, 1600, 0, 8, 1591, 1583, "post queue 1600: 1600 - 8 - 1 frames"},
+            {10240, 128, 2096, 0, 128, 1967, 1959, "post queue 2096, 128 TMs: 2096 - 128 - 1"},
+            {1024, 8, 208, 0, 8, 199, 191, "short post queue: 208 - 8 - 1"},
+            {200, 8, 1024, 0, 8, 200, 192, "credit 200"},
+            {12, 8, 128, 0, 8, 12, 4, "tiny credit"},
+        };
+        for (const Case &c : cases) {
+            printf("  credit %u, high-priority %u, post queue %u: %s\n", c.credit, c.hpc, c.depth, c.what);
+            Rig g({0x0009}, [&](Rig &r) {
+                r.ioc.requestCredit = c.credit; r.ioc.highPriorityCredit = c.hpc; r.ioc.replyPostDepth = c.depth;
+                r.ioc.tmSmidHi = 1 + std::min<int>(MPS_PRI_REQ_FRAMES, c.hpc);
+                if (c.replyTune) r.sc->max_replyframes = c.replyTune;
+            });
+            CHECK(g.attachRc == 0);
+            CHECK(g.sc->num_prireqs == c.prireq);
+            CHECK(g.sc->num_reqs == c.reqcr + c.prireq);
+            CHECK(g.sc->xnu.io_cmds == c.io);
+            CHECK(g.sc->num_reqs - g.sc->num_prireqs - 1 >= c.io);       /* normal SMIDs */
+            const int replyFrames = c.replyTune ? c.replyTune : MPS_REPLY_FRAMES;
+            CHECK(g.sc->num_replies ==
+                  std::min(std::max(replyFrames, g.sc->num_reqs) + MPS_EVT_REPLY_FRAMES, (int)c.depth) - 1);
+            /* the reply-queue clamp: a post queue descriptor for every request frame */
+            CHECK(g.sc->num_replies >= g.sc->num_reqs - 1 && g.sc->pqdepth - 1 >= g.sc->num_reqs - 1);
+            CHECK(g.sc->pqdepth <= c.depth && g.ioc.pq == (uint32_t)g.sc->pqdepth);
+            CHECK(g.ChainsTotal() == std::min(29 * c.reqcr, MPS_CHAIN_FRAMES) && g.ChainsFree() == g.ChainsTotal());
+            CHECK(g.Present(g.Tid(0x0009), 0x0009));
+            /* io_cmds at once, all posted (none held), all complete at once (no post queue overrun) */
+            g.ioc.holdIo = true;
+            std::vector<Io *> v;
+            for (int i = 0; i < c.io; i++) {
+                v.push_back(g.Read(0x0009, 0, (uint8_t)i));
+                CHECK(g.Go(v.back()) == kPosted);
+            }
+            CHECK(g.HeldCount() == 0 && (int)g.ioc.pending.size() == c.io);
+            CHECK(g.ioc.maxSmid < c.prireq + c.credit && g.ioc.maxSmid < g.sc->num_reqs);
+            g.ioc.holdIo = false;
+            g.ioc.ReleasePending();
+            for (int i = 0; i < 8; i++) g.Pump();
+            for (Io *io : v) CHECK(io->done == 1 && io->status == CAM_REQ_CMP);
+            CHECK(g.sc->io_cmds_active == 0 && g.ChainsFree() == g.ChainsTotal());
+        }
     }
 
     printf("temperature: no sensor (units NOT_PRESENT) -> logged once, no more polls\n");

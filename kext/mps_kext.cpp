@@ -37,7 +37,7 @@ static_assert(MPSK_DEVINFO_SSP_TARGET == MPI2_SAS_DEVICE_INFO_SSP_TARGET &&
               MPSK_DEVINFO_STP_TARGET == MPI2_SAS_DEVICE_INFO_STP_TARGET &&
               MPSK_DEVINFO_SATA_DEVICE == MPI2_SAS_DEVICE_INFO_SATA_DEVICE, "device info bits");
 static_assert(MPSK_LEVEL_INFO == MPS_LEVEL_INFO && MPSK_LEVEL_TRACE == MPS_LEVEL_TRACE, "levels");
-static_assert(MPSK_MAX_TARGETS == MPS_XNU_MAX_TARGETS && MPSK_MAX_TASKS == MPS_XNU_IO_CMDS, "sizes");
+static_assert(MPSK_MAX_TARGETS == MPS_XNU_MAX_TARGETS, "sizes");
 static_assert(sizeof(struct mps_kext_seg) == sizeof(bus_dma_segment_t) &&
               __builtin_offsetof(struct mps_kext_seg, addr) == __builtin_offsetof(bus_dma_segment_t, ds_addr) &&
               __builtin_offsetof(struct mps_kext_seg, len) == __builtin_offsetof(bus_dma_segment_t, ds_len),
@@ -325,6 +325,73 @@ uint32_t mps_kext_max_segs(struct mps_kext *k)
     if (!k->attached || sc->buffer_dmat == NULL || sc->buffer_dmat->dt_nsegments <= 0)
         return 0;
     return MIN((uint32_t)sc->buffer_dmat->dt_nsegments, (uint32_t)MPSK_TASK_MAXSEGS);
+}
+
+/* xnu.io_cmds: the normal request frames (min(RequestCredit, MPS_REQ_FRAMES)) less the internal commands */
+uint32_t mps_kext_max_tasks(struct mps_kext *k)
+{
+    struct mps_softc *sc = &k->sc;
+    if (!k->attached || sc->xnu.io_cmds <= 0)
+        return 0;
+    return (uint32_t)sc->xnu.io_cmds;
+}
+
+static uint64_t DmaTagBytes(bus_dma_tag_t t)
+{
+    return t != NULL ? (uint64_t)t->dt_maxsize : 0;
+}
+
+int mps_kext_limits(struct mps_kext *k, struct mps_kext_limits *l)
+{
+    struct mps_softc *sc = &k->sc;
+
+    memset_zero(l, sizeof(*l));
+    if (!k->attached)
+        return -1;
+    mps_lock(sc);
+    if (sc->facts == NULL) {
+        mps_unlock(sc);
+        return -1;
+    }
+    const MPI2_IOC_FACTS_REPLY *f = sc->facts;
+    l->request_credit = le16toh(f->RequestCredit);
+    l->high_priority_credit = le16toh(f->HighPriorityCredit);
+    l->max_reply_post_depth = le16toh(f->MaxReplyDescriptorPostQueueDepth);
+    l->max_chain_depth = f->MaxChainDepth;
+    l->max_msix_vectors = f->MaxMSIxVectors;
+    l->req_frame_bytes = (uint32_t)le16toh(f->IOCRequestFrameSize) * 4;
+    l->reply_frame_bytes = (uint32_t)f->ReplyFrameSize * 4;
+    l->max_targets = le16toh(f->MaxTargets);
+    l->max_volumes = f->MaxVolumes;
+    l->req_frames = (uint32_t)(sc->num_reqs - sc->num_prireqs);
+    l->pri_req_frames = (uint32_t)sc->num_prireqs;
+    l->reply_frames = (uint32_t)sc->num_replies;
+    l->post_queue_depth = (uint32_t)sc->pqdepth;
+    l->chain_frames = (uint32_t)sc->num_chains;
+    l->os_commands = sc->xnu.io_cmds > 0 ? (uint32_t)sc->xnu.io_cmds : 0;
+    l->max_segs = sc->buffer_dmat != NULL && sc->buffer_dmat->dt_nsegments > 0 ?
+        (uint32_t)sc->buffer_dmat->dt_nsegments : 0;
+    l->dma_bytes = DmaTagBytes(sc->queues_dmat) + DmaTagBytes(sc->reply_dmat) + DmaTagBytes(sc->req_dmat) +
+        DmaTagBytes(sc->chain_dmat) + DmaTagBytes(sc->sense_dmat) + DmaTagBytes(sc->xnu.cfg_dmat);
+    /* + one struct bus_dmamap (mps_compat.c: 4 pointer-sized fields) per command */
+    l->heap_bytes = (uint64_t)sc->num_reqs * (sizeof(struct mps_command) + 4 * sizeof(void *)) +
+        (uint64_t)sc->num_chains * sizeof(struct mps_chain);
+    mps_unlock(sc);
+    return 0;
+}
+
+void *mps_kext_zalloc(size_t size)
+{
+    void *p = mps_os_malloc(size, 1);
+    if (p != NULL)
+        memset_zero(p, size);
+    return p;
+}
+
+void mps_kext_zfree(void *ptr, size_t size)
+{
+    if (ptr != NULL)
+        mps_os_free(ptr, size);
 }
 
 uint64_t mps_kext_max_seg_bytes(void)

@@ -346,9 +346,10 @@ SAS2308HBA::InitializeController(void)
             Klog(MPSK_FAULT | MPSK_INIT, "mps_attach failed (%d)", rc);
             goto fail;
         }
-        fGlue.Lock();
-        fGlue.fCoreAttached = true;
-        fGlue.Unlock();
+        if (!fGlue.Attached()) {
+            mps_kext_detach(fGlue.fMps);
+            goto fail;
+        }
     }
 
     /*
@@ -357,7 +358,6 @@ SAS2308HBA::InitializeController(void)
      * chain frames) could not describe a page-scattered buffer of that size.
      */
     {
-        fGlue.fMaxSegs = mps_kext_max_segs(fGlue.fMps);
         UInt64 segs = fGlue.fMaxSegs;
         UInt64 maxBytes = 1024 * 1024;
         if (segs < 2)
@@ -366,9 +366,11 @@ SAS2308HBA::InitializeController(void)
             maxBytes = (segs - 1) * PAGE_SIZE;
         setProperty(kIOMaximumByteCountReadKey, maxBytes, 64);
         setProperty(kIOMaximumByteCountWriteKey, maxBytes, 64);
-        Klog(MPSK_INIT | MPSK_INFO, "max %llu segments per IO, max transfer %llu bytes", segs, maxBytes);
+        Klog(MPSK_INIT | MPSK_INFO, "max %llu segments per IO, max transfer %llu bytes, %u commands",
+             segs, maxBytes, fGlue.fMaxTasks);
     }
     PublishControllerCharacteristics();
+    PublishLimits(true);
     PublishStats(true);
     return true;
 
@@ -546,7 +548,26 @@ SCSIDeviceIdentifier SAS2308HBA::ReportHighestSupportedDeviceID(void) { return k
 //-----------------------------------------------------------------------------
 
 SCSILogicalUnitNumber SAS2308HBA::ReportHBAHighestLogicalUnitNumber(void) { return kMaxLun; }
-UInt32 SAS2308HBA::ReportMaximumTaskCount(void) { return kMaxTasks; }
+
+//-----------------------------------------------------------------------------
+//	ReportMaximumTaskCount - min(IOCFacts RequestCredit, MPS_REQ_FRAMES 2048,
+//	post queue depth) less the internal commands (mps_resize_queues; one glue
+//	slot per task). The family asks right after
+//	InitializeController (IOSCSIParallelInterfaceController.cpp:337), sizes
+//	its task pool with it and, since we do not set it, publishes
+//	IOCommandPoolSize = the tasks it allocated.				[PROTECTED]
+//-----------------------------------------------------------------------------
+
+UInt32
+SAS2308HBA::ReportMaximumTaskCount(void)
+{
+    if (fGlue.fMaxTasks == 0) {
+        Klog(MPSK_INIT | MPSK_ERROR, "ReportMaximumTaskCount before attach: reporting 1 task");
+        return 1;
+    }
+    return fGlue.fMaxTasks;
+}
+
 /* Per task: the XPT_SCSI_IO ccb and its bus_dma_segment_t list (mps_xnu_os.cpp). */
 UInt32 SAS2308HBA::ReportHBASpecificTaskDataSize(void) { return (UInt32)mps_kext_task_size(); }
 UInt32 SAS2308HBA::ReportHBASpecificDeviceDataSize(void) { return sizeof(UInt64); /* unused */ }

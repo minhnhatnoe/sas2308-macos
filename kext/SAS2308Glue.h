@@ -74,7 +74,6 @@ class SAS2308_HIDDEN SAS2308Glue
 {
 public:
     static constexpr uint32_t kMaxTargets = MPSK_MAX_TARGETS;
-    static constexpr uint32_t kMaxTasks = MPSK_MAX_TASKS;
     static constexpr uint32_t kDrainMs = 10000;     /* a removed target's IO, before its nub goes */
 
     enum Response { kInProcess, kRejected, kFailure };
@@ -102,6 +101,7 @@ public:
 
     bool Enter(void);                   /* gate around mps_kext_* calls; false once stopping */
     void Leave(void);
+    bool Attached(void);                /* mps_attach done: fCoreAttached, fMaxSegs, fMaxTasks, fSlots; false: no memory */
     void Start(void);                   /* StartController */
     void StopCore(void);                /* no new calls, wait for running ones, mps_free */
 
@@ -129,6 +129,7 @@ public:
     void              *fLock = nullptr;
     struct mps_kext   *fMps = nullptr;
     uint32_t           fMaxSegs = 0;            /* per IO, from the core's buffer_dmat */
+    uint32_t           fMaxTasks = 0;           /* ReportMaximumTaskCount, from IOCFacts at attach: fSlots[] */
     bool               fStarted = false;
     bool               fStopping = false;       /* no new mps_kext_* calls */
     bool               fCoreAttached = false;   /* mps_attach done, mps_free not yet */
@@ -140,7 +141,7 @@ public:
     uint32_t           fDonePending = 0;
     uint32_t           fBusy = 0;               /* threads inside Enter()/Leave() */
     KStats             fKStats = {};
-    Slot               fSlots[kMaxTasks] = {};
+    Slot              *fSlots = nullptr;        /* fMaxTasks, allocated by Attached, freed by Fini */
     SAS2308TargetTable fTargets;
 
 private:

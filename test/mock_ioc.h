@@ -77,6 +77,11 @@ struct MockIocModel {
     uint16_t tmSmidLo = 3, tmSmidHi = 7;       /* TM SMIDs allowed: [lo, hi) */
     bool strictEventMasks = true;              /* EventMasks[1] all ones (M1-M4 core; mpssas registers IR events) */
     uint16_t maxTargets = 0;                   /* IOCFacts.MaxTargets */
+    uint16_t requestCredit = 100;              /* IOCFacts.RequestCredit */
+    uint16_t replyPostDepth = 128;             /* IOCFacts.MaxReplyDescriptorPostQueueDepth */
+    static constexpr uint16_t kHighPriorityCredit = 8;  /* default: TM pool = min(MPS_PRI_REQ_FRAMES, 8) */
+    uint16_t highPriorityCredit = kHighPriorityCredit;  /* IOCFacts.HighPriorityCredit */
+    uint16_t maxSmid = 0;                      /* highest SMID the host has posted */
     uint32_t iocCaps = 0;                      /* IOCFacts.IOCCapabilities */
     uint32_t lastEventMasks[4]{};             /* last EVENT_NOTIFICATION (1 = masked) */
     int eventRegistrations = 0, portEnables = 0, iocInits = 0, removeDevices = 0;
@@ -392,12 +397,12 @@ struct MockIocModel {
             f.MsgLength = sizeof(f) / 4;
             f.Function = fn;
             f.MsgVersion = MPI2_VERSION;
-            f.RequestCredit = 100;
-            f.HighPriorityCredit = 8;
+            f.RequestCredit = requestCredit;
+            f.HighPriorityCredit = highPriorityCredit;
             f.IOCRequestFrameSize = reqFrameDwords;
             f.MaxChainDepth = maxChainDepth;
             f.ReplyFrameSize = kReplyFrameDwords;
-            f.MaxReplyDescriptorPostQueueDepth = 128;
+            f.MaxReplyDescriptorPostQueueDepth = replyPostDepth;
             f.FWVersion.Struct.Major = 20;
             f.MaxTargets = maxTargets;
             f.IOCCapabilities = iocCaps;
@@ -637,6 +642,9 @@ struct MockIocModel {
         uint16_t smid = low >> 16;
         uint8_t descType = low & MPI2_REQ_DESCRIPT_FLAGS_TYPE_MASK;
         CHECK(smid != 0);
+        /* the host's frames: SMIDs 1 .. HighPriorityCredit + RequestCredit - 1 (FreeBSD sizing) */
+        CHECK(smid < highPriorityCredit + requestCredit);
+        if (smid > maxSmid) maxSmid = smid;
         uint8_t *f = Ptr(reqBase + (uint64_t)smid * frameSz, frameSz);
         uint8_t fn = f[3];
         MPI2_DEFAULT_REPLY r{};

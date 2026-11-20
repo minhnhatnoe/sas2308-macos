@@ -130,7 +130,7 @@ static struct mps_softc *Attach(std::vector<uint16_t> devices)
     gIoc.maxTargets = 32;
     gIoc.strictEventMasks = false;          /* mpssas registers IR events too */
     gIoc.tmSmidLo = 1;                      /* high-priority SMIDs 1..num_prireqs */
-    gIoc.tmSmidHi = 1 + MPS_XNU_PRI_REQ_FRAMES;
+    gIoc.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
     gHost.ioc = &gIoc;
     gHost.verbose = getenv("MOCK_VERBOSE") != nullptr;
 
@@ -154,15 +154,17 @@ static void TestAttach(struct mps_softc *sc)
     T(gIoc.state == MPI2_IOC_STATE_OPERATIONAL);
     T(gIoc.diagResetCount >= 1);            /* no EVENT_REPLAY capability: reset at attach */
     T(sc->facts->RequestCredit == 100);
-    T(sc->num_prireqs == MPS_XNU_PRI_REQ_FRAMES);
-    T(sc->num_reqs == MPS_XNU_REQ_FRAMES + MPS_XNU_PRI_REQ_FRAMES);
-    T(sc->num_replies == 111);              /* min(80 + 32, 128) - 1 */
-    T(sc->fqdepth == 112 && sc->pqdepth == 112);
-    T(gIoc.fq == 112 && gIoc.pq == 112 && gIoc.frameSz == 128);
+    T(sc->num_prireqs == MockIocModel::kHighPriorityCredit);     /* min(MPS_PRI_REQ_FRAMES 128, 8) */
+    /* RequestCredit 100 < MPS_REQ_FRAMES: 100 normal frames, 92 for the OS */
+    T(sc->num_reqs == 100 + MockIocModel::kHighPriorityCredit);
+    T(sc->xnu.io_cmds == 100 - MPS_XNU_INTERNAL_CMDS);
+    T(sc->num_replies == 127);              /* min(108 + 32, 128) - 1 */
+    T(sc->fqdepth == 128 && sc->pqdepth == 128);
+    T(gIoc.fq == 128 && gIoc.pq == 128 && gIoc.frameSz == 128);
     T(sc->reqframesz == 128 && sc->replyframesz == 128);
     T(sc->maxio == MPS_XNU_MAXIO_PAGES * PAGE_SIZE);
     /* (256 pages + 9 - 2) / 9 SGEs per chain frame, per request credit */
-    T(sc->num_chains == 29 * MPS_XNU_REQ_FRAMES);
+    T(sc->num_chains == 29 * 100);
     T(sc->chain_free == sc->num_chains);
     T(QueueLen(&sc->req_list) == sc->num_reqs - sc->num_prireqs - 1);
     T(QueueLen(&sc->high_priority_req_list) == sc->num_prireqs);

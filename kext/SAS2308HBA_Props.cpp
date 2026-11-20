@@ -217,6 +217,68 @@ SAS2308HBA::PublishControllerCharacteristics(void)
          ci.fw_version, ci.msg_version, ci.product_id);
 }
 
+//-----------------------------------------------------------------------------
+//	PublishLimits - "Controller Limits": the IOCFacts limits and the queue
+//	sizes mps_resize_queues derived from them, plus the memory they cost.
+//	At attach (logged once) and again after every IOC reinit or resume
+//	(PublishStats), since the facts are re-read then.				[PRIVATE]
+//-----------------------------------------------------------------------------
+
+void
+SAS2308HBA::PublishLimits(bool log)
+{
+    struct mps_kext_limits l;
+
+    if (!Enter())
+        return;
+    const int rc = mps_kext_limits(fGlue.fMps, &l);
+    Leave();
+    if (rc != 0)
+        return;
+    fGlue.Lock();
+    const uint32_t tasks = fGlue.fMaxTasks;
+    fGlue.Unlock();
+    const uint64_t slotBytes = (uint64_t)tasks * sizeof(SAS2308Glue::Slot);
+    const uint64_t taskDataBytes = (uint64_t)tasks * mps_kext_task_size();
+
+    OSDictionary *d = OSDictionary::withCapacity(24);
+    if (!d)
+        return;
+    /* IOCFacts */
+    SetNumber(d, "RequestCredit", l.request_credit);
+    SetNumber(d, "HighPriorityCredit", l.high_priority_credit);
+    SetNumber(d, "MaxReplyDescriptorPostQueueDepth", l.max_reply_post_depth);
+    SetNumber(d, "MaxChainDepth", l.max_chain_depth);
+    SetNumber(d, "IOCRequestFrameSize (bytes)", l.req_frame_bytes);
+    SetNumber(d, "ReplyFrameSize (bytes)", l.reply_frame_bytes);
+    SetNumber(d, "MaxTargets", l.max_targets);
+    SetNumber(d, "MaxVolumes", l.max_volumes);
+    SetNumber(d, "MaxMSIxVectors", l.max_msix_vectors);
+    /* effective */
+    SetNumber(d, "Request frames", l.req_frames);
+    SetNumber(d, "High-priority frames", l.pri_req_frames);
+    SetNumber(d, "Reply frames", l.reply_frames);
+    SetNumber(d, "Reply post queue depth", l.post_queue_depth);
+    SetNumber(d, "Chain frames", l.chain_frames);
+    SetNumber(d, "Max segments per IO", l.max_segs);
+    SetNumber(d, "Core OS commands", l.os_commands);
+    SetNumber(d, "OS task count", tasks);
+    SetNumber(d, "DMA bytes", l.dma_bytes);
+    SetNumber(d, "Heap bytes", l.heap_bytes + slotBytes);
+    SetNumber(d, "Task data bytes", taskDataBytes);
+    setProperty(kLimitsKey, d);
+    d->release();
+
+    if (log)
+        Klog(MPSK_INIT | MPSK_INFO, "IOCFacts: RequestCredit %u, HighPriorityCredit %u, MaxReplyDescriptorPostQueueDepth %u, "
+             "MaxChainDepth %u, request frame %u bytes, MaxTargets %u; using %u request + %u high-priority frames, "
+             "%u replies, %u chain frames, %u OS tasks; memory: DMA %llu, heap %llu, task data %llu bytes",
+             l.request_credit, l.high_priority_credit, l.max_reply_post_depth, l.max_chain_depth, l.req_frame_bytes,
+             l.max_targets, l.req_frames, l.pri_req_frames, l.reply_frames, l.chain_frames, tasks,
+             (unsigned long long)l.dma_bytes, (unsigned long long)(l.heap_bytes + slotBytes),
+             (unsigned long long)taskDataBytes);
+}
+
 #if 0
 #pragma mark -
 #pragma mark Statistics
@@ -284,6 +346,7 @@ SAS2308HBA::PublishStats(bool force)
     const struct mps_xnu_stats &st = snap.st;
     const bool gone = snap.gone, resetting = snap.resetting;
     const uint32_t mask = fDebugMask;
+    const uint64_t limitsSig = (uint64_t)st.reinits + st.reinit_failures + st.resumes;
     const uint64_t sig = st.ios + st.lat_sum_us + st.held + st.io_timeouts + TmSentTotal(st) + st.tm_timeouts +
                          st.faults + st.reinits + st.reinit_failures + st.stale_replies + st.bad_replies + st.events +
                          st.chain_alloc_fail + ks.tasks + ks.tasksRejected + ks.familyTimeouts + ks.tmRequests +
@@ -373,6 +436,14 @@ SAS2308HBA::PublishStats(bool force)
     }
     setProperty(kStatsKey, d);
     d->release();
+
+    /* the IOCFacts were re-read: refresh "Controller Limits" */
+    fGlue.Lock();
+    const bool limits = limitsSig != fLimitsSig;
+    fLimitsSig = limitsSig;
+    fGlue.Unlock();
+    if (limits)
+        PublishLimits(false);
 }
 
 void

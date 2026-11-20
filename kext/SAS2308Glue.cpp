@@ -24,6 +24,11 @@ SAS2308Glue::Init(SAS2308GluePort *port)
 void
 SAS2308Glue::Fini(void)
 {
+    if (fSlots != nullptr) {
+        mps_kext_zfree(fSlots, sizeof(Slot) * fMaxTasks);
+        fSlots = nullptr;
+        fMaxTasks = 0;
+    }
     if (fLock != nullptr) {
         mps_kext_lock_free(fLock);
         fLock = nullptr;
@@ -68,6 +73,38 @@ SAS2308Glue::Leave(void)
     if (--fBusy == 0 && fStopping)
         mps_kext_wakeup(&fBusy);
     Unlock();
+}
+
+//-----------------------------------------------------------------------------
+//	Attached - after mps_attach: the core takes calls; the SGL limit and the
+//	task count (ReportMaximumTaskCount, AllocateSCSIParallelTasks right after
+//	InitializeController) come from IOCFacts, one slot per task. A later
+//	reinit may resize the core's queues; the family's pool stays as
+//	allocated, and IO beyond the core's commands waits in the thin CAM.
+//	False: no memory for the slots (the caller detaches the core).
+//-----------------------------------------------------------------------------
+
+bool
+SAS2308Glue::Attached(void)
+{
+    const uint32_t segs = mps_kext_max_segs(fMps);
+    const uint32_t tasks = mps_kext_max_tasks(fMps);
+    Slot *slots = tasks ? (Slot *)mps_kext_zalloc(sizeof(Slot) * tasks) : nullptr;
+    if (!slots) {
+        Klog(MPSK_ERROR | MPSK_INIT, "no memory for %u task slots", tasks);
+        return false;
+    }
+    Lock();
+    Slot *old = fSlots;
+    const uint32_t oldCount = fMaxTasks;
+    fCoreAttached = true;
+    fMaxSegs = segs;
+    fMaxTasks = tasks;
+    fSlots = slots;
+    Unlock();
+    if (old)
+        mps_kext_zfree(old, sizeof(Slot) * oldCount);
+    return true;
 }
 
 void
@@ -190,7 +227,7 @@ SAS2308Glue::ProcessTask(void *task)
     Lock();
     const bool open = !fStopping && fCoreAttached && fMps;
     if (open) {
-        for (uint32_t i = 0; i < kMaxTasks && !slot; i++)
+        for (uint32_t i = 0; i < fMaxTasks && !slot; i++)
             if (!fSlots[i].task)
                 slot = &fSlots[i];
     }
@@ -209,7 +246,7 @@ SAS2308Glue::ProcessTask(void *task)
         if (prepared)
             fPort->TaskUnmap(task);
         if (open)
-            Klog(MPSK_ERROR, "more than %u tasks outstanding: rejecting one", kMaxTasks);
+            Klog(MPSK_ERROR, "more than %u tasks outstanding: rejecting one", fMaxTasks);
         return open ? kRejected : kFailure;
     }
 
@@ -276,7 +313,7 @@ SAS2308Glue::FindTask(uint32_t target, uint64_t lun, uint64_t tag)
     void *victim = nullptr;
 
     Lock();
-    for (uint32_t i = 0; i < kMaxTasks && !victim; i++) {
+    for (uint32_t i = 0; i < fMaxTasks && !victim; i++) {
         const Slot &s = fSlots[i];
         if (s.task && s.target == target && s.lun == lun && s.tag == tag)
             victim = s.task;
@@ -303,7 +340,7 @@ SAS2308Glue::DeliverCompletions(void)
 
         bool prepared = false;
         Lock();
-        for (uint32_t i = 0; i < kMaxTasks; i++) {
+        for (uint32_t i = 0; i < fMaxTasks; i++) {
             if (fSlots[i].task == task) {
                 prepared = fSlots[i].prepared;
                 fSlots[i] = Slot();

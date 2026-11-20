@@ -381,11 +381,28 @@ mps_resize_queues(struct mps_softc *sc)
 
 	reqcr = MAX(2, sc->max_reqframes);
 	reqcr = MIN(reqcr, sc->facts->RequestCredit);
+	/*
+	 * XNU: every request may complete at once, so the reply descriptor
+	 * post queue (num_replies + 1 entries below) must hold one descriptor
+	 * per request frame: at most MaxReplyDescriptorPostQueueDepth - 1
+	 * frames, and num_replies at least num_reqs. FreeBSD's defaults
+	 * (2048 + 128 frames, 2048 + 32 replies) can post more completions
+	 * than its 2080-entry queue holds.
+	 */
+	if (sc->facts->MaxReplyDescriptorPostQueueDepth > prireqcr + 3)
+		reqcr = MIN(reqcr,
+		    sc->facts->MaxReplyDescriptorPostQueueDepth - prireqcr - 1);
+	/*
+	 * XNU: the OS's share (ReportMaximumTaskCount): the normal frames
+	 * (SMIDs prireqcr + 1 .. num_reqs - 1) less the internal commands
+	 * (events, config pages, port enable, removals).
+	 */
+	sc->xnu.io_cmds = MAX(1, (int)reqcr - MPS_XNU_INTERNAL_CMDS);
 
 	sc->num_reqs = prireqcr + reqcr;
 	sc->num_prireqs = prireqcr;
-	sc->num_replies = MIN(sc->max_replyframes + sc->max_evtframes,
-	    sc->facts->MaxReplyDescriptorPostQueueDepth) - 1;
+	sc->num_replies = MIN(MAX(sc->max_replyframes, sc->num_reqs) +
+	    sc->max_evtframes, sc->facts->MaxReplyDescriptorPostQueueDepth) - 1;
 
 	/* Store the request frame size in bytes rather than as 32bit words */
 	sc->reqframesz = sc->facts->IOCRequestFrameSize * 4;
@@ -438,6 +455,11 @@ mps_resize_queues(struct mps_softc *sc)
 
 	mps_dprint(sc, MPS_INIT, "Sized queues to q=%d reqs=%d replies=%d\n",
 	    sc->msi_msgs, sc->num_reqs, sc->num_replies);
+	mps_dprint(sc, MPS_INIT, "RequestCredit %d HighPriorityCredit %d "
+	    "ReplyPostQueueDepth %d: %d OS commands, %d chain frames\n",
+	    sc->facts->RequestCredit, sc->facts->HighPriorityCredit,
+	    sc->facts->MaxReplyDescriptorPostQueueDepth, sc->xnu.io_cmds,
+	    sc->num_chains);
 }
 
 /*
@@ -1822,10 +1844,10 @@ mps_get_tunables(struct mps_softc *sc)
 	sc->enable_ssu = MPS_SSU_ENABLE_SSD_DISABLE_HDD;
 	sc->spinup_wait_time = DEFAULT_SPINUP_WAIT;
 	sc->use_phynum = 1;
-	sc->max_reqframes = MPS_XNU_REQ_FRAMES;
-	sc->max_prireqframes = MPS_XNU_PRI_REQ_FRAMES;
-	sc->max_replyframes = MPS_XNU_REPLY_FRAMES;
-	sc->max_evtframes = MPS_XNU_EVT_REPLY_FRAMES;
+	sc->max_reqframes = MPS_REQ_FRAMES;
+	sc->max_prireqframes = MPS_PRI_REQ_FRAMES;
+	sc->max_replyframes = MPS_REPLY_FRAMES;
+	sc->max_evtframes = MPS_EVT_REPLY_FRAMES;
 	sc->msi_msgs = 1;	/* XNU: one MSI vector (mps_pci.c sets it) */
 }
 
