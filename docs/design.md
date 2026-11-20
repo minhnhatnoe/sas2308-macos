@@ -1,0 +1,1180 @@
+# SAS2308HBA.kext — design (milestones 1–5c, review fixes)
+
+Target: LSI SAS 9207-8i (Broadcom SAS2308, PCI 1000:0087, MPI 2.0 IT firmware) in a
+Thunderbolt 3 PCIe dock (JHL7440, PCIe 3.0 x4 tunnel) on an Apple-silicon Mac mini
+(Mac18,5, M6, macOS 27.0). Classic kext, because the Mac has no Xcode/Apple ID (so no
+DriverKit SDK / iig). Built with Command Line Tools only (`kext/Makefile`, arm64e, `-mkernel`).
+
+## Layout
+- `core/` — the FreeBSD-shaped core (M5): `mps.c`, `mps_sas.c`, `mps_sas_lsi.c`, `mps_table.c`
+  (ported from FreeBSD `sys/dev/mps`), `mpsvar.h`, `mps_sas.h`, `mps_table.h`, `mps_mpi.h`;
+  `mps_xnu.{c,h}` + `mps_xnu_stats.h` (what FreeBSD has no counterpart for); `compat/`
+  (`mps_compat.{c,h}`: FreeBSD kernel API subset, `cam_compat.{c,h}`: thin CAM, `queue.h`).
+  The M1–M4 C++ core (`MpsCore`, `MpsDecode`) was removed in M5a-2; the M1–M4 sections below
+  describe the behaviour the port keeps (old → new names in "What is implemented").
+- `core/mpi/` — MPI2 headers from FreeBSD (`ref/FREEBSD_REF.txt` has the commit).
+- `kext/SAS2308HBA*.{h,cpp}` — the `IOSCSIParallelInterfaceController` subclass, one file per
+  concern since M5b (IntelMausi / itlwm layout): `SAS2308HBA.cpp` life cycle and family callbacks
+  (capabilities, interrupts, IO, TMs), `SAS2308HBA_PM.cpp` power management and shutdown,
+  `SAS2308HBA_Hotplug.cpp` targets and their properties, `SAS2308HBA_Props.cpp` registry
+  properties (logging control, controller characteristics, statistics), `SAS2308HBA_Targets.h`
+  the target table (no IOKit, host-tested). None includes a core header (IOService.h pulls in
+  `<sys/queue.h>`).
+- `kext/mps_xnu_os.{h,cpp}` — the only kext unit that includes the core: the `mps_os_*` hooks
+  on xnu and the `mps_kext_*` calls (plain types) the class uses (FreeBSD `mps_pci.c`'s role).
+- `tools/sas2308ctl.c` — userland: change the log level at runtime, print counters (M4).
+- `tools/diff-vs-freebsd.sh` — `diff -u` of the ported files against FreeBSD, with a summary.
+- `test/mock_ioc_test.cpp`, `test/mps_port_test.cpp` — the core against the software IOC
+  model (`test/mock_ioc.h`) under ASan/UBSan/LSan; host hooks in `test/mps_host_os.*`;
+  `test/kext_targets_test.cpp` — the kext's target table;
+  `make -C test freestanding` compiles the core like the kext (`-nostdinc`, `-Werror`).
+
+## M5: FreeBSD-shaped core
+Goal: the core reads like FreeBSD `sys/dev/mps` so it can be reviewed with `diff -u`
+(`tools/diff-vs-freebsd.sh`), the way OpenIntelWireless keeps OpenBSD iwm/iwx nearly
+verbatim behind a compat layer. Plain C, style(9), FreeBSD identifiers, FreeBSD control
+flow and comments. Unused FreeBSD functions are deleted, not `#if 0`'d. Every
+intentional difference carries a short `/* XNU: ... */` comment (or `XNU:` in a block
+comment) so it shows up in the diff.
+Done in three steps: M5a-1 (compat layer, IOC side, discovery), M5a-2 (IO path, recovery, mock
+test on the new core, C++ core deleted), M5a-3 (the kext on the new core, Mac verification).
+
+### Layout
+| File | Origin | Notes |
+|---|---|---|
+| `core/mps_config.c` | `mps_config.c` | `mps_config_get_sas_device_pg0` only (M5b) |
+| `core/mps.c` | `mps.c` | IOC reset/ready, IOCFacts sizing, queues, commands, chains, SGEs (`mps_push_sge`, `mps_add_chain`, `mps_data_cb`, `mps_map_command`), `mps_intr_locked`, events, `mps_reinit`, `mps_periodic`, `mps_attach`/`mps_free`, `mps_parse_debug` |
+| `core/mps_sas.c` | `mps_sas.c` | `mps_attach_sas`, `mpssas_action`, `mpssas_action_scsiio`, `mpssas_scsiio_complete`, `mpssas_scsiio_timeout`, TMs (`mpssas_send_abort`, `mpssas_send_reset`, `*_complete`, `mpssas_tm_timeout`, `mpssas_prepare_for_tm`), `mpssas_handle_reinit`, port enable, startup refcount |
+| `core/mps_sas_lsi.c` | `mps_sas_lsi.c` | `mpssas_evt_handler`, `mpssas_fw_work` (topology, device status), `mpssas_add_device` |
+| `core/mps_table.c`, `mps_table.h` | same | tables, `mps_describe_table`, `mps_print_*` |
+| `core/mpsvar.h`, `core/mps_sas.h` | same | `struct mps_softc`, `struct mps_command`, `struct mpssas_softc/target`, inlines |
+| `core/mps_xnu.c`, `mps_xnu.h`, `mps_xnu_stats.h` | — (new) | things FreeBSD has no counterpart for: log-level presets, failed-IO rate limit, CDB/sense/loginfo decoding (FreeBSD uses CAM's), statistics, simple target-id mapping (FreeBSD `mps_mapping.c` needs config pages), OS task-management entry |
+| `core/compat/mps_compat.{h,c}`, `queue.h`, `cam_compat.{h,c}` | — (new) | FreeBSD kernel + CAM API subset, implemented once on top of the `mps_os_*` hooks |
+| `kext/mps_xnu_os.{h,cpp}` | `mps_pci.c` (role) | `mps_os_*` on xnu/IOKit; `mps_kext_*`: attach/detach in the `Rig` order, ccbs for tasks and TMs, done queue, async → hotplug, statistics snapshot |
+| `kext/SAS2308HBA.{h,cpp}` | — | the IOKit class (CAM periph's role) |
+| `test/mps_host_os.cpp` | — | `mps_os_*` on the host (virtual clock, mock IOC) |
+
+Ported files include `compat/mps_compat.h` (and `compat/cam_compat.h`) instead of FreeBSD's
+`<sys/...>`/`<cam/...>` includes, and `"mpi/mpi2_*.h"` instead of `<dev/mps/mpi/...>`.
+
+### Compat layer contract (final, M5a-3)
+FreeBSD API → implementation (shared code in `core/compat/mps_compat.c` / `cam_compat.c`,
+platform hooks `mps_os_*` with C linkage: `kext/mps_xnu_os.cpp` on xnu, `test/mps_host_os.cpp`
+on the host). xnu column: public KPIs only (`kmutil` check below).
+
+| FreeBSD | Shared compat | xnu (`kext/mps_xnu_os.cpp`) | host (`test/`) |
+|---|---|---|---|
+| `struct mtx`, `mtx_init/lock/unlock/owned/assert/destroy` | owner tracking (`mtx_owner` = `mps_os_curthread()`), mutex registry for `DELAY` | `IOLockAlloc/Lock/Unlock/Free` (lck_mtx), owner = `current_thread()` | flag, single thread |
+| `msleep(chan, mtx, pri, wmesg, timo)`, `wakeup`, `pause` | ticks → µs, `hz` = 1000 | `IOLockSleep` / `IOLockSleepDeadline` (`THREAD_UNINT`, `clock_interval_to_deadline`), `THREAD_TIMED_OUT` → `EWOULDBLOCK`; `IOLockWakeup` (its lock argument is unused by xnu; one lock per kext load is passed); `pause` → `IOSleep` | advance virtual clock, run the "other threads" hook |
+| `DELAY(us)` | ≥ 1 ms with an mps `mtx` held by the caller: drop it while waiting (XNU: keeps the M4 rule *no sleep with mps_mtx held*) | `IOSleep(ms)` + `IODelay(rest)` | virtual clock + hook |
+| `ticks`, `sbinuptime`, `getmicrouptime`, `getmicrotime` | from `mps_os_uptime_us`, `mps_os_walltime` | `mach_absolute_time` → `absolutetime_to_nanoseconds`; `clock_get_calendar_microtime` | virtual |
+| `malloc(9)`/`free(9)` (`M_ZERO`, `M_NOWAIT`, `M_WAITOK`) | size header, zeroing, live count | `IOMalloc`/`IOFree` (mps_mtx is a blocking mutex, so allocation may block) | `malloc`/`free` |
+| `bus_space_read_4/write_4` (`mps_regread/regwrite`) | — | volatile 32-bit MMIO at `mps_bhandle` = BAR1 virtual address (`mapDeviceMemoryWithRegister`); no mapping reads all-ones | mock registers |
+| `bus_dma_template_*`, `bus_dma_tag_create/destroy`, `bus_dmamem_alloc/free`, `bus_dmamap_load/unload/create/destroy/sync`, `bus_dmamap_load_ccb` | tags carry align/lowaddr/maxsize/nsegments/maxsegsz; `load_ccb` checks and passes a `CAM_DATA_SG_PADDR` list through; `sync` is a no-op (DART PCIe DMA is coherent) | `IOBufferMemoryDescriptor::inTaskWithPhysicalMask` (4 KiB aligned; physically contiguous and below 4 GiB only without a mapper) + `IODMACommand::withSpecification(kMapped, 32 or 64 address bits, maxsegsz, mapper)` on `IOMapper::copyMapperForDevice` (DART): IOVA < 4 GiB when `lowaddr` is 32-bit, as many segments as the tag allows (chain pool), every segment checked against alignment/lowaddr/maxsegsz; the list is computed at alloc, `load` copies it | mock regions, 4 KiB pieces |
+| `callout_init_mtx`, `callout_reset[_sbt]`, `callout_stop/drain/pending` | sorted list per `mtx`, run with the mtx held by `mps_compat_callout_run(mtx)` | one `thread_call` per mtx, `thread_call_enter_delayed` at the earliest deadline (`nanoseconds_to_absolutetime`, +1 µs so it never fires early), `thread_call_cancel` to disarm; queued/running invocations counted so `mtx_destroy` waits for them (`thread_call_cancel_wait` is `kpi.private`) | the test advances time and calls `mps_compat_callout_run` |
+| `taskqueue_create/enqueue/drain/free`, `TASK_INIT` | FIFO, tasks run without the mtx, one thread at a time per queue (`tq_active`: an invocation that finds the queue running returns, the running one picks the task up; FreeBSD's mps queues have one thread) | one `thread_call` per queue (`mps_compat_taskqueue_run`), invocations counted; `taskqueue_free` waits for a running one; a call kicked while it runs starts a second invocation on another thread | the test runs the queue; a queue kicked while it runs gets a nested invocation (`threadCallQueues`, xnu semantics) |
+| `config_intrhook_establish` | list, run by `mps_compat_intrhook_run()` | called from `StartController` after `EnableInterrupt()` (mps_startup: unmask, port enable) | `Rig::Start` |
+| `device_printf`, `mps_dprint`, `printf`, `hexdump` | one `mps_os_log(dev, class, line)` per line | `os_log_with_type`, one handle per class (category = most specific class), type ERROR/DEFAULT/DEBUG as M4; `IOLog` with `sas2308_iolog=1` | captured |
+| `KASSERT`, `panic` | file/line + message | logged as a `fault` line, no panic (M2–M4 rule) | aborts the test |
+| `mps_pci_setup_interrupts/free_interrupts`, `mps_pci_restore` (mps_pci.c) | `mps_xnu.c` → `mps_os_*` | the family's `IOFilterInterruptEventSource` (MSI index chosen in `CreateDeviceInterrupt`), enabled in `StartController`, `HandleInterruptRequest` → `mps_intr_msi`; restore = memory decode + bus mastering on; `mps_os_controller_dead` = bus mastering off | counters |
+| CAM: `union ccb`, `xpt_action`, `xpt_done`, `xpt_freeze/release_devq`, `xpt_freeze/release_simq`, `CAM_REQUEUE_REQ`, `xpt_rescan`, `xpt_async`, `xpt_register_async` | thin CAM: a ccb finished with `CAM_REQUEUE_REQ` or sent to a frozen sim/devq is held in arrival order and re-sent to `mpssas_action` on release (M4's *held IO*); `xpt_done` calls `ccb_h.cbfcnp` with mps_mtx held; rescan/async call the registered callbacks | `XPT_SCSI_IO` ccb in each task's HBA data (CDB, LUN number, `CAM_DATA_SG_PADDR` list from `gen64IOVMSegments`, ccb sense buffer, timeout 0); cbfcnp queues the task for `DeliverCompletions` (no family call under mps_mtx); `XPT_XNU_TM` for the six TM methods; `AC_XNU_SCAN`/`AC_LOST_DEVICE` → `mps_xnu_target_present` sampled → hotplug thread | test builds ccbs |
+
+`hz` = 1000 (one tick = 1 ms). `PAGE_SIZE` inside the core is 4096 (MPI2 SGE sizing,
+FreeBSD `maxio` arithmetic), independent of the 16 KiB arm64 page.
+
+### Rules for the port
+- Keep M1–M4 behaviour; where FreeBSD's own code does the job, use FreeBSD's code and
+  adapt the mock test's expectations; where we deviate, `/* XNU: ... */`.
+- Deviations that stay (from M2–M4): no `panic` (failed reinit → controller disabled,
+  IO failed `CAM_DEV_NOT_THERE`); reinit runs on a thread (taskqueue), not in callout
+  context, and retries the reset on a nested fault (≤ 3 attempts); waits drop `mps_mtx`
+  (reinit sets `MPS_FLAGS_DIAGRESET` first; `mps_intr_locked` and new IO honour it);
+  all-ones register reads = surprise removal (`MPS_FLAGS_XNU_GONE`), checked by every
+  wait loop; `MPS_FLAGS_SHUTDOWN` abandons a sleeping reinit; reply-descriptor hardening
+  (SMID range, reply address range/alignment, idle SMID ignored and counted); a target
+  recovery that finds no free high-priority SMID waits for one instead of being dropped;
+  OS-requested TMs (abort task, abort task set, clear task set, clear ACA, LUN reset,
+  target reset) complete asynchronously; IOs held during recovery (CAM requeue);
+  SAS Device Page 0 / persistent mapping not read (simple target-id mapping).
+- Tunable defaults for XNU in `mps_get_tunables`: `max_io_pages` 256 (1 MiB); the queue
+  sizes are FreeBSD's since branch queue-freebsd (see "Queue sizes as FreeBSD"; before:
+  64 SCSI IOs plus internal commands, `max_prireqframes` 4, later 256 + 8 and 8).
+
+### Status and decisions (M5a-1)
+Done: `core/compat/` (kernel API + thin CAM), `mps.c` (whole IOC side), `mps_table.c`,
+`mpsvar.h`, `mps_sas.h`, attach/discovery/reinit/removal parts of `mps_sas.c` and
+`mps_sas_lsi.c`, `mps_xnu.c`; host smoke test `test/mps_port_test` (ASan/UBSan/LSan).
+`mpssas_action_scsiio`/`mpssas_action_resetdev` are placeholders (`CAM_REQ_INVALID`); the
+IO path, TMs/recovery, the kext glue and the switch of `mock_ioc_test` come next.
+`MpsCore`/`MpsDecode` still build the kext and `mock_ioc_test`.
+- Commands are FreeBSD's free lists: SMIDs 1..4 high priority (TMs), 5..75 normal (IO and
+  internal: events, acks, port enable, REMOVE_DEVICE). 72 + 4 request frames, 107 replies,
+  queues 112 deep, chain pool 29 × 72 = 2088 frames, one `bus_dmamem_alloc` loaded as many
+  4 KiB segments (`mps_load_chains_cb`).
+- Chain SGLs use FreeBSD's `mps_add_chain`/`mps_push_sge` format (chain Length = frame size,
+  NextChainOffset 0, request ChainOffset 0; 1 simple SGE + chain in the request frame,
+  9 per chain frame). M3's Linux-style chain fields are dropped; adapt the mock's SGL walker.
+- Reinit: `mps_periodic` (1 s callout) queues `sc->mps_reinit_task` on `sc->mps_tq`;
+  `mps_reinit` retries diag reset + IOCFacts/IOCInit up to `MPS_XNU_REINIT_TRIES`, then
+  `mps_xnu_disable` (GONE, `mps_os_controller_dead`, held ccbs failed `CAM_DEV_NOT_THERE`,
+  wildcard rescan). `mps_wait_command` still calls `mps_reinit` inline on a timeout (thread
+  context). Faults are found by `mps_periodic` only (M2–M4 also polled on interrupts).
+- Thin CAM: only `XPT_SCSI_IO` is held while queues are frozen; `cbfcnp` and async callbacks
+  run with `mps_mtx` held, so the kext must defer family calls. Rescans arrive as
+  `AC_XNU_SCAN` (arg = the scan ccb); the OS then asks `mps_xnu_target_present(sc, tid)`.
+  Data comes as `CAM_DATA_SG_PADDR` (`bus_dma_segment_t[]` in `data_ptr`, `sglist_cnt`);
+  more segments than `buffer_dmat` allows → `bus_dmamap_load_ccb` returns `EFBIG`.
+- C++ users (kext glue, tests) define `MPS_COMPAT_NO_LIBC_REMAP` and include the core
+  headers inside `extern "C" {}`; `compat/queue.h` clashes with IOKit's `<sys/queue.h>`,
+  so the glue keeps them in separate translation units.
+- `make -C test freestanding` compiles the C core like the kext (`-nostdinc`, `-Werror`).
+
+### Status and decisions (M5a-2)
+Done: the IO path and recovery in `mps_sas.c` (`mpssas_action_scsiio`, `mpssas_scsiio_complete`,
+`mpssas_scsiio_timeout`, `mps_sc_failed_io_info`, `mpssas_send_abort/_reset`, the three
+`*_complete`, `mpssas_tm_timeout`, `mpssas_action_resetdev/_complete`); `mock_ioc_test` runs on
+the new core (ccbs through `xpt_action`); `MpsCore`/`MpsDecode` deleted (`kext/` still uses
+them and does not build until the next milestone — done in M5a-3). `core/mps_mpi.h` stays (the core includes it).
+XNU deviations (all marked in the code):
+- Every `mps_reinit()` call in the IO path is `mps_xnu_request_reinit()` (queues
+  `sc->mps_reinit_task`, sets `xnu.reinit_pending`, cleared when `mps_reinit` starts). New SCSI
+  IO is requeued (SIM queue frozen, `MPSSAS_QUEUE_FROZEN`) while a reinit is pending or running;
+  OS TMs get `CAM_BUSY` then. Gone → `CAM_DEV_NOT_THERE`.
+- `mpssas_prepare_for_tm` freezes the whole target (wildcard LUN), once per TM, released by
+  `mpssas_free_tm`; an escalation reuses the TM's ccb (FreeBSD leaks it). Without this the thin
+  CAM, which releases a requeued ccb's own freeze at once, would spin on `INRESET`.
+- `mpssas_tm_timeout` marks the TM (`MPS_CM_FLAGS_XNU_TM_TIMEDOUT`): a reply before the reinit is
+  counted as late (`tm_late_replies`) and ignored; the reinit's `mpssas_complete_all_commands`
+  frees the TM. An OS TM's ccb completes at the timeout with `CAM_CMD_TIMEOUT`.
+- Recoveries that found no free TM start from `mpssas_free_tm` (`mpssas_xnu_retry_recovery`).
+- OS task management: `XPT_XNU_TM` ccb (`struct ccb_xnu_tm`: task_type, abort_ccb; results
+  ioc_status/response_code/termination_count), all six types, FreeBSD's TM timeouts (abort 5 s,
+  resets 30 s); an abort of a ccb still held by the thin CAM completes it (`CAM_REQ_ABORTED`)
+  without the IOC. OS timeout of a task: `mps_xnu_ccb_timeout(sc, ccb)` (held → `CAM_CMD_TIMEOUT`
+  at once; posted → `mpssas_scsiio_timeout`; `ENOENT` if already done). `ccb_h.timeout` 0 = no
+  core callout (the kext times tasks); non-zero arms FreeBSD's callout.
+- `bus_dmamap_load_ccb` refuses (no callback) a list that does not add up to `dxfer_len`, a
+  data ccb without direction (`EINVAL` → `CAM_REQ_INVALID`), more segments than the tag or a
+  segment > 16 MiB − 1 (`EFBIG` → `CAM_REQ_TOO_BIG`); `mpssas_action_scsiio` undoes and fails.
+- `buffer_dmat` segments capped at (frame/12 − 1) × MaxChainDepth + 1 (FreeBSD's `+ 1` can
+  exceed the chain depth); request frames < 128 bytes refused; `num_chains` ≥ 1; unaligned
+  TM LUN store and an `int` shift overflow fixed (UBSan).
+- `mps_intr_locked` checks the doorbell for FAULT when it finds nothing (M2–M4),
+  `mps_xnu_check_fault`. Gone (all-ones) → reinit task → `mps_xnu_disable` →
+  `mpssas_xnu_fail_all` (all commands with NULL reply, SIM freezes dropped, held ccbs failed).
+  `mps_free` stops the IOC (MUR) and calls `mpssas_xnu_fail_all` before detaching: every ccb
+  completes once. NULL-reply completions treat gone/detaching like a reset (`MPS_XNU_RESETTING`).
+- Statistics and lines with no FreeBSD counterpart in `mps_xnu.c`: `mps_xnu_io_start/_done`
+  (trace lines, M4 counters, the rate-limited failed-IO line decoding the IOC's sense buffer),
+  `mps_xnu_tm_done` (TM line, `tm_failed`), `mps_xnu_periodic` (summaries, `held` from the SIM).
+  No EEDP, TLR, WarpDrive, SSU, SMP passthrough (deleted with `XNU:` notes).
+- `mps_attach` calls `mps_free` itself on every failure (FreeBSD did it inside
+  `mps_iocfacts_allocate` on two paths and again in `mps_pci_attach`); the caller never does.
+
+Test expectations changed (FreeBSD behaves differently; everything else kept):
+- Statuses: success `CAM_REQ_CMP`; terminated by our recovery `CAM_CMD_TIMEOUT`, by an OS TM
+  `CAM_REQ_ABORTED`; IO failed by a reinit (also a timed-out one) `CAM_SCSI_BUS_RESET`; gone /
+  detach `CAM_DEV_NOT_THERE`; IO_DATA_ERROR `CAM_REQ_CMP_ERR` without ccb sense (FreeBSD copies
+  sense only for success/underrun/recovered). TM results: timeout `CAM_CMD_TIMEOUT`, in flight at
+  a reinit `CAM_REQ_ABORTED`, no device `CAM_DEV_NOT_THERE`, during a reinit `CAM_BUSY`.
+- SMIDs from the free lists: TM 1–4, normal 5–75 (71 shared by IO and internal commands).
+  Checks on caller-chosen/reserved SMIDs became: each IO its own SMID, `CAM_TID_INVALID`,
+  `CAM_LUN_INVALID`.
+- SGL: 1 SGE in the request frame, 9 per chain frame → chains = ⌈(n − 1)/9⌉ (2 segments: 1
+  chain); 257 segments (maxio 1 MiB + 1), pool 72 × 29 = 2088. IOCFacts table (depth 0, 1, 3;
+  256-byte frames depth 2): 1, 10, 28, 41 segments (was 2, 11, 29, 53).
+- Chain pool exhaustion (`max_chains` 5): requeue + frozen SIM queue instead of a refusal; later IO
+  waits for a completion; `chain_alloc_fail` 1 (was 2); maxio not reduced (257 segments, was 47).
+- TM late reply: the TM stays busy until the reinit; a duplicate of it counts as late, not stale.
+- Nested fault: injected at IOCInit (FreeBSD registers events after the reinit loop, so a fault
+  there is a second reinit); one fault counted. Fault on an empty queue needs an explicit
+  interrupt in the test. Reinit failure: 3 diag resets + 1 at attach.
+- Logging: FreeBSD wording for timeouts/aborts/resets/attach; `mps_parse_debug("bogus")` clears
+  the mask (FreeBSD); trace-level checks look for the two XNU lines instead of counting lines.
+- Detach with TMs: late replies after `mps_free` cannot be posted (softc freed) → checks that the
+  interrupts are torn down. Upcalls (`IocReset`, `RediscoveryDone`, `DeviceArrived`,
+  `RecoveryDone`) → `AC_BUS_RESET`, port enables + `mps_xnu_target_present`, `AC_XNU_SCAN`,
+  `recovered_*` counters.
+- Mock: FreeBSD SGL walker (chain Length = frame size, NextChainOffset/ChainOffset 0,
+  LAST_ELEMENT only before a chain, depth ≤ MaxChainDepth, every address mapped, data moved);
+  topology event length 3 + n dwords (was 5: FreeBSD copies `EventDataLength`); a faulted IOC
+  ignores handshakes; `faultOnIocInitOnce`.
+
+Totals: `mock_ioc_test` 38 scenarios, 405 CHECK sites (+ 39 in `mock_ioc.h`), every ccb
+checked for exactly one completion at detach; `mps_port_test` 10 scenarios, 141 checks. Both
+PASS under ASan/UBSan/LSan; `make freestanding` clean; `gcc -fanalyzer` on the core C clean
+(5 NULL-SIM paths in the thin CAM fixed).
+
+| file | freebsd | ours | common | added | removed | xnu |
+|---|---|---|---|---|---|---|
+| mpsvar.h | 836 | 800 | 759 | 41 | 77 | 19 |
+| mps_sas.h | 170 | 168 | 166 | 2 | 4 | 1 |
+| mps_table.h | 66 | 62 | 62 | 0 | 4 | 0 |
+| mps.c | 3232 | 2862 | 2614 | 248 | 618 | 63 |
+| mps_sas.c | 3366 | 2556 | 2123 | 433 | 1243 | 75 |
+| mps_sas_lsi.c | 1286 | 360 | 338 | 22 | 948 | 6 |
+| mps_table.c | 533 | 428 | 416 | 12 | 117 | 5 |
+| total | 9489 | 7236 | 6478 | 758 | 3011 | 169 |
+
+### Status and decisions (M5a-3): the kext on the FreeBSD core
+M5 is complete: the kext builds on the core above; `MpsCore`/`MpsDecode` are gone from every
+build. The restyle of the kext itself (PM, `willTerminate`, per-target properties, file split)
+is a separate milestone; M5a-3 changed `kext/SAS2308HBA.{h,cpp}` only as far as the new API needs.
+
+**Structure.** `kext/mps_xnu_os.cpp` is the only kext unit with core headers (inside
+`extern "C"`, `MPS_COMPAT_NO_LIBC_REMAP`, after the IOKit/kern headers it needs, none of which
+pulls in `<sys/queue.h>`; IOLib's `min`/`max` macros are undefined first). It implements the
+`mps_os_*` hooks (table above) and `mps_kext_*` (`kext/mps_xnu_os.h`, plain C types; the softc
+is opaque to the class). `SAS2308HBA.cpp` never sees a core header; the statistics struct moved
+to `core/mps_xnu_stats.h` (only `<stdint.h>`) so the class can read a snapshot.
+- Attach (`InitializeController`, the `Rig` order): `mps_kext_create` (`mps_compat_device_init`,
+  `mps_bhandle` = BAR1) → `mps_kext_attach`: `mps_get_tunables`, debug mask, parent DMA tag,
+  `mps_attach` (never `mps_free` after a failure: it frees itself), `xpt_register_async(AC_XNU_SCAN |
+  AC_BUS_RESET | AC_SENT_BDR | AC_LOST_DEVICE)`. `StartController`: `EnableInterrupt()`, then
+  `mps_compat_intrhook_run()` (mps_startup: unmask, port enable).
+- IO: `ProcessParallelTask` maps the buffer (`gen64IOVMSegments`, ≤ `buffer_dmat` nsegments,
+  ≤ 16 MiB − 1 per segment) into the `bus_dma_segment_t` list of an `XPT_SCSI_IO` ccb that lives in
+  the task's HBA data (`ReportHBASpecificTaskDataSize` = ccb + path + 257 segments), LUN number,
+  CDB, `timeout` 0, and calls `xpt_action` with mps_mtx held. Posted or held → `Request_In_Process`;
+  completed inside `xpt_action` (unknown target, gone, invalid) → `FUNCTION_REJECTED` (invalid) or
+  `SERVICE_DELIVERY_OR_TARGET_FAILURE`, as M4 did for refused IO. `cbfcnp` runs with mps_mtx held:
+  it only queues the task (a leaf `IOLock` protects the done queue); `DeliverCompletions` runs
+  without locks from the interrupt handler, `HandleTimeout`, the TM methods, the stop path, and
+  from a thread call kicked when a callout or the reinit task completed ccbs.
+- Completion mapping: `CAM_REQ_CMP` / `CAM_SCSI_STATUS_ERROR` → SCSI status byte, transfer count
+  (`dxfer_len − resid`), autosense when `CAM_AUTOSNS_VALID`; `CAM_DEV_NOT_THERE`/`SEL_TIMEOUT`/
+  `TID_INVALID`/`PATH_INVALID` → `DeviceNotPresent`; `CAM_CMD_TIMEOUT` → `ProtocolTimeoutOccurred`;
+  everything else (`CAM_SCSI_BUS_RESET` from a reinit, `CAM_REQ_ABORTED` from an OS TM, transport
+  errors) → `DeliveryFailure` (retryable); all non-status results with
+  `SERVICE_DELIVERY_OR_TARGET_FAILURE`.
+- `HandleTimeout` → `mps_xnu_ccb_timeout` (held: completed at once; posted:
+  `mpssas_scsiio_timeout`). The six TM methods → an `XPT_XNU_TM` ccb; the caller waits with mps_mtx
+  dropped (`msleep` 10 ms steps) and pumps the reply queue (`mps_intr_locked`) between steps, as M4
+  did, bounded by the core's TM timeouts. Abort: the class finds the task by target/LUN/tag; the
+  glue re-checks task pointer + tag under mps_mtx; a task already completed is "complete".
+  TM result: `CAM_REQ_CMP` → `FUNCTION_COMPLETE`; invalid request or IOC response NOT_SUPPORTED /
+  INVALID_FRAME / INVALID_LUN → `FUNCTION_REJECTED`; else `SERVICE_DELIVERY_OR_TARGET_FAILURE`.
+- Hotplug: the async callback samples `mps_xnu_target_present` for the scanned/lost target ids
+  (all 64 for a wildcard scan) and the hotplug thread creates (present) or destroys (absent)
+  targets. A reinit keeps the targets: handles are zeroed (FreeBSD `mpssas_handle_reinit`) and the
+  wildcard rescan after the rediscovery's port enable destroys only the ones not found again (M4's
+  `RediscoveryDone`). `InitializeTargetForID` asks `mps_xnu_target_present`.
+- Stop: `fStopping` (no new `mps_kext_*` calls), `mps_kext_stop_waiters` (TM waiters leave; a TM
+  ccb still in the core is freed when `mps_free` completes it), wait until no thread is inside the
+  core, `DisableInterrupt`, `mps_free` (MUR, every ccb completed once with `CAM_DEV_NOT_THERE`, DMA
+  freed), deliver, quiesce the hotplug and delivery thread calls. `TerminateController` does the
+  same if `StopController` did not run, then frees the softc.
+- Removed from the kext (the core does it now): the reinit thread (`RunReinit`/`ScheduleReinit`/
+  `StopReinit`/`PostCoreLocked`/`HandleDeadLocked` → core taskqueue, `mps_xnu_disable` +
+  `mps_os_controller_dead`), the `Service()` watchdog (→ `mps_periodic` and the TM/IO callouts;
+  the `IOTimerEventSource` now only publishes statistics), SMID-indexed slots and the handle-keyed
+  target table (→ the core's target ids), `MpsHw`/`MpsClient` (→ hooks + host callbacks).
+- User-visible: properties, boot-args and `sas2308ctl` unchanged. `SAS2308Statistics`: same keys
+  from `sc->xnu.stats` except "Reinits scheduled" (gone: the core queues reinits itself) and the new
+  "Held total". A `SAS2308DebugMask` string goes through FreeBSD `mps_parse_debug` (an unknown name
+  clears the mask, as on FreeBSD, instead of `kIOReturnBadArgument`). After a diag reset the kext
+  turns memory decode and bus mastering back on (`mps_pci_restore`), which M4 did not do.
+- Build: the core C files are compiled with the kext flags plus `-Wno-sign-compare`; Apple clang's
+  `-mkernel` also enables `-Wsign-conversion`, `-Wshorten-64-to-32`, `-Wimplicit-int-conversion`
+  and `-Wconditional-uninitialized` (126 + 10 + 7 + 3 hits, all in FreeBSD code that relies on
+  implicit conversions or on a loop running once), which FreeBSD's build does not use: they are
+  off for the core only. Two real `-Wformat` hits (`%jx` with `uint64_t`: `unsigned long long` vs
+  `uintmax_t` = `unsigned long` on xnu) were fixed with casts. `compat/mps_compat.h` no longer
+  defines `min`/`max` under `KERNEL` (Kernel.framework's `libkern.h` has the same); the
+  freestanding stand-in `test/kernhdr/libkern/libkern.h` now declares them too, so
+  `make -C test freestanding` would have caught it.
+
+**All deviations from FreeBSD** (every one marked `XNU` in the code; 172 lines):
+- *Platform*: compat headers instead of `<sys/...>`/`<cam/...>`; tunable defaults instead of
+  `TUNABLE_*_FETCH`; one MSI vector; no sysctl tree, no shutdown/IR handlers, no `mps_user.c`
+  ioctls/uio commands, no `%b` (`MPS_XNU_BITS`), lines keep their debug class (os_log category),
+  field dumps are their own lines; `uintmax_t` casts; `mps_parse_debug` not static.
+- *Not ported*: config pages and `mps_mapping.c` (simple target ids in `mps_xnu.c`, SAS Device
+  Page 0 not read), EEDP, TLR, WarpDrive, SATA identify/START STOP UNIT, IR events, enclosure
+  mapping, SMP passthrough, `XPT_PATH_INQ`/transfer settings/geometry.
+- *No panic*: `KASSERT`/`panic` log a fault; failed reinit → controller disabled
+  (`mps_xnu_disable`: gone, bus mastering off, everything failed `CAM_DEV_NOT_THERE`, wildcard
+  rescan); `mps_reinit` runs on a taskqueue (never in callout context), retries the diag reset on a
+  nested fault (≤ 3 attempts), every wait drops mps_mtx (`DELAY` ≥ 1 ms included).
+- *Removal / shutdown*: all-ones register reads = surprise removal (`MPS_FLAGS_XNU_GONE`), checked
+  by every wait loop; `MPS_FLAGS_SHUTDOWN` abandons a sleeping reinit; `mps_free` stops the IOC
+  (MUR) and completes every command and held ccb before detaching; `mps_attach` frees on every
+  failure, once.
+- *Robustness*: reply-descriptor hardening (SMID range, reply address range/alignment, idle SMID
+  counted), doorbell FAULT check when an interrupt finds nothing (M2–M4), event acks for
+  AckRequired events, chain sizing guards (`num_chains` ≥ 1, frames ≥ 128 bytes, segments ≤ chain
+  depth), unaligned TM LUN store and an `int` shift overflow (UBSan), `cdb_len` bounded before the
+  CDB copy (FreeBSD's CAM does it; the thin CAM does not — static analyzer finding).
+- *Recovery*: reinit requests are queued (`mps_xnu_request_reinit`), new IO requeued while one is
+  pending; `mpssas_prepare_for_tm` freezes the whole target once per TM, released by
+  `mpssas_free_tm`; an escalation reuses the TM's ccb; a timed-out TM stays owned until the reinit
+  (late reply counted); recoveries without a free TM wait for one; no TM into a reset.
+- *OS interface*: `XPT_XNU_TM` (six TM types, asynchronous), `mps_xnu_ccb_timeout` (OS timer,
+  `timeout` 0 = no core callout), `AC_XNU_SCAN` for rescans, `mps_xnu_target_present`.
+- *Observability*: M4 statistics, trace lines, rate-limited decoded failed-IO line, TM line,
+  periodic summaries (`mps_xnu.c`).
+
+**Tests** (Linux g++ 13.3 ASan/UBSan/LSan and Mac Apple clang 21 ASan/UBSan, both PASS):
+`mock_ioc_test` 38 scenarios, 406 CHECK sites (+ 39 in `mock_ioc.h`), 8070 SGLs walked, 122086
+log lines checked, every ccb completed exactly once at detach; `mps_port_test` 10 scenarios, 141
+checks. New in M5a-3: a CDB longer than `cdb_bytes` is refused with `CAM_REQ_INVALID`.
+Changed expectations: those of M5a-2 (above); none new. The kext glue itself (thread calls,
+IOKit DMA, the family) is compiled and link-checked only.
+
+**`tools/diff-vs-freebsd.sh`** (common = lines unchanged; +/- = `diff -u` lines):
+- Before (M4, measured at the start of M5): `MpsCore.{h,cpp}` vs FreeBSD `mpsvar.h` + `mps_sas.h` +
+  `mps.c` + `mps_sas.c` + `mps_sas_lsi.c`: 33 lines shared of ~8000, +2667/−7951; `MpsDecode` vs
+  `mps_table`: 17 lines shared, +823/−571.
+- After (M5a-3): 6475 of 7244 lines unchanged from FreeBSD's 9489 (+769/−3014; the removed lines
+  are mostly code not ported: mapping, EEDP, WarpDrive, IR, user ioctls, SMP). `mps_table.{c,h}`:
+  475 of 490 lines unchanged, +15/−124. Per file:
+
+| file | freebsd | ours | common | added | removed | xnu |
+|---|---|---|---|---|---|---|
+| mpsvar.h | 836 | 800 | 759 | 41 | 77 | 19 |
+| mps_sas.h | 170 | 168 | 166 | 2 | 4 | 1 |
+| mps_table.h | 66 | 62 | 62 | 0 | 4 | 0 |
+| mps.c | 3232 | 2862 | 2614 | 248 | 618 | 63 |
+| mps_sas.c | 3366 | 2564 | 2123 | 441 | 1243 | 76 |
+| mps_sas_lsi.c | 1286 | 360 | 338 | 22 | 948 | 6 |
+| mps_table.c | 533 | 428 | 413 | 15 | 120 | 7 |
+| total | 9489 | 7244 | 6475 | 769 | 3014 | 172 |
+
+## M5b: Mac conventions — kext layout, power management, termination, properties
+Goal (user, verbatim): "try to make the code look as similar as existing code as possible (the
+reference driver, and open source mac drivers) so that we have an easier time reviewing it. Also
+make it compatible with standard mac driver stuffs". Research: `../mac-conventions-research.md`
+(IOSCSIParallelFamily-352, IOPCIFamily, xnu PM, iSCSIInitiator, IntelMausi, itlwm, Linux mpt3sas).
+
+### Kext layout
+| File | Contents | Model |
+|---|---|---|
+| `SAS2308HBA.h` | the class; per-file sections; registry keys; PM states | IntelMausi.h |
+| `SAS2308HBA.cpp` | core callbacks (`mps_pci.c` counterparts), the gate, completion delivery, `InitializeController` / `StartController` / `StopController` / `TerminateController`, `willTerminate`, `free`, capabilities, `ReportHBAConstraints`, DMA spec, interrupts, `ProcessParallelTask`, `HandleTimeout`, the six TM requests | IOSCSIParallelInterfaceController.cpp order |
+| `SAS2308HBA_PM.cpp` | `InitializePowerManagement`, `setPowerState`, `systemWillShutdown`, quiesce / resume | IntelMausi `setPowerState`/`systemWillShutdown`, itlwm `pm.cpp` |
+| `SAS2308HBA_Hotplug.cpp` | CAM async → target table, hotplug thread, `CopyTargetProperties`, `InitializeTargetForID`, per-target Protocol Characteristics, `TerminateTargets` | iSCSIVirtualHBA.cpp:150-162 |
+| `SAS2308HBA_Props.cpp` | `Klog`, log settings, `setProperties` (sas2308ctl), `PublishControllerCharacteristics`, statistics timer and dictionary | — |
+| `SAS2308HBA_Targets.h` | `SAS2308TargetTable`: created / wanted / busy bit masks, `Update`, `Next`, `Done`, `Stop`, `Leftovers` | — (plain C++) |
+
+Method headers use the family's banner comments (`//---- Name - what it does. [PROTECTED]`) and
+`#pragma mark` sections; members `fName`, constants `kName`. `start`/`stop` are not overridden: the
+family header says they "shall not be overridden by the HBA child classes" (they are private);
+PM is started from `StartController` and stopped from `StopController`/`TerminateController`/`free`.
+
+### Power management (sleep / wake)
+The family controller has no PM (only its target nubs: `IOSCSIParallelInterfaceDevice.cpp:480`).
+- `InitializePowerManagement` (in `StartController`, before any target exists, so the nubs join
+  the power plane below the controller): `PMinit`, `provider->joinPMtree(this)`,
+  `registerPowerDriver` with two states, `changePowerStateTo(on)` so the controller never idles off
+  (it must hear hotplug events). States: off = all zero; on = `kIOPMPowerOn | kIOPMDeviceUsable`,
+  output and input `kIOPMPowerOn` (IntelMausi's array). No doze state: the IOPCIDevice's doze
+  (`kIOPMSoftSleep`, Intel dark wake) maps to our off, the safe choice. No `IOPCIPauseCompatible`
+  (a PCI pause then goes through off as well; pause.rtf).
+- `setPowerState(off)` → `QuiesceController(10 s)` → `mps_xnu_suspend` (core/mps.c, XNU-only; Linux
+  `scsih_suspend` shape, FreeBSD `mps_pci_suspend` returns EINVAL): `xnu.suspending` = new SCSI IO
+  requeued (thin CAM holds it, SIM queue frozen), OS TMs `CAM_BUSY`; drain up to `drain_ms` while
+  pumping the reply queue (outstanding commands, a pending/running reinit, queued firmware
+  events); then stop `mps_periodic`, set `MPS_FLAGS_DIAGRESET`, mask interrupts, message unit
+  reset (`mps_transition_ready`), complete what the IOC still owned like a diag reset
+  (`mpssas_xnu_suspend` → `mpssas_complete_all_commands`: IO `CAM_SCSI_BUS_RESET` → kext
+  `DeliveryFailure`, retried by the upper layers, the retry is held; TMs `CAM_REQ_ABORTED`), set
+  `MPS_FLAGS_XNU_SUSPENDED`. While suspended `mps_regread`/`mps_regwrite` refuse every register
+  access (counted `suspended_access`, logged once: a bug indicator), `MPS_XNU_ABANDON` is true, so
+  no wait loop touches the (possibly powered-off) device. The kext then disables the interrupt
+  source. Targets keep their nubs. The target nubs are our power children, so the disks have been
+  synced/stopped through us before this runs.
+- `setPowerState(on)` → `ResumeController` → interrupt source on, `mps_xnu_resume`: flags cleared,
+  `mps_periodic` restarted, `mps_xnu_request_reinit("resume")` — the reinit (diag reset, IOCFacts,
+  IOCInit, events, port enable = rediscovery) runs on the core's taskqueue, as Linux
+  `scsih_resume` does a hard reset; `setPowerState` returns `kIOPMAckImplied` at once. Held IO
+  goes to the IOC when the rediscovery releases the SIM queue; targets found again keep their IDs
+  (`mps_xnu_get_tid` prefers the last handle) and nubs; a target not found is destroyed by the
+  wildcard rescan; a controller that disappeared while asleep is disabled by the reinit (held IO
+  `CAM_DEV_NOT_THERE`).
+- Edge: a reinit still running after the drain bound (diag reset > 10 s) gives up at its next wait
+  once `MPS_FLAGS_XNU_SUSPENDED` is set; the resume reinit starts over.
+
+### Shutdown / restart
+The dock has its own PSU: across a Mac restart the IOC would keep running and could DMA into
+memory the next kernel owns. `systemWillShutdown(kIOMessageSystemWillRestart | …WillPowerOff)`:
+`fShutdown`, `QuiesceController(2 s)` (the same stop: drain, MUR), then `super`. The IOC stays
+stopped (`setPowerState(on)` does not resume after a shutdown). FreeBSD has only an IR
+`shutdown_final` handler; Linux `scsih_shutdown` also stops the IOC. `mps_free` works on a
+suspended controller (registers left alone, held IO failed `CAM_DEV_NOT_THERE`).
+
+### Termination
+- `willTerminate` (before `super`): `mps_kext_check_present` reads the doorbell, so a Thunderbolt
+  surprise removal (all-ones) is noticed now and the core fails its IO at once
+  (`mps_xnu_gone` → reinit task → `mps_xnu_disable`); `fTargets.Stop()` (no new hotplug work);
+  `QuiesceHotplug` waits for a `CreateTargetForID` in progress (its probe IO still completes, or
+  fails fast when gone), so the family sees every created nub. Then
+  `IOSCSIParallelInterfaceController::willTerminate` (stops new requests, destroys IDs
+  `0 .. fHighestSupportedDeviceID − 1`), then `TerminateTargets` destroys what that loop missed:
+  ID 63 (`SAS2308TargetTable::Leftovers`).
+- The hotplug thread never creates a nub once `isInactive()`; the table hands out no work after
+  `Stop()`; an `Update` during a create/destroy in progress is applied after it (a device lost
+  while its nub is being created is destroyed afterwards, and the reverse).
+- `StopController`, `TerminateController`, `free` and `ReleaseResources` are idempotent (every
+  step guarded, pointers cleared); `free` covers a failed start.
+
+### Properties published
+| Where | Key | Value |
+|---|---|---|
+| personality (Info.plist), as AppleLSIFusionSAS | `Physical Interconnect`, `Physical Interconnect Location`, `Read Time Out Duration`, `Write Time Out Duration`, `IOPCITunnelCompatible` | SAS, External, 30000, 30000, true |
+| HBA `Protocol Characteristics` | the family copies Interconnect/Location from the personality | SAS / External |
+| HBA `Controller Characteristics` (`SetHBAProperty`) | Vendor Name, Product Name, Product Revision Level, Port Speed, Port Description | LSI, SAS9207-8i (subsystem 1000:3020; 3040 → -8e, else SAS2308), IOCFacts firmware "20.00.07.00", "6 Gigabit", "8-port SAS2 HBA, MPI 2.0, Thunderbolt" |
+| target nub (`CreateTargetForID(id, dict)`) | `SAS Address` (8 bytes, big-endian, from SAS Device Page 0) | the family also sets `Unique SCSI Port Identifier` and names the nub `SAS Target <address>` |
+| target nub `Protocol Characteristics` (from `InitializeTargetForID`, before registration) | Physical Interconnect, Location, Read/Write Time Out Duration | SAS, the HBA's Location, the HBA's timeouts |
+| HBA | `SAS2308Statistics` (+ Suspends, Resumes, Suspend drain left, Config page reads/failures; State "suspended") | |
+| HBA | `Controller Limits` (queue-freebsd) | IOCFacts RequestCredit, HighPriorityCredit, MaxReplyDescriptorPostQueueDepth, MaxChainDepth, IOCRequestFrameSize (bytes), ReplyFrameSize (bytes), MaxTargets, MaxVolumes, MaxMSIxVectors; effective Request / High-priority / Reply frames, Reply post queue depth, Chain frames, Max segments per IO, Core OS commands, OS task count; DMA / Heap / Task data bytes. At attach and after every reinit or resume |
+Not published: the HBA's own SAS address (SetHBAProperty in IOSCSIParallelFamily-352 accepts no SAS
+key; it would need SAS IO Unit Page 0, not ported); `IOPCIUseDeviceMapper` (Apple's plist has it,
+the DART is always used on Apple silicon).
+
+### SAS Device Page 0 (core/mps_config.c)
+`mps_config_get_sas_device_pg0` is FreeBSD's, verbatim except two XNU lines: the page buffer is
+`sc->xnu.cfg_page` (one `bus_dmamem_alloc` of 1 KiB, allocated on first use, freed by `mps_free`)
+lent to the command's map with `bus_dmamap_xnu_lend` (compat: `bus_dmamap_load` only maps
+`bus_dmamem_alloc` memory; the lend ends at the next `bus_dmamap_unload`, which the function now
+calls before `mps_free_command`), instead of `malloc`. `bus_dmamap_load` now cuts the segment list
+to `buflen`. `mpssas_add_device` reads the device's page and its parent's as FreeBSD does
+(SASAddress, DeviceInfo, DeviceName, enclosure, slot, parent address/devinfo); a device page read
+that the firmware fails skips the device (FreeBSD); one that fails on our side is retried (M5c). Still not ported: SATA identify (`mpssas_get_sas_address_for_sata_disk`,
+so a SATA disk keeps the IOC's made-up SAS address) and `mps_mapping.c` (target IDs from
+`mps_xnu_get_tid`). FreeBSD's `mps_push_sge` puts the page SGE in a chain frame (the 12-byte
+`PageBufferSGE` holds a chain element); the mock accepts that, as the firmware does for FreeBSD.
+`mps_config.c` vs FreeBSD: 169 of 183 lines unchanged (1320 removed: the other config pages).
+
+### Exported symbols
+Before M5b the kext exported the compat layer's FreeBSD names (`_msleep`, `_wakeup`, `_pause`,
+`_DELAY`, `_getmicrotime`, …), which are also xnu BSD KPI names. Now the core, the compat layer
+and `mps_xnu_os.cpp` are compiled with `-fvisibility=hidden`, the class files with
+`-fvisibility-inlines-hidden`; `make check` lists `nm -gU` and fails on anything but
+`__ZN(K)10SAS2308HBA…`, `__ZTV(N)10SAS2308HBA…` and `_kmod_info`. Result on the Mac: 85 exported
+symbols, all the class's (methods, metaclass, vtables) and `_kmod_info`.
+
+### Other changes
+- os_log subsystem = the bundle ID `org.sas2308.driver.SAS2308HBA` (Makefile passes
+  `SAS2308_BUNDLE_ID`); docs updated.
+- `IOPCITunnelled` is read and logged at attach and shown in the Port Description.
+- compat `msleep` returns the core's `EWOULDBLOCK` whatever the hook returns (the Linux host hook
+  returned 11, the core's value is 35: `mps_wait_command` timeouts never reached their reinit
+  path in the Linux host tests; xnu uses 35 for both).
+- `ReportHBAConstraints` comment corrected: only `kIOMinimumHBADataAlignmentMaskKey` is
+  dereferenced unconditionally by the family (`.cpp:1157`); the other keys have defaults.
+- `make analyze` (clang static analyzer on every kext unit and the core).
+
+### Tests (M5b)
+- `mock_ioc_test` (+12 scenarios, 498 CHECK sites): config — page 0 for 2 devices and their
+  parent (4 header + 4 page reads, chained SGE, SAS address/parent/devinfo/devname, `mps_xnu_target_info`),
+  hot-added device, page read failure (device skipped), parent failure, lost config reply
+  (`mps_wait_command` timeout → reinit → device found); sleep — idle suspend/resume (MUR, mask,
+  no register access over 5 s, diag reset + port enable on resume, same target IDs), IO completing
+  during the drain, IO still in flight after the drain (`CAM_SCSI_BUS_RESET`, retry + new IO held,
+  held IO timing out, TM `CAM_BUSY`, all posted after wake), reinit pending at suspend, TM in
+  flight at suspend, device removed while asleep (held IO `CAM_DEV_NOT_THERE`), shutdown = suspend
+  then detach without resume.
+- `kext_targets_test` (new, 113 checks): nothing before start, all 64 IDs, termination 0..63
+  (63 via `Leftovers`), only 63, removal/re-add/failed create, lost during create, back during
+  destroy, lost-and-back during create, hotplug thread racing termination (create of 5 and of 63
+  in progress at `Stop`), stop with pending wishes.
+- Not host-testable (IOKit only, hardware plan below): `setPowerState` sequencing with the PM
+  tree, `systemWillShutdown` delivery, `willTerminate` ordering against the family, property
+  publication, `PublishTargetCharacteristics` timing before `registerService`.
+
+### Verified (2026-11-19, after M5b)
+- Linux (g++ 13.3, ASan/UBSan/LSan): `mock_ioc_test` PASS (8070 SGLs, 128390 log lines),
+  `mps_port_test` PASS (141 checks), `kext_targets_test` PASS (113 checks); `make freestanding` clean.
+- Mac (Apple clang 21, ASan/UBSan): the same three PASS, no sanitizer reports, no build warnings.
+- Kext build (CLT SDK 27.2, arm64e): rc 0, no compiler warnings (only the two known libkmod
+  "built for 27.2" linker notes). `make check` rc 0: `plutil -lint` OK, signature OK,
+  `kmutil libraries --undef-symbols`: all 391 undefined symbols resolve (= `nm -u`), public KPIs
+  only: kpi.iokit 244, kpi.libkern 85, IOSCSIParallelFamily 46, kpi.mach 13, IOPCIFamily 3; nothing
+  from kpi.private/unsupported. Exports: 85, class + `_kmod_info` only (no FreeBSD names).
+- `make analyze` (default checkers + security.ArrayBound, alpha.unix.cstring) on the 5 kext units
+  and the 8 core files: fixed one (a leaked `copyCollection` result when it is not a dictionary,
+  `PublishTargetCharacteristics`); left 3, all in FreeBSD code: the known `mps_transition_operational`
+  dead store and `mpssas_scsiio_complete` NULL `rep` (see M5a-3), and `mps_config.c:177` `cm` NULL
+  (false positive: `mps_wait_command` clears `cm` only together with a non-zero error, which jumps
+  to `out` first).
+- NOT verified: anything at runtime in the kernel (PM callbacks, shutdown, termination order,
+  properties as seen by ioreg/System Information).
+
+## M5c: hot-plug page 0 failures, recovered-sense noise, IOC temperature (2026-11-20)
+
+### Bug (hardware, 7 SATA Exos 18 TB, two SFF-8087 breakouts)
+At the first plug-in 3 of 7 drives were not added; replugging the port-0 breakout (PHYs 0, 2, 3,
+handles 0x9, 0xb, 0xc) re-added 0x9 only: `[fault] Error reading SAS device 0xb page0, iocstatus=
+0x0`, `failed to add device with handle 0xb`, `invalid handle 0xb`; "Config page reads 10, Config
+page failures 4". iocstatus 0 and the read counter (counted only once the page buffer was taken)
+put the failure on our side, between the header read and the page read.
+
+### Cause
+`log show` of that minute: `mpssas_fw_work` ran on three kernel threads at once (event counter
+62..67 interleaved on threads 0x26048, 0x25fbc, 0x26009). The IT firmware posts one topology change
+list per PHY; each `mpssas_evt_handler` → `taskqueue_enqueue` → `thread_call_enter`. On xnu a
+thread call entered while it runs starts a second invocation on another worker thread, and
+`mps_compat_taskqueue_run` dropped the queue lock while a task ran, so a second
+`mpssas_firmware_event_work` took the next event while the first slept (mps_mtx dropped) in a page
+0 read. The second read got its header, then found the single config page buffer busy
+(`mps_xnu_config_page` → NULL, `page alloc failed`, ENOMEM, `printf` = os_log DEBUG, not
+persisted), and the device was dropped. FreeBSD runs each mps queue on one thread
+(`taskqueue_start_threads(&sassc->ev_tq, 1, ...)`), so it never overlaps events. The same applied to
+the reinit queue. Not involved: msleep/wakeup (IOLockSleepDeadline/IOLockWakeup are correct),
+command allocation (64 IO + 8 internal commands), CAN_SLEEP.
+
+### Fix
+- `core/compat/mps_compat.c` `mps_compat_taskqueue_run`: `tq_active` — an invocation that finds
+  the queue being run returns at once; the running one's loop picks the task up (FreeBSD's one
+  thread per queue). The kext's thread call needs no change.
+- Defensive (FreeBSD would fail the same way when every command is taken, e.g. 64 IO + pending
+  event acks): `mps_xnu_get_sas_device_pg0` retries a page 0 read that failed on our side (EBUSY no
+  command, ENOMEM buffer busy) or that the IOC refused for now (BUSY, INSUFFICIENT_RESOURCES) 3
+  times, 10/20 ms apart (msleep, mps_mtx dropped); then `mps_xnu_readd_schedule` keeps the handle
+  (16 slots) and the 1 s periodic queues `MPS_XNU_EVENT_READD` on the event queue 1, 2, 3, 4, 5, 5, 5,
+  5 s later (8 attempts). Cancelled by TARG_NOT_RESPONDING, a reinit (`mpssas_handle_reinit`: the
+  rediscovery adds it), a successful add or a target already present. Every schedule and give-up is
+  a `fault` line with errno and reason; wait errors (timeout → reinit, reset in progress) and
+  firmware errors (invalid page: handle gone) are not retried, as on FreeBSD. Counters: "Config page
+  retries", "Device re-adds scheduled/given up". "Config page reads" now counts page 0 reads
+  attempted (device and parent).
+- FreeBSD `printf`/`device_printf` lines (class 0) are os_log DEFAULT instead of DEBUG.
+
+### Recovered sense
+macOS SMART polling sends ATA PASS-THROUGH(12) with CK_COND; SAT returns the ATA registers as
+CHECK CONDITION, descriptor sense, RECOVERED ERROR, 0x00/0x1D (ATA PASS THROUGH INFORMATION
+AVAILABLE). `mps_xnu_io_done`: CHECK CONDITION with sense key RECOVERED ERROR is not an error — not
+in "Err check condition", counted in "Recovered sense (not errors)", the line says "recovered" and is
+`xinfo` (silent at the default level), outside the failed-IO rate limit. The completion to the
+family is unchanged (status + sense, as SAT requires).
+
+### IOC temperature (IO Unit Page 7)
+`mps_config_get_iounit_pg7` (core/mps_config.c, written like FreeBSD's `mps_config_get_ioc_pg8`, a
+non-extended page, the same lent page buffer). `mps_xnu_periodic` (1 s callout, mps_mtx held) queues
+`MPS_XNU_EVENT_TEMP` on the firmware event queue every 30 s: never before port enable completed
+(`MPSSAS_IN_STARTUP`), never while firmware events wait (discovery first), never twice, never while
+reset/reinit pending/suspending/suspended/gone/shutting down (the read re-checks when it runs). On
+the event queue it cannot overlap a page 0 read. `IOCTemperatureUnits`: Celsius as is, Fahrenheit
+converted, NOT_PRESENT → one info line and no more polling. One `info` line on the first reading,
+an `error` line at ≥ 85 C (no warn class in mps_dprint), re-armed below 80 C. Published as the
+controller property `IOC Temperature (C)` and in `SAS2308Statistics` ("IOC temperature (C)", reads,
+read failures, warnings; `sas2308ctl stats` prints the dictionary). No macOS thermal API for
+third-party HBAs is used.
+
+### Tests (M5c)
+- Host model: a queue kicked while it runs gets a nested invocation (xnu thread_call semantics)
+  in every scenario; `queueReentries` counts them.
+- `mock_ioc_test` hot-plug: the mock posts the next per-PHY topology list when a page read arrives
+  (`topologyOnConfig`), IO held in flight to the other port: 3 drives on one port; the port
+  unplugged and replugged as one 3-entry list while a new drive appears; 7 drives at port enable
+  (one list per PHY). Without the compat fix the first fails with exactly the hardware signature
+  (`page alloc failed`, `Error reading SAS device 0xc page0, iocstatus= 0x0`, `invalid handle`).
+- Retry: pool exhausted (in-line retries, re-add 1/8 and 2/8, added once commands are free); device
+  gone before the re-add; reinit cancels and the rediscovery adds; exhausted after 8 (fault line,
+  nothing leaked); firmware invalid page not retried.
+- Temperature: 30 s period, first-read line, 85/80 hysteresis, Fahrenheit, no sensor, nothing while
+  suspended, due during a hot-plug page read → deferred while events wait, run after the page read.
+- Recovered sense: ATA PASS-THROUGH(12) and (16) → xinfo "recovered", no error lines, not counted
+  as check conditions, silent at the info level; TEST UNIT READY CHECK CONDITION still an error.
+
+### Verified (2026-11-20, after M5c)
+- Linux (g++ 13.3, ASan/UBSan/LSan): `mock_ioc_test` PASS (589 CHECK sites, 8070 SGLs, 133215 log
+  lines), `mps_port_test` PASS (141 checks), `kext_targets_test` PASS (113); `make freestanding` clean.
+- Mac (Apple clang, ASan/UBSan): the same three PASS. Kext build rc 0 (only the two known libkmod
+  notes), `make check` rc 0: 392 undefined symbols resolve, public KPIs only, 85 exports.
+- NOT verified: on the hardware (next: replug a breakout under IO, check all drives come back,
+  "Config page failures" 0, `ioreg -l | grep "IOC Temperature"`).
+
+## Review fixes (branch review-fixes, 2026-11-20)
+Driven by `docs/reviews/2026-11-final.md` (ids below are its ids). FreeBSD behaviour preferred;
+deviations marked `XNU:` in the code. Every fix has a host scenario that failed on the code before
+it (core: `REVIEW_BEFORE` build of `mock_ioc_test`, `MOCK_ONLY=<id>`; kext: the behaviour-preserving
+glue of the first commit, `KGLUE_ONLY=<id>`) and passes after.
+
+### Fixed
+| id | fix | host test (failed before → passes) |
+|---|---|---|
+| C1 | `ProcessParallelTask` calls `SetTimeoutForTask(task, 0)` after taking a slot, before the submit; from then on every outcome completes through `CompleteParallelTask` (the only call that removes the timer entry). The core's FreeBSD callout is armed as a backstop at task timeout + 10 s (`MPSK_BACKSTOP_MS`) | glue `C1` (held IO, timer fires, abort, `ProtocolTimeoutOccurred`), `C1-backstop` (family timer lost) |
+| L1 | refusals inside `xpt_action` are queued on the done queue and delivered by the done thread call (no family re-entry from the submit path): `DeviceNotPresent` / `FUNCTION_REJECTED` survive | glue `L1` |
+| C2 | FreeBSD's `mpssas_get_sas_address_for_sata_disk` / `mpssas_get_sata_identify` / `mpssas_ata_id_timeout` ported (IDENTIFY into the lent config page buffer instead of malloc); `mps_xnu_get_tid(sc, handle, ident)` keyed on the identity like `mps_mapping_get_tid` (SAS address, IDENTIFY hash for SATA; unknown = new disk); per-id generation (`mps_xnu_target_gen`) passed with every async event; the target table never keeps a nub across a generation change (destroy, then create, cursor stays on the id) | core `C2-swap`, `C2-permute`, `C2-sas`; glue `C2`; `kext_targets_test` generation case |
+| H1 | hotplug thread call: `fHotplugActive`/`fHotplugAgain` (the compat taskqueue's `tq_active` pattern): a re-entered invocation makes the running one scan again | glue `H1` (removal during `CreateTargetForID`'s probe; the model's thread call runs the second invocation concurrently) |
+| H2 | `mps_xnu_request_reinit` drops requests while `MPS_FLAGS_DIAGRESET` is set and not suspending (FreeBSD's "reset already in progress" covers them); `mps_reinit_task` returns when `reinit_pending` is 0 (an in-line reinit ran) | core `H2-inline`, `H2-task` (one diag reset, flag 0, IO flows) |
+| H3 | `dmb oshst` before every MMIO store, `dmb oshld` after every MMIO load (`mps_os_bus_write_4/read_4`, arm64 only) | none possible on the host (FINAL: not observable); Mac build only |
+| H4 | `mpssas_prepare_remove` rescans before allocating the TM; a removal without a free TM is flagged (`MPSSAS_TARGET_XNU_REMOVE_WAIT`) and started from `mpssas_free_tm` → `mpssas_xnu_retry_recovery`; TM pool 8 (then `MPS_XNU_PRI_REQ_FRAMES`; FreeBSD's 128 since queue-freebsd, IOCFacts HighPriorityCredit bounds it) | core `H4` (7 removals in one batch, 4 TMs: 7 rescans, 7 REMOVE_DEVICE) |
+| H5 | `mps_xnu_suspend(sc, drain, shutdown=1)` from `systemWillShutdown`: drain ≤ 1 s, one MUR with a 1 s ack wait, no diag reset, stop bounded at 2 s (`stop_deadline_us`), bus mastering off if the IOC did not stop, then every command and held ccb failed and `xnu.shutdown` makes `mpssas_action_scsiio` fail new IO (`CAM_DEV_NOT_THERE`) instead of holding it; no resume afterwards | core `H5` (wedged IOC: < 5 s virtual, no diag reset, `controller_dead` first, new IO fails at once), `H5-retry` |
+| M1 | the suspend asks a running reinit to give up (`stop_reinit` in `MPS_XNU_ABANDON`) and waits ≤ 2 s for it; a reinit abandoned while suspending neither disables the controller nor touches `MPS_FLAGS_DIAGRESET`, and keeps its discovery hold for the resume's reinit (`reinit_owed`) | core `M1` |
+| M2 | `mps_wait_command` returns ENXIO when `SHUTDOWN`, `XNU_GONE` or `XNU_SUSPENDED` | core `M2` (detach with three adds queued: no 60 s waits) |
+| M3 | `mps_iocfacts_allocate` no longer calls `mps_free` (once, in `mps_attach`); `mps_free` idempotent (`xnu.freed`); `mps_iocfacts_free` forgets what it freed; TF6 also found and fixed: the chain-load failure path freed the chain memory twice, unchecked `M_WAITOK` results (commands, event handles, sassc, targets), unchecked taskqueue create/start, `panic` on a failed dmamap create, `bus_dmamap_load` allocating for 1-segment loads whose callbacks read `segs[0]` (L14), the intrhook left on the global list after a failed attach | core `M3` (every one of 108 allocations of `mps_attach` failed in turn under ASan) |
+| M4 | if the IOC does not stop (suspend, `mps_free`): `mps_os_controller_dead` before anything completes; both stops time-bounded (10 s) | core `M4` |
+| M6 | IO killed by our own reset that is not READ/WRITE (SYNCHRONIZE CACHE, pass-through) is completed `CAM_REQUEUE_REQ` (held, re-sent after the reset), at most 3 times per ccb (`ccb_h.xnu_resets`) | core `M6` |
+| M7 | before `DestroyTargetForID` the hotplug thread fails the target's held ccbs (`cam_xnu_flush_held_target`, `CAM_DEV_NOT_THERE`), waits ≤ 10 s for its posted IO (`mps_kext_target_drain`), delivers, then destroys | glue `M7` (fake family asserts no completion after destroy) |
+| M8 | resume tolerates an all-ones doorbell for up to 2 s (raw reads, 100 ms apart) before `mps_periodic` may declare the controller gone | core `M8` |
+
+### Test fidelity (FINAL section 4)
+- TF1: `kext/SAS2308Glue.{h,cpp}` (slots, gate, `ProcessTask`, `HandleTimeout`, delivery, hotplug
+  loop) and `kext/mps_kext.cpp` (the `mps_kext_*` calls, moved out of `mps_xnu_os.cpp`, only
+  `mps_os_*` hooks) are compiled into `test/kext_glue_test` with the core and the IOC model; the
+  fake family times only tasks given to `SetTimeoutForTask`, rejects a refused task still on the
+  timer list, asserts no completion after `DestroyTargetForID`. `HostThreadCall` in
+  `test/mps_host_os.h`: xnu `thread_call` semantics (enter while running = a concurrent, nested
+  invocation; cancel only dequeues). The core's taskqueue keeps its equivalent model.
+- TF2 (part): mock device identity: SATA devices answer `SATA_PASSTHROUGH` IDENTIFY with a serial
+  number, SAS addresses per handle can change, IDENTIFY can fail; MUR can be ignored (wedged IOC);
+  registers can read all-ones for a while (late tunnel).
+- TF3 (part): lost-wakeup semantics: `msleep` forgets wakeups issued before it.
+- TF4: virtual-time budgets in `H5`, `M4`, `M2`.
+- TF6: allocation failure injection (`gHost.failAllocAt`, malloc and DMA allocations).
+
+### Verified on the Linux host (Linux g++ 13.3, ASan/UBSan/LSan)
+`make -C test test`: `mock_ioc_test` PASS (all earlier scenarios + 14 review scenarios + sizing, 8070 SGLs, 162767 log lines),
+`mps_port_test` PASS (142 checks), `kext_targets_test` PASS (121 checks), `kext_glue_test` PASS
+(8 scenarios, 2443 checks), `make freestanding` clean. Changed expectations: one test pins the TM
+pool to 4 (more targets than TMs), queue sizing with the model's RequestCredit 100: 108 requests
+/ 127 replies, 92 OS commands. The same tests pass on the Mac (Apple clang, ASan/UBSan), and the
+kext builds there with `make`, `make check` and `make analyze` clean (analyze: 4 upstream FreeBSD
+null-deref/dead-store false positives in mps.c/mps_config.c/mps_sas.c, as on master).
+
+### Tuning after the 2026-11-20 benchmark (`docs/benchmarks-20261120.md`)
+- **Command limit.** 64 commands for all drives cost ~21 % random IOPS on 7 drives and caused
+  13-52 s waits above the driver. Now `mps_resize_queues`: normal frames
+  `reqcr = min(MPS_XNU_REQ_FRAMES (256 + 8), RequestCredit, MaxReplyDescriptorPostQueueDepth - prireqcr - 1)`
+  (FreeBSD `hw.mps.max_reqframes` sizing; the last bound is XNU: the post queue must hold a
+  descriptor per frame), `xnu.io_cmds = reqcr - 8` (8 internal, as before: 72 frames = 64 IOs).
+  Chains stay `29 × reqcr` (7656 frames, 957 KiB at 264), sense `32 × num_reqs`, reply frames
+  `min(272 + 32, post queue depth) - 1` (FreeBSD: from the maximum, not the credit). The kext
+  reports `ReportMaximumTaskCount = xnu.io_cmds` (`mps_kext_max_tasks`, `SAS2308Glue::Attached`;
+  the family asks right after `InitializeController` and publishes `IOCommandPoolSize` = what it
+  allocated); the glue has 256 task slots (`MPSK_MAX_TASKS`), `fMaxTasks` of them used. A reinit
+  that resizes the core keeps the family's pool; IO beyond the core's commands waits in the thin
+  CAM. Attach logs `RequestCredit .. HighPriorityCredit .. ReplyPostQueueDepth ..: N OS commands`.
+  Tests: core `sizing` (5 credit/depth cases: pools, `io_cmds` IOs posted and completed at once,
+  SMIDs within the credit), glue `tasks` (256 accepted, the 257th refused).
+  Superseded by "Queue sizes as FreeBSD" below (no 256 cap).
+- **Event 0xff02** is not an MPI2/LSI event (MPI2 codes end at 0x7F) but our own
+  `MPS_XNU_EVENT_TEMP` work item (IOC temperature poll every 30 s; 0xff01 = `MPS_XNU_EVENT_READD`).
+  Its "Working on / Event Free" lines are now xinfo, not the event class, and named
+  (`XnuTemperaturePoll`, `XnuReAdd` in `mps_event_names`).
+
+### Not done in this branch
+M5 (4 GiB SGE split), L2-L17 except L1/L13 (partly)/L14, TF5 (barrier contract), TF7, TF8,
+TF9 beyond H4/M2. H3 is only verifiable on hardware. The kext is compiled on the Mac only
+(no Kernel.framework here); nothing of this branch has been loaded yet.
+
+## Queue sizes as FreeBSD (branch queue-freebsd, 2026-11-20)
+- **Sizing.** `mps_get_tunables` sets FreeBSD's defaults: `max_reqframes` = `MPS_REQ_FRAMES`
+  2048, `max_prireqframes` = `MPS_PRI_REQ_FRAMES` 128, `max_replyframes` = `MPS_REPLY_FRAMES`
+  2048, `max_evtframes` 32, `max_chains` 16384 (the `MPS_XNU_IO_CMDS_MAX` 256 cap and the
+  `MPS_XNU_*_FRAMES` defines are gone). `mps_resize_queues` as FreeBSD (`min` with
+  RequestCredit / HighPriorityCredit) plus two XNU lines: normal frames at most
+  `MaxReplyDescriptorPostQueueDepth - prireqcr - 1`, and `num_replies =
+  min(max(max_replyframes, num_reqs) + max_evtframes, MaxReplyDescriptorPostQueueDepth) - 1`,
+  so the post queue holds a descriptor for every request frame (FreeBSD's own defaults give
+  2176 frames but 2079 replies: a 2080-entry post queue). `xnu.io_cmds` = normal frames - 8
+  internal commands = `ReportMaximumTaskCount`; the family allocates that many tasks
+  (`IOCommandPoolSize`).
+- **Kext.** `MPSK_MAX_TASKS` / `kMaxTasks` removed. The glue's task slots (32 bytes each) are
+  allocated by `SAS2308Glue::Attached` for exactly `fMaxTasks` tasks (IOMalloc, attach context,
+  may block; attach fails cleanly without them) and freed by `Fini`. Slot search stays linear
+  (first free; only outstanding tasks are scanned in practice).
+- **SAS9207-8e (firmware 20.00.07.00), "Controller Limits":** RequestCredit 10240,
+  HighPriorityCredit 128, MaxReplyDescriptorPostQueueDepth 65504, MaxChainDepth 128,
+  IOCRequestFrameSize 128 bytes, ReplyFrameSize 128 bytes, MaxTargets 1024, MaxVolumes 0,
+  MaxMSIxVectors 0. Effective: 2048 request + 128 high-priority frames, 2207 reply frames,
+  post queue 2208, 16384 chain frames, 257 segments per IO, 2040 OS tasks
+  (`IOCommandPoolSize` 2040, was 256).
+- **Memory** (published as DMA / Heap / Task data bytes): DMA 3,233,152 bytes (request frames
+  2176 x 128 = 272 KiB, reply frames 2208 x 128 = 276 KiB, free + post queues 26 KiB, sense
+  2176 x 252 = 536 KiB, chain frames 16384 x 128 = 2 MiB; 5 `bus_dmamem_alloc`s plus the 1 KiB
+  config page buffer, each rounded to 16 KiB pages behind the DART); core heap
+  + slots 1,233,664 bytes (commands, chain trackers, DMA maps, 2040 slots); the family's task
+  data 9,481,920 bytes (2040 x 4648: the ccb plus 257 segments per task). About 13 MiB wired
+  in all, of 16 GiB; at 256 tasks it was about 3 MiB.
+- **Logging.** One info line at attach: `IOCFacts: RequestCredit .., HighPriorityCredit ..,
+  MaxReplyDescriptorPostQueueDepth .., MaxChainDepth .., request frame .. bytes, MaxTargets ..;
+  using .. request + .. high-priority frames, .. replies, .. chain frames, .. OS tasks; memory:
+  ..`. Known: the kext's lines from early boot (attach, discovery) are not in the persisted log
+  on this Mac (also before this branch); read `Controller Limits` instead, or boot with
+  `sas2308_iolog=1`.
+- **Tests.** Core `sizing`: 12 cases, RequestCredit 12 .. 10240 (2047 and 1500 keep the
+  credit, 2049 and 10240 give 2048), HighPriorityCredit 8 and 200 (128 TMs), post queue
+  depths 128 .. 65520 (1600 and 2096 clamp), `max_replyframes` tuned to 64; in each case
+  `io_cmds` IOs are posted at once and completed at once (the model checks every post queue
+  slot was recycled). Mutation check: FreeBSD's `num_replies` formula fails the tuned case with
+  a post queue overrun. Glue `tasks`: RequestCredit 10240 → 2040 tasks accepted, the 2041st
+  refused, `mps_kext_limits` values. All host tests pass on the Linux host (g++ ASan/UBSan) and on the
+  Mac (Apple clang).
+- **Hardware** (kext A42837FD, 7 SAS Exos, `docs/benchmarks-20261120.md` "Queue depth with 2040
+  commands"): random 4K read 1748 / 1742 / 1738 IOPS at QD 32 / 64 / 128 per drive (896
+  commands outstanding at the card), latency doubling with each step; sequential read 1941 MB/s;
+  verify 0 mismatches; 0 timeouts, TMs, reinits, held or rejected tasks. Merged to master.
+
+## What is implemented (M1 – M4)
+> **Names after M5.** The tables and sections below are the M1–M4 history and use the names of
+> the deleted C++ core. Old → new: `MpsCore::Attach/Detach/Shutdown` → `mps_attach`/`mps_free`;
+> `DiagReset/MessageUnitReset/TransitionReady` → `mps_diag_reset`/`mps_message_unit_reset`/
+> `mps_transition_ready`; `RequestSync` → `mps_request_sync`; `GetIocFacts/ResizeQueues/AllocQueues`
+> → `mps_get_iocfacts`/`mps_iocfacts_allocate`; `SendIocInit/InitQueues` → `mps_send_iocinit`/
+> `mps_init_queues`; `RegisterEvents/HandleEvent/HandleTopologyChange` → `mps_register_events`/
+> `mpssas_evt_handler`/`mpssas_fw_work`; `SendEventAck` → `mps_xnu_event_ack`; `PortEnable` →
+> `mpssas_startup`; `StartIo/CompleteIo` → `mpssas_action_scsiio`/`mpssas_scsiio_complete`;
+> `HandleInterrupt` → `mps_intr_msi`/`mps_intr_locked`; `TimeoutIo` → `mps_xnu_ccb_timeout` →
+> `mpssas_scsiio_timeout`; `StartTm/SendTm/TmComplete/RecoveryTmDone` → `XPT_XNU_TM`,
+> `mpssas_send_abort/_reset`, `mpssas_*_complete`; `Service()` → `mps_periodic` + callouts
+> (`mpssas_tm_timeout`); `Reinit` → `mps_reinit` (taskqueue); `Gone()/MarkGone` →
+> `MPS_FLAGS_XNU_GONE`/`mps_xnu_gone`; `FailOutstandingIo` → `mpssas_xnu_fail_all`; held IO →
+> thin-CAM requeue (`cam_xnu_*`); `MpsHw::SleepMs` → `msleep`/`DELAY` (drop mps_mtx);
+> `MpsStats` → `struct mps_xnu_stats`; `MpsDecode` → `mps_table.c` + `mps_xnu.c`; kext `fLock` →
+> the core's `mps_mtx` (the class keeps a leaf `fLock` for its own tables); TM SMIDs 3–6 → the
+> high-priority free list (SMIDs 1–4); `MaxSegs()` → `buffer_dmat` nsegments (257 at maxio 1 MiB).
+> The *behaviour* described is what the port keeps; differences are listed under M5a-2/M5a-3.
+
+| Area | FreeBSD origin | Here |
+|---|---|---|
+| Reset / ready | `mps_diag_reset`, `mps_message_unit_reset`, `mps_transition_ready` | `MpsCore::DiagReset/MessageUnitReset/TransitionReady` |
+| Doorbell handshake | `mps_request_sync`, `mps_wait_db_ack` | `RequestSync`, `WaitDbAck/WaitDbInt` |
+| IOCFacts → sizing | `mps_get_iocfacts`, `mps_iocfacts_allocate` | `GetIocFacts`, `ResizeQueues`, `AllocQueues` |
+| IOCInit + queues | `mps_send_iocinit`, `mps_init_queues` | `SendIocInit`, `InitQueues` (request, reply-free, reply-post, sense) |
+| Events / discovery | `mps_register_events`, `mpssas_evt_handler` | `RegisterEvents`, `HandleEvent`, `HandleTopologyChange`, `SendEventAck` |
+| Port enable | `mpssas_startup` | `PortEnable` |
+| SCSI IO | `mpssas_action_scsiio`, `mps_data_cb`, `mpssas_scsiio_complete` | `StartIo` (64-bit simple SGEs, chain frames below), `CompleteIo` incl. fast-path, autosense |
+| Chain SGLs (M3) | `mps_add_chain`, `mps_push_sge`, `mps_alloc_chain`/`mps_free_chain`, chain sizing in `mps_iocfacts_allocate` | See "Chain SGLs" below. `MaxSegs()` = min(256, request frame + IOCFacts.MaxChainDepth chain frames, chain pool); SAS2308 (128-byte frames, depth 128): 256 |
+| Interrupt | `mps_intr_msi` | `HandleInterrupt` on the work loop; MSI/MSI-X source chosen explicitly |
+| Hotplug | `mpssas_add_device/remove` | `DeviceArrived/DeviceGone` → thread call → `CreateTargetForID/DestroyTargetForID` |
+| Surprise removal | — | registers read 0xFFFFFFFF → `Gone()` → `FailOutstanding()` |
+| Task management (M2, async M4) | `mpssas_send_abort`, `mpssas_send_reset`, `mpssas_prepare_for_tm`, `mpssas_*_complete`, `mpssas_tm_timeout` | `StartTm`/`SendTm`: ABORT_TASK, ABORT_TASK_SET, CLEAR_TASK_SET, CLEAR_ACA, LUN reset, target reset (MsgFlags LINK_RESET). Up to 4 TMs at once on SMIDs 3–6 (min(4, IOCFacts.HighPriorityCredit)), high-priority request descriptor, completed from the reply queue, timeout as a deadline in `Service()` (abort 5 s, resets 30 s, as FreeBSD). See "Asynchronous recovery" |
+| Timeout escalation (M2, async M4) | `mpssas_scsiio_timeout`, `mpssas_abort_complete`, `mpssas_logical_unit_reset_complete`, `mpssas_target_reset_complete` | `TimeoutIo` + per-target `Recovery` state machine advanced from TM completions: abort each timed-out IO → LUN reset → target reset → reinit; a step succeeds only if nothing is left outstanding for the IO / LUN / target (FreeBSD rule, status ignored) |
+| IOC reinit (M2, threaded M4) | `mps_reinit`, `mpssas_handle_reinit`, `mps_iocfacts_allocate(FALSE)` | `Reinit` on the kext's recovery thread, lock dropped in every wait; up to 3 attempts (nested faults); fail posted IO with `SCSI_IOC_TERMINATED` (kext → `DeliveryFailure`, retryable); held IO kept and posted afterwards; async PortEnable for rediscovery. Targets whose handle is not re-announced are destroyed (`IocReset`/`RediscoveryDone`). If every attempt fails: core goes `Gone()`, IO failed `DEVICE_NOT_THERE`, kext disables bus mastering (FreeBSD panics here) |
+| Fault detection (M2) | `mps_periodic` (watchdog) | `PollFault`: doorbell FAULT or not-OPERATIONAL. Checked on every interrupt that finds the reply queue empty, inside every internal-command wait, and by `Service()` from the kext's watchdog timer (≤ 1 s); a fault makes `NeedsReinit()` true and the kext schedules the recovery thread |
+| Logging (M4) | `mps_dprint` classes, `mps_table.c`, `mpssas_log_command` | `Dprint(cls, …)` → `MpsHw::LogLine` → os_log subsystem `org.sas2308.driver.SAS2308HBA` (the bundle ID), one category per class; see "Logging" |
+| Multi-LUN (M2) | `MPS_SET_LUN` | `ReportHBAHighestLogicalUnitNumber` = 255. The family answers `kSCSIProtocolFeature_GetMaximumLogicalUnitNumber` with it and `IOSCSITargetDevice` does REPORT LUNS / creates the LUN nubs itself; `ProcessParallelTask` passes the family's SAM LUN bytes into the SCSI IO `LUN` field unchanged. TMs encode `SCSILogicalUnitNumber` with `MpsCore::EncodeLun` (port of `mpssas_set_lun`) |
+
+### Chain SGLs (M3)
+- Request frame 128 bytes (IOCFacts.IOCRequestFrameSize 32 dwords): the SCSI IO header is
+  96 bytes, so 2 simple 64-bit SGEs (12 bytes each) fit. Chain frames are the same size
+  (FreeBSD and Linux mpt2sas use the request frame size): 10 slots.
+- Packing as FreeBSD `mps_push_sge`: a frame that cannot hold everything left gets
+  `slots-1` simple SGEs (the last one flagged LAST_ELEMENT) then a 64-bit chain element;
+  the final SGE has LAST_ELEMENT|END_OF_BUFFER|END_OF_LIST. n segments need
+  `ceil((n - s0) / (c - 1))` chain frames (s0 = 2, c = 10): 3..11 → 1, 12..20 → 2, 256 → 29.
+- Chain element fields as Linux mpt2sas `_base_build_sg_scmd` (FreeBSD leaves the two offsets 0
+  and Length = frame size; both are known to work on SAS2308 firmware): Length = bytes used in the
+  next frame, NextChainOffset = dword offset of the next frame's chain element (0 on the last),
+  request `ChainOffset` = dword offset of the first chain element (0 without chains).
+- Limits: `MaxSegs()` = min(`kMaxSegsCap` 256, s0−1 + depth·(c−1) + 1 with depth =
+  IOCFacts.MaxChainDepth (SAS2308: 128 → 1154), what the pool holds for one IO). 256 covers a
+  1 MiB transfer in 4 KiB pieces. MaxChainDepth 0 → request frame only (2).
+- Pool: `IoCount() × ChainsFor(MaxSegs())` frames (64 × 29 = 1856, 232 KiB) so the family's
+  `ReportMaximumTaskCount` IOs at the advertised segment count can never run it dry; allocated
+  via `MpsHw::AllocDma` (64-bit IOVA, 16-byte aligned) in 32 KiB pieces (8 here) so no large
+  physically contiguous block is needed. `SetChainLimit()` caps it (FreeBSD `hw.mps.max_chains`);
+  `MaxSegs()` is then reduced so one IO always fits.
+- Per IO: `StartIo` checks that the free count covers `ChainsFor(nsegs)` before touching
+  anything; if not it returns `kMpsBusy` with nothing consumed (FreeBSD `ENOBUFS` +
+  `chain_alloc_fail`; `Stats().chainAllocFail`, `chainFreeLow` = low-water mark). The IO's
+  frames are a list (`ioChain_`) returned to the pool by `ReleaseIo` — the only place an IO
+  slot is freed: completion (incl. fast path and TM-terminated), `FailPostedIo` (reinit, reinit
+  failure, `Shutdown`) and `FailOutstandingIo` (surprise removal; refused while the IOC is
+  alive). Held IO (M4) has no chain frames: they are taken when it is posted.
+  Duplicate/stale completions hit the idle-SMID check and free nothing.
+  `Detach` runs `Shutdown` (MUR, then every IO failed) and frees the pool. A reinit
+  reallocates the pool only if the IOCFacts sizing (incl. MaxChainDepth) changed.
+- Kext: `ReportHBAConstraints` reports `kIOMaximumSegmentCount{Read,Write}Key = MaxSegs()`
+  (no longer hardcoded); `kIOMaximumByteCount{Read,Write}Key` = min(1 MiB, (MaxSegs()−1) ×
+  PAGE_SIZE). `ProcessParallelTask` runs `gen64IOVMSegments` in a loop (16 segments per call)
+  into the task's HBA data area (`ReportHBASpecificTaskDataSize` = 256 × 16 bytes, via
+  `GetHBADataPointer`), not the kernel stack; `StartIo` re-checks against `MaxSegs()` under `fLock`.
+  `HandleDeadLocked` (M3: `CheckController`) calls `FailOutstandingIo` when the core is gone, so SMIDs and chain frames
+  are released, not just the kext slots.
+
+SMID layout: 0 invalid, 1 internal (IOCFacts-era sync commands, PortEnable, event
+registration), 2 event ack, 3…6 task management (high priority), 7…70 SCSI IO.
+
+## Asynchronous recovery (M4)
+Before M4, task management, the escalation and `Reinit` were polled with `fLock` held (and,
+from `HandleTimeout`, the family work-loop gate): up to ~7 minutes in theory. M4 follows
+the structure of FreeBSD `mps_sas.c`/`mps.c`; IOKit timers and a thread call replace the
+callouts.
+
+### Flow
+1. **IO timeout** — the family's timer calls `HandleTimeout` (work loop). It calls
+   `MpsCore::TimeoutIo(smid)` (`mpssas_scsiio_timeout`): drain the reply queue
+   (`mps_intr_locked`); if the IO already completed, nothing ("almost timed out"); else
+   mark it timed out (`MPS_CM_FLAGS_TIMEDOUT`). If its target already has a recovery the
+   IO just waits its turn (`targ->timedout_commands`); else a `Recovery` record is
+   created (`targ->tm`) and the oldest timed-out IO of the target gets an ABORT_TASK
+   (`mpssas_send_abort`). Returns at once; the task completes later, when the IOC
+   gives it back, with `ProtocolTimeoutOccurred`.
+2. **TM completion** — the reply arrives on the reply queue (interrupt, or the TM
+   waiter's pump, or `Service()`). `TmReply` records it; after the whole batch is drained,
+   `TmComplete` runs the step's completion: `RecoveryTmDone`
+   - ABORT_TASK (`mpssas_abort_complete`): the aborted IO came back → abort the next
+     timed-out IO of the target, or finish; still outstanding → LOGICAL_UNIT_RESET on its LUN.
+   - LOGICAL_UNIT_RESET (`mpssas_logical_unit_reset_complete`): nothing left on the LUN →
+     continue with the next timed-out IO; else TARGET_RESET (MsgFlags LINK_RESET).
+   - TARGET_RESET (`mpssas_target_reset_complete`): nothing left on the target → next/finish;
+     else request a controller reinit.
+   As in FreeBSD only "is anything still outstanding" counts, not the reported status.
+   A TM completed without a reply frame requests a reinit (FreeBSD "NULL reply").
+3. **Timers** — the kext's `IOTimerEventSource` runs `MpsCore::Service()` at most 1 s
+   apart and re-arms for the earliest TM deadline: drain (a lost interrupt), `PollFault`
+   (`mps_periodic`), TM deadlines (`mpssas_tm_timeout`: the SMID is marked *lost* — the
+   IOC still owns it — a reinit is requested, an OS-requested TM gets
+   `TmDone(kMpsTimeout)`), retry recoveries waiting for a TM SMID, the 60 s rediscovery
+   warning, post held IO, flush rate-limited log summaries.
+4. **Reinit** — `NeedsReinit()` (TM timeout, failed escalation, IOC FAULT) makes the kext
+   schedule `fReinitCall` (thread call). `RunReinit` takes `fLock`, marks itself the
+   thread allowed to drop it, calls `MpsCore::Reinit()` (`mps_reinit`): mask interrupts,
+   drain, then up to 3 attempts of diag reset → READY → (first time the reset is
+   actually issued: cancel TMs, cancel recoveries, `IocReset` upcall, fail posted IO
+   with `SCSI_IOC_TERMINATED` = `mpssas_handle_reinit`) → IOCFacts (re-size if changed)
+   → IOCInit → queues → event registration. Every wait inside goes through
+   `MpsHw::SleepMs`, which drops `fLock`. Success: restore interrupt mask, async
+   PortEnable (rediscovery), post held IO. All attempts failed: controller disabled
+   (`Gone()`), everything failed with `DEVICE_NOT_THERE`, bus mastering cut.
+
+### Edge cases (all exercised by the mock)
+| Case | Behaviour |
+|---|---|
+| Other targets during a TM | IO keeps flowing; only the target in recovery has its new IO held |
+| More timed-out targets than TM SMIDs (4) | extra recoveries wait (`waitTm`) and start when a TM SMID frees (FreeBSD only logs "XXX queue this target up") |
+| TM times out, reply arrives later | counted (`tmLateReplies`), logged, SMID released; the reinit already requested still runs |
+| Duplicate / stale completion (IO or TM) | idle SMID: ignored, counted (`staleReplies`), logged |
+| Fault during the reinit (nested) | the attempt fails, the next attempt starts with a new diag reset (≤ 3) |
+| Surprise removal (any time) | first all-ones read → `MarkGone`; `FailOutstandingIo` fails posted + held IO, finishes TMs (`kMpsGone`), drops recoveries; a reinit in progress stops at its next register read |
+| Detach during a reinit | `StopController` sets `fStopping` + `fAbandonReinit`; the next `SleepMs` returns false, `Reinit` gives up (controller disabled); stop waits for the thread, then `Shutdown()`: MUR, everything failed `DEVICE_NOT_THERE`, TM waiters woken |
+| Detach with TMs / recoveries / held IO | `Shutdown()` stops the IOC (MUR) *before* failing IO, so no buffer is returned while the IOC could still DMA into it |
+| IO timeout while held | completed at once (`SCSI_TASK_TERMINATED`, timed out); never reached the IOC |
+
+### IO arriving during recovery — IOSCSIParallelFamily semantics
+`ProcessParallelTask` returns `kSCSIServiceResponse_Request_In_Process` and the core
+*holds* the IO (`StartIo` → `kMpsHeld`) while its target is in TM recovery or a reinit is
+pending/running; held IO is posted in arrival order when the recovery finishes / the
+reinit succeeds (FreeBSD: `CAM_REQUEUE_REQ` with the device or SIM queue frozen,
+`mpssas_prepare_for_tm`, `mpssas_release_simq_reinit`). IOKit has no requeue status:
+returning `SERVICE_DELIVERY_OR_TARGET_FAILURE` would make IOSCSIBlockCommandsDevice
+retry a few times without delay and then fail the IO, turning a recoverable reset into IO
+errors; a BUSY/TASK SET FULL status is the device's to give, not the HBA's. The family's
+per-task timeout keeps running for held tasks (a held task that times out is completed
+with `ProtocolTimeoutOccurred`), and an `AbortTaskRequest` for a held task cancels it
+(`CancelHeldIo`, FUNCTION_COMPLETE). IO failed by a reinit completes with
+`DeliveryFailure` (retryable); the retry arrives as new IO and is held until the reinit is done.
+
+### Locking rules
+(M4. Since M5a-3: `fLock` → the core's `mps_mtx`; the core never sleeps with it held — every
+wait goes through `msleep`/`DELAY`, which drop it; family calls are made only by
+`DeliverCompletions` and the hotplug thread, with no lock held; see "Status and decisions (M5a-3)".)
+1. `fLock` (IOLock = `lck_mtx`, blocking) protects `fCore`, `fSlots`, `fTargets`,
+   `fTmWaiters` and the recovery flags. It is FreeBSD's `mps_mtx`.
+2. No family callback (`CompleteParallelTask`, `Create/DestroyTargetForID`) with `fLock` held.
+3. **No sleep with `fLock` held.** The core never waits except through `MpsHw::SleepMs`;
+   the kext implements it by dropping `fLock` for the thread named in
+   `fSleepUnlockThread` (the recovery thread, `InitializeController` around `Attach`,
+   the stop/terminate path around `Shutdown`/`Detach`). Family TM requests wait with
+   `IOLockSleepDeadline` (drops the lock) in 10 ms steps and pump the reply queue
+   themselves. `QuiesceHotplug`/`StopReinit` wait with `IOLockSleep`.
+4. While the recovery thread sleeps, every other entry point can run and sees
+   `InReset()`: `StartIo` holds, `HandleInterrupt`/`Service` return at once, `StartTm`
+   is busy, `TimeoutIo` only marks the IO (the reinit fails it), `HandleDeadLocked` waits
+   for the thread. `fStopping` blocks new IO/TM/reinit during stop.
+5. **Worst-case `fLock` hold now**: one core call between two waits — draining the reply
+   queue (≤ post-queue depth descriptors, ~100), failing ≤ 64 IOs, a register handshake
+   step, or, during a reinit whose IOCFacts changed, freeing and reallocating the DMA
+   queues. Microseconds normally, a few milliseconds at most (versus ~7 min in M3). The
+   longest waits are now outside the lock and not on the work loop: a family TM request
+   blocks *its caller* up to its TM timeout (5 s abort, 30 s resets) + 10 ms; a reinit
+   runs on its own thread for as long as the firmware needs (diag reset ≤ 300 s,
+   READY ≤ 60 s); `StopController` waits for the recovery thread to notice the
+   abandon flag (≤ one sleep, ≤ 256 ms) and for the MUR handshake (≤ 5 s, lock dropped).
+
+### Deliberate deviations from FreeBSD
+(M4 list; superseded by the M5 list under "Status and decisions (M5a-3)": callouts and
+CAM requeue are FreeBSD's own again, TM SMIDs come from the high-priority free list.)
+- Callouts → a deadline per TM checked by `Service()` from one `IOTimerEventSource`.
+- `mps_reinit` runs on a thread call instead of in callout context; it retries the
+  reset sequence on a nested fault (FreeBSD panics) and disables the controller after 3
+  failed attempts (FreeBSD panics).
+- New IO during recovery is held in the core (no CAM requeue in IOKit).
+- TM SMIDs are a fixed range of 4 (FreeBSD: high-priority free list sized by
+  HighPriorityCredit); a recovery waits for a free one instead of being dropped.
+- TM replies are evaluated after the reply batch, not inline.
+- Posted IO is failed as soon as RESET_ADAPTER has been written (the IOC no longer owns
+  it), with `IOC_TERMINATED` even if the controller is then found dead.
+
+## Logging (M4)
+Port of FreeBSD's `mps_dprint(sc, class, ...)`: every line carries a set of debug
+classes (`mpsvar.h`); a line is emitted if any of its classes is in the mask
+(`hw.mps.N.debug_level`). Values are decoded with the `mps_table.c` tables (event,
+IOCStatus, SCSI status, TM response, link rate, PHY status, WhoInit, discovery reason,
+device-status reason, `%b` bit fields). Sense keys / ASC-ASCQ / CDB names come from small
+SPC tables (FreeBSD uses CAM's `scsi_sense_desc`/`scsi_op_desc`).
+
+| Class (category) | What |
+|---|---|
+| `fault` | IOC FAULT with code, all-ones reads (surprise removal), reset/handshake failures, controller disabled |
+| `error` | failed IO (decoded: IOC/transport failures, CHECK CONDITION MEDIUM/HARDWARE ERROR), stale/duplicate/malformed replies, dropped event acks, DMA failures |
+| `recovery` | IO timeouts, every TM sent/completed (type, SMID, target, IOCStatus, response, terminations, loginfo, ms), escalation steps, TM timeouts and late replies, held IO posted, reinit requests |
+| `info` | the important subset of all classes (FreeBSD default is `info,fault`) |
+| `init` | attach, IOC state transitions (doorbell, WhoInit, fault code), IOCFacts / IOCInit summary, queue sizes, reinit phases with durations, PortEnable, detach |
+| `event` / `mapping` | every event (name, context, ack), topology PHY entries (handle, PHY status, link rate), device arrive/gone with target ID, target create/destroy |
+| `xinfo` | field dumps (`mps_print_iocfacts`, `mps_print_evt_sas`), each DMA allocation (size, alignment, IOVA), held IO, acks, IOs completed with a SCSI status (see below) |
+| `trace` | one line per IO start (SMID, handle, LUN, CDB name, LBA, blocks, length, segments, chains) and completion (status, transfer, latency) |
+| `user` | task management requested by the OS |
+
+Levels (the user-facing knob) are presets of that mask, each including the previous:
+0 error = fault,error · 1 warn = +recovery · **2 info (default)** = +info,init,event,mapping ·
+3 debug = +xinfo,log,user · 4 trace = +trace. A raw mask (`SAS2308DebugMask`, number or
+`mps_parse_debug` list such as `info,fault,+recovery`) overrides the level.
+
+**Where lines go.** os_log subsystem `org.sas2308.driver.SAS2308HBA` (the bundle ID), category = the most specific
+class of the line, message prefixed `hbaN:`. os_log type: fault/error → ERROR;
+info/recovery/init/event/mapping → DEFAULT (shown by `log stream`, persisted);
+xinfo/trace/log/user only → DEBUG (`--level debug`). Boot-arg `sas2308_iolog=1` (or
+property `SAS2308LogToIOLog`) sends them to IOLog instead (`dmesg`, survives into panic logs).
+Format strings must not use `%{public}`/`%{private}`: the kernel os_log encoder rejects any
+`%{` (EINVAL, line dropped, msgbuf shows "{public}s"); kernel string arguments are always public.
+`make check` greps for it.
+
+**Stream / read.**
+```
+/usr/bin/log stream --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'                     # info level
+/usr/bin/log stream --level debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'       # debug/trace lines too
+/usr/bin/log stream --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA" AND category == "recovery"'
+/usr/bin/log show --last 1h --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'             # history
+sudo log config --subsystem org.sas2308.driver.SAS2308HBA --mode "level:debug,persist:debug"   # keep debug lines
+```
+
+**Change the level.**
+- Default: `SAS2308LogLevel` in the Info.plist personality (2).
+- Boot: `sudo nvram boot-args="… sas2308_log=3"` (0–4) and/or `sas2308_debug=0x7ff`
+  (raw mask), reboot.
+- Runtime (until unload): `make -C tools`, then `sudo tools/sas2308ctl level debug`,
+  `sudo tools/sas2308ctl mask +trace`, `sudo tools/sas2308ctl iolog on`. Uses
+  `IORegistryEntrySetCFProperty` → `setProperties` (root only). Current values:
+  `tools/sas2308ctl show` or `ioreg -r -c SAS2308HBA -k SAS2308DebugMask`.
+
+**Counters.** `ioreg -r -c SAS2308HBA -k SAS2308Statistics` or `tools/sas2308ctl stats`:
+IOs completed, read/write bytes, latency avg/max (µs, post → completion incl. hold time),
+tasks accepted/held/rejected, errors by class (check condition, SCSI status, terminated,
+device gone, transport), IO and family timeouts, TMs by type, TM timeouts / late replies /
+failed, recoveries and the step that cleared them, IOC faults, diag resets, reinits
+(failed attempts, max ms), stale/bad replies, events, dropped acks, chain-pool failures and
+low-water mark, debug mask, state. (Since M5: `sc->xnu.stats` under mps_mtx; the kext's
+1 s timer publishes them; the rate-limit summary is flushed by `mps_periodic`.) Kept as plain increments under `fLock`; published by
+the watchdog at most once a second and only when something changed; also logged at stop.
+`sudo tools/sas2308ctl reset-stats` zeroes them.
+
+**Which failed IO is an error (branch log-noise, 2026-11-20).** As FreeBSD. A command the
+target completed with a SCSI status (CAM status `SCSI_STATUS_ERROR`: IOCStatus success, data
+underrun or recovered error with status check condition, busy, task set full, …) is printed by
+`mps` only at `MPS_XINFO` (`mpssas_scsiio_complete`: `mpssas_log_command(cm, MPS_XINFO, "ioc %x
+scsi %x state %x xfer %u")`, `mps_sc_failed_io_info`); CAM decides what the status means. So the
+line is `xinfo` (os_log DEBUG, not persisted). Exception, kept `error`: CHECK CONDITION with sense
+key MEDIUM ERROR (0x3) or HARDWARE ERROR (0x4) — FreeBSD's CAM prints that sense on the console
+(`scsi_all.c` `sense_key_table`: `SS_RDEF` includes `SSQ_PRINT_SENSE`, `cam_periph_error` →
+`cam_error_print`) and IOSCSIArchitectureModelFamily logs no sense, so our line is the only trace.
+NOT READY 0x04/0x02 is `SS_START` in CAM (silent). ABORTED COMMAND (0xB, also `SS_RDEF`) stays
+`xinfo`: SAT maps an ATA ABRT, e.g. an unsupported passed-through command, to it. Every other
+CAM status (IOC/transport errors, autosense failed, device gone, timeouts, aborts, resets) is
+unchanged. Counters are unchanged (every check condition is "Err check condition"). Why: spun-down
+SATA drives answer the family's TEST UNIT READY polls (~3 s per drive) with NOT READY 0x04/0x02
+("initializing command required"); at `error` that was ~140 persisted lines a minute (~7,000 per
+boot), burying real errors and overwriting the kernel msgbuf within minutes. The class → os_log
+type map is `mps_xnu_log_type()` (core, host-tested; the kext's `LogType` calls it).
+
+The line ends `len N IOC TransferCount M`: N is the request's DataLength (`dxfer_len`), M the
+reply frame's field, used (as in FreeBSD) only for DATA_UNDERRUN. A no-data CDB ends `no data`:
+it is sent with DataLength 0 and `NODATATRANSFER` (the glue forces length 0 for direction none;
+trace on the Mac: `IO start … TEST UNIT READY … len 0 segs 0`), and its reply's TransferCount is
+not meaningful — the SAS2308 left 0, 512, 1536, 4096 … 65536 in it for SATA TEST UNIT READY
+answered NOT READY (30 min sample: 3977 × 65536, 108 × 0, 83 × 512, …), which the old line
+printed as "xfer 65536/0". Cosmetic: the family is told 0 bytes (`dxfer_len - resid`).
+
+**Rate limiting.** Failed-IO lines (not terminations from our own recovery) are limited
+per target (handle mod 8) to 5 per 10 s (error lines only; `xinfo` lines are debug-level, opt-in, not limited); then one line "N similar IO error lines
+suppressed", printed with the next line after the window or by `Service()` within a
+second of the window closing.
+
+**Hot-path cost below debug.** A disabled line costs one relaxed load and an AND (the
+`mps_dprint` macro skips argument evaluation); per IO there are always two
+`mach_absolute_time` reads and a few counter increments; no allocation, no registry update.
+
+## Stubbed / deferred (after M5)
+- Event acks: an ack that finds no free command is dropped and counted (`event_ack_dropped`);
+  no queueing.
+- Persistent mapping (`mps_mapping.c`) not ported: target IDs are handed out by `mps_xnu_get_tid`
+  (the last handle of an ID is preferred after a reinit). SAS Device Page 0 is read since M5b
+  (SAS address, device info); no SATA identify. Device removal is FreeBSD's (target reset, then
+  SAS_IO_UNIT_CONTROL REMOVE_DEVICE once the target's commands are gone).
+- os_log handles (one per category) and one `IOLock` (the `IOLockWakeup` argument) are created
+  once per kext load and never released.
+- (Done in M5b: the FreeBSD-named compat symbols are no longer exported.)
+- Not verified against Apple's binaries: whether the family/upper layers retry
+  `DeliveryFailure` / `ProtocolTimeoutOccurred` completions, whether `AbortTaskRequest` expects
+  the aborted task to be completed by the HBA (we complete it), that `HandleTimeout` may return
+  before the task is completed (completed later, when the IOC gives it back — FreeBSD and Linux
+  do the same), and whether the family calls the `*Request` TM methods with its work-loop gate
+  held (the waiter pumps the reply queue itself, so it works either way). (The family calls
+  `ReportHBAConstraints` after `InitializeController`: IOSCSIParallelFamily source.)
+- `mps_pci_restore` only turns memory decode and bus mastering back on after a diag reset
+  (FreeBSD restores the saved config space); whether the SAS2308 diag reset clears more of its
+  config space is to be checked on hardware.
+- The kext glue (thread calls, IOKit DMA, interrupts, the family interface) is compiled and
+  link-checked only; the core it drives runs under the mock.
+- No RAID/IR, no SMP passthrough, no firmware flashing, no target mode.
+- Power management (sleep/wake) and the shutdown stop are implemented (M5b) but untested on
+  hardware; until the hardware plan's sleep steps pass, don't sleep the Mac with disks mounted.
+- The HBA's own SAS address is not published (needs SAS IO Unit Page 0; the family's
+  `SetHBAProperty` has no SAS key). `IOPCIPauseCompatible` not set (would need a paused state).
+
+## Risks
+1. **Interrupts.** No INTx through a TB tunnel on Apple silicon; the kext picks the
+   `kIOInterruptTypePCIMessaged` source. If IOPCIFamily exposes none, it falls back to
+   index 0 and logs — then no completions arrive (commands time out). First thing to check on hardware.
+2. **DMA / DART.** All buffers go through `IOMapper::copyMapperForDevice` + `IODMACommand`
+   (`kMapped`), so the card sees IOVA, not physical addresses. With a mapper the core's
+   buffers are not physically contiguous (the DART gives one IOVA range; a tag with one
+   segment fails the allocation otherwise); IOVA < 4 GiB for the tags with a 32-bit lowaddr.
+3. **Panics.** It is kernel code: a bad pointer or a stuck lock panics the whole Mac.
+   Test with nothing important running; first loads with no disks attached.
+4. **TB hot-unplug.** Unplugging the dock with disks mounted = surprise removal path
+   (outstanding IO failed). Tested only in the mock.
+5. **Firmware variance.** The mock reports fw 20.0.0.0 / MPI 2.0. Real 9207 IT firmware
+   P20 should match; IR firmware or very old firmware is untested.
+
+## Verified (2026-11-19, after M5a-3)
+- Kext builds on the Mac (CLT SDK 27.2, arm64e, `make` rc 0): no compiler warnings; the only
+  two lines are the linker's "libkmod.a built for 27.2, linking 27.0" notes (`MINOS` 27.0,
+  unchanged since M1). Ad-hoc signature verifies.
+- `kmutil libraries -p build/SAS2308HBA.kext --undef-symbols` (rc 0): all 387 undefined symbols
+  resolve (= `nm -u`), all public KPIs: kpi.iokit 244, kpi.libkern 83, IOSCSIParallelFamily 44,
+  kpi.mach 13, IOPCIFamily 3; nothing from kpi.private/unsupported (M4: 382 — kpi.iokit 243,
+  kpi.libkern 81, IOSCSIParallelFamily 44, kpi.mach 11, IOPCIFamily 3). New in kpi.mach:
+  `thread_call_enter_delayed`, `nanoseconds_to_absolutetime` (callouts).
+- Mock tests on the Mac (Apple clang 21, ASan/UBSan, `make -C test CXX=clang++ CC=clang`):
+  `mock_ioc_test` PASS (8070 SGLs walked, 122086 log lines), `mps_port_test` PASS (141 checks), no
+  sanitizer reports, no build warnings. Same on Linux (g++ 13.3, ASan/UBSan/LSan);
+  `make -C test freestanding` clean.
+- `clang --analyze` (Apple clang 21; default checkers + optin.*, security.ArrayBound,
+  alpha.core.CastSize/PointerArithm, alpha.unix.cstring.*) on `core/*.c` and `core/compat/*.c`:
+  fixed two findings — a CDB copy bounded only by `cdb_len` (`mpssas_action_scsiio`; FreeBSD's
+  CAM bounds it, the thin CAM did not; a mock check added) and a NULL check on `tm->cm_targ` in
+  `mpssas_xnu_tm_complete` that made the analyzer assume NULL for `mpssas_free_tm` (it is always
+  set). Left as is, all in FreeBSD's code unchanged: `optin.performance.Padding` on `struct
+  mps_softc` (FreeBSD's layout), a dead store in `mps_transition_operational`, and a NULL `rep`
+  path in `mpssas_scsiio_complete` (false positive: `rep` is `cm->cm_reply`, checked just before;
+  the analyzer assumes the logging call changes it).
+- `tools/sas2308ctl` builds (no warnings) and reports "no SAS2308HBA instance" (kext not loaded).
+- NOT verified: anything at runtime in the kernel.
+
+## Verified (2026-11-19, after M4)
+- M4 kext builds on the Mac (CLT SDK 27.2, arm64e, no new compiler warnings);
+  `kmutil libraries -p build/SAS2308HBA.kext --undef-symbols`: all 382 undefined symbols
+  resolve, all in public KPIs (kpi.iokit 243, kpi.libkern 81, IOSCSIParallelFamily 44,
+  kpi.mach 11, IOPCIFamily 3) = `nm -u` count. New: `os_log_create`, `_os_log_internal`,
+  `PE_parse_boot_argn` (kpi.iokit), `IOLockSleepDeadline`, `IOUserClient::clientHasPrivilege`,
+  `current_task`, `absolutetime_to_nanoseconds`.
+- Mock (38 scenarios, 469 CHECKs, 8066 SGLs walked, 18292 log lines formatted with every
+  class enabled): PASS on Linux g++ 13.3 with ASan/UBSan/LeakSanitizer and on the Mac with
+  Apple clang 21 ASan/UBSan; no sanitizer reports. New M4 scenarios: abort on one target
+  while the other target's IO completes (no `SleepMs` during TimeoutIo/TM handling, new
+  IO to the target held then posted); abort → LUN reset → target reset → reinit without a
+  single sleep, then a reinit during which "other threads" (the mock's sleep hook) submit
+  IO (held), take interrupts (ignored), send TMs (busy), time out a held IO (completed)
+  and call `Reinit` again ("Reset already in progress"); TM timeout at 5.1 s (timer
+  re-armed for the deadline), late reply, duplicate TM and IO replies; OS TMs timing out
+  and being cancelled by a reinit (`kMpsAborted`); 6 targets timing out with 4 TM SMIDs;
+  nested fault during reinit (event registration faults, attempt 2 succeeds); surprise
+  removal mid-recovery (posted + held IO, recovery TM and OS TM all finished once);
+  surprise removal while the reinit thread sleeps; detach abandoning a sleeping reinit;
+  `Shutdown` with TMs, recovery and held IO (MUR before failing). Logging tests: level
+  presets, `mps_parse_debug` forms, every `mps_table.c` table/`%b`/devinfo/sense/loginfo
+  decoder, attach/IOCFacts/IOCInit/queue/DMA/event/topology lines, decoded failed-IO line,
+  rate limit (5 of 20 lines + "15 similar … suppressed" after the window), counters
+  (IOs, bytes, latency), no lines for good IO at info, exactly 2 per IO at trace, silent
+  but working at mask 0. Every IO completes exactly once in every scenario.
+- Static analysis of `core/` (`MpsCore.cpp`, `MpsDecode.cpp`): `clang++ --analyze`
+  (Apple clang 21, default + optin.*, security.ArrayBound, alpha.core.CastSize/PointerArithm,
+  alpha.unix.cstring.*) and `g++ -fanalyzer` (13.3): clean (M4 fixed one finding: the
+  SGL pointer is now derived from the frame base, not the one-element `SGL` member).
+- `tools/sas2308ctl` builds on the Mac and reports "no SAS2308HBA instance" (kext not loaded).
+- NOT verified: anything at runtime in the kernel (threads, timers, os_log, setProperties).
+
+## Verified earlier (2026-11-18, after M3)
+- Builds on the Mac (macOS 27.0, CLT SDK 27.2, arm64e); ad-hoc signed.
+- `kmutil libraries -p build/SAS2308HBA.kext --undef-symbols`: all 361 undefined
+  symbols resolve (kpi.iokit 242, kpi.libkern 67, IOSCSIParallelFamily 44, kpi.mach 6,
+  IOPCIFamily 2) — matches `nm -u` (361). M3 added `GetHBADataPointer`/`GetHBADataSize`.
+- M3 mock (25 scenarios, 247 CHECKs, 8065 SGLs walked; PASS on Linux g++ 13 with
+  ASan/UBSan/LeakSanitizer and on the Mac with Apple clang 21 ASan/UBSan). The IOC model
+  now walks chain SGLs like firmware: element types, 64-bit flag, direction flag,
+  LAST_ELEMENT before each chain, END_OF_BUFFER/END_OF_LIST only on the last SGE,
+  `ChainOffset`/`NextChainOffset` positions, exact chain `Length`, 16-byte chain alignment,
+  depth ≤ MaxChainDepth, every address inside a mapped buffer; it moves the data (reads get a
+  position-dependent pattern, writes are captured and compared), and re-walks a held IO's SGL
+  when it finally completes/terminates it (chain frames must still be intact). Tests: 1, 2,
+  3, 10, 11, 12, 17, 20, 21, 255, 256 segments read+write with scattered, shuffled segments;
+  1 MiB as 256 × 4 KiB and 3 × 16 MiB−1 (max SGE length), 16 MiB SGE rejected; MaxSegs+1
+  rejected; IOCFacts variants (depth 0/1/3, 256-byte frames, too-small frames); pool
+  exhaustion with `SetChainLimit(5)` (busy, nothing consumed, smaller IOs still go, recovers
+  after completions and across a reinit); chains released after ABORT_TASK, LUN reset,
+  reinit with three chained IOs, duplicate completion, surprise removal
+  (`FailOutstandingIo`); 3000-IO fixed-seed fuzz (1–256 segments, 1 B–12 KiB, up to 8 in
+  flight, pool back to full after each batch). Mutation check: dropping LAST_ELEMENT,
+  NextChainOffset, ChainOffset, exact Length, or the chain release each fails the test.
+- M2: mock IOC test PASS (19 scenarios, 116 CHECKs) under ASan/UBSan + LeakSanitizer with g++ 13
+  (Linux) and under ASan/UBSan with Apple clang 21 (Mac). M1: attach, port enable + discovery
+  + ack, 2-segment read with fast-path completion, CHECK CONDITION with autosense, argument
+  checks, 5000 mixed IOs with queue wrap, surprise removal, detach. M2: IO to LUN 3 (LUN
+  bytes in the request), abort of an outstanding IO (high-priority descriptor, TaskMID,
+  TASK_TERMINATED), LUN reset (only that LUN), target reset (LINK_RESET), clear task set,
+  escalation abort→LUN→target reset, escalation ending in reinit (bystander IO failed
+  IOC_TERMINATED, rediscovery, interrupts restored), TM timeout → straight to reinit, lost
+  completion → reinit → IO works again, IOC FAULT mid-IO detected on an empty interrupt →
+  reinit → IO works, FAULT during a TM → reinit, 9 kinds of garbage reply descriptor ignored,
+  reinit failure (diag reset stuck) → `Gone()` with DEVICE_NOT_THERE, no DMA leaks.
+- Static analysis of `core/` (re-run after M3, clean): `clang++ --analyze` (Apple clang 21; default checkers plus
+  optin.*, security.ArrayBound, alpha.core.CastSize/PointerArithm, alpha.unix.cstring.*) and
+  `g++ -fanalyzer` report nothing.
+- NOT verified: loading, matching, interrupts, real DMA — needs the card and the security change.
+
+## Hardware test plan (when the card + dock arrive)
+0. Optional sanity: put the 9207 in a Linux PC first; Linux `mpt3sas` dmesg shows firmware
+   version and `Protocol=(Initiator[,Target])` — confirms the card and its firmware.
+1. Dock + card on the Mac, kext NOT loaded: `ioreg -r -c IOPCIDevice | grep -A3 0087` → device enumerates through the tunnel.
+2. Load kext with **no disks attached**:
+   `log stream --level debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'`
+   → expect "log level 2 (info)", IOC state lines, IOCFacts / IOCInit / queues lines,
+   "using message-signalled interrupt index N", the core's port-enable / discovery lines
+   (FreeBSD wording since M5); `tools/sas2308ctl stats`.
+3. Attach one scratch disk: discovery event → target created → disk appears in `diskutil list`.
+4. Read-only test: `dd if=/dev/rdiskN of=/dev/null bs=1m count=4096` → throughput, no timeouts.
+   Check the attach log line "max N segments per IO" (expect 257 since M5: maxio 1 MiB + 1)
+   and the core's IOCFacts / chain sizing lines against the real IOCFacts.
+5. Write test on the scratch disk only, then fsck/compare.
+6. Unload/reload, dock unplug with idle disk.
+7. Recovery on real firmware: pull a disk mid-`dd` (timeout → abort/reset path), and
+   `sg_reset`-style LUN/target resets if a userland path to them exists. Watch the
+   `recovery` category; meanwhile IO to a second disk must keep going, and
+   `tools/sas2308ctl stats` must show the TM / recovery / reinit counters move.
+8. Properties (M5b): `ioreg -l -w0 | grep -E "Physical Interconnect|SAS Address"` → the HBA and
+   every target nub show SAS / External, every target an 8-byte `SAS Address` matching the disk's
+   label/`sg_inq` (big-endian byte order, nub named `SAS Target 5000…`); `ioreg -r -c SAS2308HBA -k
+   "Controller Characteristics"` → LSI, SAS9207-8i, the firmware version (compare with the IOCFacts
+   init line), 6 Gigabit; System Information → the disk shows Physical Interconnect SAS, Location
+   External (screenshot). Check `IOPCITunnelled` in the attach log line.
+9. Sleep / wake (M5b) — first idle, then with a scratch disk mounted:
+   `log stream --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'` in a second session,
+   `pmset sleepnow`, wake after 1 min. Expect "power state 1 -> 0", "system sleep: quiescing",
+   "suspended: IOC stopped", then "power state 0 -> 1", "resuming", a reinit and rediscovery with
+   the same target IDs; `diskutil list` unchanged; `SAS2308Statistics` Suspends = Resumes = 1. Then
+   sleep in the middle of a `dd` read: no IO errors in the `dd`, "Suspend drain left" 0 (or IO
+   retried after wake). Also: dock unplugged while asleep → after wake the targets are destroyed,
+   no panic. Watch for "accessed while suspended" (must never appear).
+10. Restart with the dock powered (M5b): `sudo shutdown -r now` with the kext loaded and a disk
+   attached; the log (`log show --last boot-1`… or `sas2308_iolog=1` + panic-free boot) should show
+   "restart: quiescing" / "controller stopped (message unit reset)"; after the reboot the kext
+   attaches normally (IOC found READY, not OPERATIONAL/faulted) and the disk is rediscovered.
+   Same with `shutdown -h` and the dock left on.
+11. Termination (M5b): `kmutil unload` with targets present → every nub gone
+   (`ioreg -r -c IOSCSIParallelInterfaceDevice` empty, including ID 63 if used); dock unplug during
+   discovery (hotplug thread inside CreateTargetForID) → no panic, no leftover nub.
