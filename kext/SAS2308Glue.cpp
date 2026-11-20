@@ -526,10 +526,12 @@ SAS2308Glue::Hotplug(void)
             /*
              * Review M7: no completion may reach the nub after it is
              * destroyed: fail its held IO, let its posted IO come back
-             * (the removal's target reset), deliver, then destroy.
+             * (the removal's target reset), deliver, then destroy. No
+             * time limit (D14): the removal TM's timeout and the reinit
+             * bound it.
              */
             if (Enter()) {
-                const int left = mps_kext_target_drain(fMps, w.targetID, kDrainMs);
+                const int left = mps_kext_target_drain(fMps, w.targetID, kDrainReinitMs);
                 Leave();
                 DeliverCompletions();
                 if (left)
@@ -569,7 +571,7 @@ SAS2308Glue::WillTerminate(void)
         for (uint32_t id = 0; !present && id < kMaxTargets; id++) {
             if (!Enter())
                 break;
-            const int left = mps_kext_target_drain(fMps, id, kDrainMs);
+            const int left = mps_kext_target_drain(fMps, id, kDrainReinitMs);
             Leave();
             DeliverCompletions();
             if (left)

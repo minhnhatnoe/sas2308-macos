@@ -232,10 +232,13 @@ int	 mps_kext_os_init(void);
 int	 mps_kext_target_present(struct mps_kext *k, uint32_t tid);
 /*
  * Before a target's nub is destroyed: fail the target's held IO
- * (CAM_DEV_NOT_THERE) and wait up to timeout_ms for its posted IO to come
- * back (the removal's target reset terminates it). Returns what is left.
+ * (CAM_DEV_NOT_THERE) and wait until its posted IO has come back (the
+ * removal's target reset terminates it), the controller is disabled, or
+ * the kext stops; posted IO is never completed here (the IOC may still
+ * DMA). After reinit_ms a controller reinit is requested, and the wait
+ * goes on. Returns what is left (only after a stop).
  */
-int	 mps_kext_target_drain(struct mps_kext *k, uint32_t tid, uint32_t timeout_ms);
+int	 mps_kext_target_drain(struct mps_kext *k, uint32_t tid, uint32_t reinit_ms);
 /* host tests only: the softc, for the model's interrupt delivery */
 void	*mps_kext_softc(struct mps_kext *k);
 

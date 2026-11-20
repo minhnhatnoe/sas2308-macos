@@ -78,7 +78,12 @@ class SAS2308_HIDDEN SAS2308Glue
 {
 public:
     static constexpr uint32_t kMaxTargets = MPSK_MAX_TARGETS;
-    static constexpr uint32_t kDrainMs = 10000;     /* a removed target's IO, before its nub goes */
+    /*
+     * A removed target's IO, before its nub goes: after this long without
+     * it (MPS_RESET_TIMEOUT 30 s for the removal's target reset, plus as
+     * long for its reinit), the drain asks for a reinit and keeps waiting.
+     */
+    static constexpr uint32_t kDrainReinitMs = 60000;
 
     enum Response { kInProcess, kRejected, kFailure };
     struct KStats {                     /* glue-level counters (core counters: struct mps_xnu_stats) */

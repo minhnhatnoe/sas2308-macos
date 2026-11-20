@@ -825,7 +825,7 @@ void mps_kext_controller_info(struct mps_kext *k, struct mps_kext_controller_inf
     mps_unlock(sc);
 }
 
-int mps_kext_target_drain(struct mps_kext *k, uint32_t tid, uint32_t timeout_ms)
+int mps_kext_target_drain(struct mps_kext *k, uint32_t tid, uint32_t reinit_ms)
 {
     struct mps_softc *sc = &k->sc;
     uint32_t waited;
@@ -836,7 +836,24 @@ int mps_kext_target_drain(struct mps_kext *k, uint32_t tid, uint32_t timeout_ms)
     mps_lock(sc);
     if (sc->sassc != NULL && sc->sassc->sim != NULL && tid < sc->sassc->maxtargets) {
         (void)cam_xnu_flush_held_target(sc->sassc->sim, tid, CAM_DEV_NOT_THERE);
-        for (waited = 0; sc->sassc->targets[tid].outstanding > 0 && waited < timeout_ms; waited += 10) {
+        /*
+         * D14: as long as it takes (CAM frees a periph when its last ccb
+         * returns). The IOC owns posted IO and may still DMA into its
+         * buffers, so it is never completed here: the removal's target
+         * reset returns it, or its TM timeout's reinit does. Should
+         * neither have happened after reinit_ms, ask for the reinit (the
+         * diag reset ends the IOC's ownership, mpssas_complete_all_commands
+         * completes it) and keep waiting. A disabled controller has
+         * completed everything; a stop leaves the rest to mps_free.
+         */
+        for (waited = 0; sc->sassc->targets[tid].outstanding > 0 && !sc->xnu.disabled && !k->stopping;
+             waited += 10) {
+            if (waited == reinit_ms) {
+                mps_dprint(sc, MPS_RECOVERY | MPS_ERROR, "target %u: %u IOs still outstanding %u ms after "
+                           "its removal: controller reinit\n", tid, sc->sassc->targets[tid].outstanding,
+                           reinit_ms);
+                mps_xnu_request_reinit(sc, "removed target's IO not returned");
+            }
             (void)msleep(&k->drain_chan, &sc->mps_mtx, 0, "mpsdrain", 10);
             if ((sc->mps_flags & (MPS_FLAGS_DIAGRESET | MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) == 0)
                 mps_intr_locked(sc);         /* the work loop may be busy elsewhere */

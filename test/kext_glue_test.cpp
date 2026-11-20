@@ -532,6 +532,68 @@ int main()
         f.Detach();
     }
 
+    if (Want("D14")) {
+        /*
+         * A pulled disk's removal TM answers only after 20 s (FreeBSD arms no
+         * timeout for it): its IO completes when the IOC returns it, then the
+         * nub goes. The drain sleeps inside the hotplug thread call, so the
+         * TM is answered from the "other threads" hook.
+         */
+        MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009);
+        m.holdDev = 0x0009;                         /* the firmware keeps its IO until the TM */
+        FakeTask *a = f.NewRead(t9, 0), *b = f.NewRead(t9, 0);
+        CHECK(f.Submit(a) == SAS2308Glue::kInProcess && f.Submit(b) == SAS2308Glue::kInProcess);
+        m.tmDeferMask = 1u << MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET;
+        const uint64_t t0 = m.nowUs;
+        const int resets = m.diagResetCount;
+        bool answered = false;
+        gHost.onOtherThreads = [&]() {
+            if (answered || m.nowUs < t0 + 20000000 || m.deferredTm.empty()) return;
+            CHECK(a->completions == 0 && b->completions == 0);   /* the IOC owns them: never completed by us */
+            CHECK(f.nubs.count(t9));                             /* so the nub waits */
+            answered = true;
+            m.ReleaseTm();                          /* the reset terminates the IO */
+        };
+        m.PostTopologyEvent({0x0009}, MPI2_EVENT_SAS_TOPO_RC_TARG_NOT_RESPONDING);
+        f.Run(30000);
+        gHost.onOtherThreads = nullptr;
+        CHECK(answered);
+        CHECK(a->completions == 1 && b->completions == 1);   /* CompleteTask checked: before the destroy */
+        CHECK(!f.nubs.count(t9) && f.destroys[t9] == 1);
+        CHECK(m.diagResetCount == resets);
+        m.tmDeferMask = 0; m.holdDev = 0;
+        f.Detach();
+    }
+
+    if (Want("D14-cap")) {
+        /* the removal TM never answers: after 60 s a reinit ends the IOC's ownership, then the nub goes */
+        MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009);
+        m.holdDev = 0x0009;
+        FakeTask *a = f.NewRead(t9, 0);
+        CHECK(f.Submit(a) == SAS2308Glue::kInProcess);
+        m.tmIgnoreMask = 1u << MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET;
+        const uint64_t t0 = m.nowUs;
+        const int resets = m.diagResetCount;
+        gHost.onOtherThreads = [&]() {
+            if (m.nowUs < t0 + 55000000)
+                CHECK(a->completions == 0 && f.nubs.count(t9));
+        };
+        m.PostTopologyEvent({0x0009}, MPI2_EVENT_SAS_TOPO_RC_TARG_NOT_RESPONDING);
+        m.devices = {0x000A};                       /* pulled: the rediscovery does not find it */
+        f.Run(70000);
+        gHost.onOtherThreads = nullptr;
+        CHECK(m.diagResetCount == resets + 1);
+        CHECK(a->completions == 1 && f.destroys[t9] == 1 && !f.nubs.count(t9));
+        m.tmIgnoreMask = 0; m.holdDev = 0;
+        f.Detach();
+    }
+
     printf("PASS (%d checks)\n", gChecks);
     return 0;
 }
