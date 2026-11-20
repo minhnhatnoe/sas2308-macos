@@ -366,6 +366,47 @@ IOC 59-61 C, drives up to 35 C. The first 28 s ran with the trace class on (see 
 10. `smartctl -l scterc` fails (pass-through does not return ATA output registers).
 11. The X 128 KiB cache-hit row was uneven between drives (drive cache behaviour, not studied).
 
+## Queue depth with 2040 commands (branch queue-freebsd, kext A42837FD, 14:52-15:06 EST)
+FreeBSD queue sizes (docs/design.md "Queue sizes as FreeBSD"). The card reports
+RequestCredit 10240, HighPriorityCredit 128, MaxReplyDescriptorPostQueueDepth 65504,
+MaxChainDepth 128, 128-byte request frames, MaxTargets 1024 (`bench/q2048/controller-limits.txt`);
+the driver uses 2048 + 128 frames and reports 2040 tasks (`IOCommandPoolSize` 2040, was 256).
+All 7 drives at once, 120 s per point, zone 2-50 % for random IO, outer zone for sequential.
+"Driver latency" = the driver's own post-to-completion average over the run (from
+`SAS2308Statistics` IOs completed / Latency avg before and after).
+
+| point | QD per drive (total) | IOPS | MB/s | p50 | p99 | max | driver latency |
+|---|---|---|---|---|---|---|---|
+| random 4K read | 32 (224) | 1748 | 7.2 | 98 ms | 483 ms | 0.87 s | 128 ms |
+| random 4K read | 64 (448) | 1742 | 7.1 | 225 ms | 606 ms | 0.91 s | 257 ms |
+| random 4K read | 128 (896) | 1738 | 7.1 | 483 ms | 868 ms | 1.22 s | 514 ms |
+| random 4K write | 32 (224) | 5843 | 23.9 | 46 ms | 61 ms | 0.14 s | 39 ms |
+| random 4K write | 64 (448) | 5650 | 23.1 | 94 ms | 115 ms | 0.19 s | 79 ms |
+| sequential 1 MiB read | 2 (14) | 1852 | 1941.5 | 7.4 ms | 9.0 ms | 83 ms | 7.9 ms |
+| verify 1 MiB seq, 1 GiB/drive | 4 (28) | 1819 | 1907 (953 W + 953 R) | 15 ms | 17 ms | 2.5 s | - |
+| verify 64 KiB random, 256 MiB/drive | 64 (448) | 1034 | 67.8 | 49 ms | 2.2 s | 3.2 s | - |
+
+- Previous build (256 commands, entry 63): random 4K read QD32 1707 IOPS, worst 0.91 s;
+  sequential read 1945 MB/s. No regression.
+- **IOPS do not rise beyond QD32** (1748 → 1742 → 1738) while latency doubles with each
+  doubling of the queue. Little's law with the driver latency gives 224, 448 and 896 commands
+  outstanding below the driver, i.e. every command really is at the card: neither macOS nor
+  the driver throttles. The extra commands only wait (in the card or the drive's queue), they
+  do not give the drive a better seek order: ~250 random 4K reads per drive over half the
+  stroke is the drive's limit, reached by QD32. Deeper queues cost latency only.
+- Random writes: QD64 is not faster than QD32 (write cache full, as in F2).
+- Verify: 0 mismatches (7 x 1 GiB sequential at QD4, 7 x 256 MiB random 64 KiB at QD64).
+  The 2-3 s maxima are writes in verify mode (drive write cache), no timeouts.
+- Counters over all points: IO timeouts 0, Family timeouts 0, TMs 0, recoveries 0, reinits 0,
+  diag resets 0, IOC faults 0, held 0 (1 at boot), tasks rejected 0, chain alloc failures 0,
+  SCSI status errors 0, state operational. IOC 61-62 C, drives 30-34 C.
+- Two points first failed with `Resource busy` on rdisk9 / rdisk10 at open (Disk Arbitration
+  had the JHFS+ test disks open right after the previous write point); rerun with an
+  `unmountDisk` and a retry before each point (`bench/scripts/q_bench2.sh`).
+- Files: `bench/q2048/` (results.csv, run.log.gz, monitor.csv, drivetemps.csv, stats, limits);
+  scripts `bench/scripts/q_bench.sh`, `q_bench2.sh`, `q_monitor.sh` (monitor.sh without
+  "Err SCSI status" / chain failures in the kill list).
+
 ## Files
 - `tools/sasbench.c` — the benchmark (usage in its header).
 - `bench/scripts/` — `sasdisks.sh` (drive qualification), `setup.sh`, `monitor.sh`, `lib.sh` and
