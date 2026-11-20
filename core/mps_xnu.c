@@ -432,35 +432,74 @@ mps_xnu_ratelimit_flush(struct mps_xnu_ratelimit *rl, uint64_t now_ms,
 /* ---- target ids ----------------------------------------------------------- */
 
 /*
- * FreeBSD maps SAS addresses to target ids persistently (mps_mapping.c,
- * from config pages).  Here: a handle seen before gets its old id back
- * (re-announced after a reinit), else the first id never used, else the
- * first free one.
+ * Target ids (FreeBSD: mps_mapping.c, keyed on the SAS address, which
+ * needs config pages).  Here: the id that last had this device identity
+ * (`ident': SAS address, IDENTIFY-derived for SATA) comes back to it, else
+ * the first id never used, else the first free one.  Handles do not
+ * identify disks: on this IT firmware a direct-attached handle follows the
+ * PHY, so the same bay always gives the same handle.  Whenever an id is
+ * given to a different (or unknown, ident 0) device its generation
+ * changes; the OS compares generations and never keeps a nub across a
+ * change.
  */
 u_int
-mps_xnu_get_tid(struct mps_softc *sc, uint16_t handle)
+mps_xnu_get_tid(struct mps_softc *sc, uint16_t handle, uint64_t ident)
 {
 	struct mpssas_softc *sassc = sc->sassc;
 	u_int i, n, never = MPS_MAP_BAD_ID, freeid = MPS_MAP_BAD_ID;
 
 	n = MIN(sassc->maxtargets, MPS_XNU_MAX_TARGETS);
-	for (i = 0; i < n; i++) {
-		if (sc->xnu.tid_handle[i] == handle &&
-		    sassc->targets[i].handle == 0)
-			return (i);
+	if (ident != 0) {
+		for (i = 0; i < n; i++) {
+			if (sc->xnu.tid_ident[i] == ident &&
+			    sassc->targets[i].handle == 0) {
+				sc->xnu.tid_handle[i] = handle;
+				return (i);
+			}
+		}
+	} else {
+		/* unknown identity: the id of this handle, as a new disk */
+		for (i = 0; i < n; i++) {
+			if (sc->xnu.tid_handle[i] == handle &&
+			    sassc->targets[i].handle == 0) {
+				freeid = i;
+				break;
+			}
+		}
 	}
-	for (i = 0; i < n; i++) {
+	for (i = 0; i < n && freeid == MPS_MAP_BAD_ID; i++) {
 		if (sassc->targets[i].handle != 0)
 			continue;
-		if (sc->xnu.tid_handle[i] == 0 && never == MPS_MAP_BAD_ID)
+		if (sc->xnu.tid_handle[i] == 0 && sc->xnu.tid_ident[i] == 0) {
 			never = i;
-		if (freeid == MPS_MAP_BAD_ID)
+			break;
+		}
+	}
+	for (i = 0; i < n && freeid == MPS_MAP_BAD_ID &&
+	    never == MPS_MAP_BAD_ID; i++) {
+		if (sassc->targets[i].handle == 0)
 			freeid = i;
 	}
-	i = (never != MPS_MAP_BAD_ID) ? never : freeid;
-	if (i != MPS_MAP_BAD_ID)
-		sc->xnu.tid_handle[i] = handle;
+	i = (freeid != MPS_MAP_BAD_ID) ? freeid : never;
+	if (i == MPS_MAP_BAD_ID)
+		return (i);
+	if (sc->xnu.tid_handle[i] != 0 || sc->xnu.tid_ident[i] != 0) {
+		sc->xnu.stats.identity_changes++;
+		mps_dprint(sc, MPS_MAPPING|MPS_INFO, "target id %u: a "
+		    "different device (handle 0x%04x, id 0x%016jx, was 0x%016jx)"
+		    "\n", i, handle, (uintmax_t)ident,
+		    (uintmax_t)sc->xnu.tid_ident[i]);
+	}
+	sc->xnu.tid_gen[i]++;
+	sc->xnu.tid_handle[i] = handle;
+	sc->xnu.tid_ident[i] = ident;
 	return (i);
+}
+
+uint32_t
+mps_xnu_target_gen(struct mps_softc *sc, u_int tid)
+{
+	return (tid < MPS_XNU_MAX_TARGETS ? sc->xnu.tid_gen[tid] : 0);
 }
 
 int

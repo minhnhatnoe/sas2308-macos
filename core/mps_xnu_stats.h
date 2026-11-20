@@ -72,6 +72,8 @@ struct mps_xnu_stats {
 	/* review fixes */
 	uint32_t	reinit_coalesced;	/* reinit requests covered by a running one */
 	uint32_t	removals_queued;	/* removals that waited for a free TM */
+	uint32_t	identity_changes;	/* a different disk behind a target id */
+	uint32_t	sata_identify_failures;
 };
 
 #endif /* !_MPS_XNU_STATS_H_ */

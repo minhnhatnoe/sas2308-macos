@@ -159,6 +159,9 @@ do {					\
 } while(0)
 
 void mpssas_rescan_target(struct mps_softc *sc, struct mpssas_target *targ);
+/* XNU: FreeBSD declares this in mps_mapping.h (not ported) */
+int mpssas_get_sas_address_for_sata_disk(struct mps_softc *ioc,
+    u64 *sas_address, u16 handle, u32 device_info, u8 *is_SATA_SSD);
 void mpssas_discovery_end(struct mpssas_softc *sassc);
 void mpssas_prepare_for_tm(struct mps_softc *sc, struct mps_command *tm,
     struct mpssas_target *target, lun_id_t lun_id);

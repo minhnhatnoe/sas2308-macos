@@ -2122,8 +2122,10 @@ static void SleepTests()
  */
 #ifdef REVIEW_BEFORE
 static int Shutdown(Rig &g, u_int drainMs) { mps_lock(g.sc); int rc = mps_xnu_suspend(g.sc, drainMs); mps_unlock(g.sc); return rc; }
+static uint32_t Gen(Rig &, target_id_t) { return 0; }
 #else
 static int Shutdown(Rig &g, u_int drainMs) { mps_lock(g.sc); int rc = mps_xnu_suspend(g.sc, drainMs, 1); mps_unlock(g.sc); return rc; }
+static uint32_t Gen(Rig &g, target_id_t t) { return mps_xnu_target_gen(g.sc, t); }
 #endif
 
 static bool Want(const char *id)
@@ -2326,4 +2328,57 @@ static void ReviewTests()
         CHECK(r->status == CAM_REQ_CMP);
     }
 
+    if (Want("C2-swap")) {
+        /* SATA disks: another disk in the same bay across a reinit (sleep) is not the same target */
+        Rig g({0x0009, 0x000B}, [](Rig &r) {
+            r.ioc.sataSerial[0x0009] = "ZR50AAAA";
+            r.ioc.sataSerial[0x000B] = "ZR50BBBB";
+        });
+        MockIocModel &m = g.ioc;
+        CHECK(m.identifies >= 2);
+        const target_id_t t9 = g.Tid(0x0009), tb = g.Tid(0x000B);
+        const uint32_t g9 = Gen(g, t9), gb = Gen(g, tb);
+        RequestReinit(g, "same disks");
+        HostAdvance(2000);
+        CHECK(g.Tid(0x0009) == t9 && g.Tid(0x000B) == tb);
+        CHECK(Gen(g, t9) == g9 && Gen(g, tb) == gb);         /* same disks: the nubs stay */
+        m.sataSerial[0x000B] = "ZR50CCCC";                   /* disk B pulled, disk C in its bay */
+        RequestReinit(g, "disk swapped");
+        HostAdvance(2000);
+        const target_id_t tc = g.Tid(0x000B);
+        CHECK(tc != tb || Gen(g, tc) != gb);                  /* never B's nub for C */
+        CHECK(!(tc == tb && Gen(g, tc) == gb));
+        CHECK(g.Tid(0x0009) == t9 && Gen(g, t9) == g9);
+        m.sataSerial[0x000B] = "ZR50BBBB";                   /* B back in its bay: B's id again */
+        RequestReinit(g, "disk back");
+        HostAdvance(2000);
+        CHECK(g.Tid(0x000B) == tb);
+    }
+
+    if (Want("C2-permute")) {
+        /* handles exchanged across a reset: each disk keeps its target */
+        Rig g({0x0009, 0x000B}, [](Rig &r) {
+            r.ioc.sataSerial[0x0009] = "ZR50AAAA";
+            r.ioc.sataSerial[0x000B] = "ZR50BBBB";
+        });
+        MockIocModel &m = g.ioc;
+        const target_id_t ta = g.Tid(0x0009), tb = g.Tid(0x000B);
+        std::swap(m.sataSerial[0x0009], m.sataSerial[0x000B]);
+        RequestReinit(g, "handles permuted");
+        HostAdvance(2000);
+        CHECK(g.Tid(0x000B) == ta && g.Tid(0x0009) == tb);
+    }
+
+    if (Want("C2-sas")) {
+        /* SAS disks: the page 0 SAS address identifies the disk */
+        Rig g({0x0009});
+        MockIocModel &m = g.ioc;
+        const target_id_t t = g.Tid(0x0009);
+        const uint32_t gen = Gen(g, t);
+        m.sasAddr[0x0009] = 0x5000C500DEADBEEFull;
+        RequestReinit(g, "disk swapped");
+        HostAdvance(2000);
+        const target_id_t t2 = g.Tid(0x0009);
+        CHECK(!(t2 == t && Gen(g, t2) == gen));
+    }
 }

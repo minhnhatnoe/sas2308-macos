@@ -21,6 +21,8 @@
 #include <cstring>
 #include <functional>
 #include <vector>
+#include <map>
+#include <string>
 #include "../core/mps_mpi.h"
 
 #ifdef MOCK_SEG
@@ -86,6 +88,16 @@ struct MockIocModel {
     uint16_t configFailHandle = 0;             /* page reads for this handle: CONFIG_INVALID_PAGE */
     uint16_t lastConfigHandle = 0;
     bool dropConfigOnce = false;               /* lose the next config reply (wait timeout)*/
+    /*
+     * Device identity (TF2): SATA devices answer SATA_PASSTHROUGH IDENTIFY
+     * with this serial number; SAS devices report sasAddr[h] (default
+     * SasAddrOf(h)) in page 0.  A test swaps the disk behind a handle by
+     * changing either.
+     */
+    std::map<uint16_t, std::string> sataSerial;
+    std::map<uint16_t, uint64_t> sasAddr;
+    int identifies = 0;
+    bool dropIdentify = false;                 /* lose IDENTIFY replies */
     bool murIgnored = false;                   /* MUR never stops the IOC (wedged) */
     uint64_t deadUntilUs = 0;                  /* registers read all-ones until then */
     /*
@@ -567,7 +579,7 @@ struct MockIocModel {
         pg.Header.PageType = MPI2_CONFIG_PAGETYPE_EXTENDED; pg.Header.PageVersion = MPI2_SASDEVICE0_PAGEVERSION;
         pg.Header.ExtPageType = MPI2_CONFIG_EXTPAGETYPE_SAS_DEVICE;
         pg.Header.ExtPageLength = sizeof(pg) / 4;
-        const uint64_t a = SasAddrOf(h);
+        const uint64_t a = sasAddr.count(h) ? sasAddr[h] : SasAddrOf(h);
         pg.SASAddress.High = (uint32_t)(a >> 32); pg.SASAddress.Low = (uint32_t)a;
         pg.DevHandle = h;
         pg.ParentDevHandle = h == kHostHandle ? 0 : kHostHandle;
@@ -575,10 +587,48 @@ struct MockIocModel {
         pg.DeviceInfo = h == kHostHandle ?
             (MPI2_SAS_DEVICE_INFO_SSP_INITIATOR | MPI2_SAS_DEVICE_INFO_STP_INITIATOR |
              MPI2_SAS_DEVICE_INFO_SMP_INITIATOR) :
+            sataSerial.count(h) ? (MPI2_SAS_DEVICE_INFO_SATA_DEVICE | MPI2_SAS_DEVICE_INFO_STP_TARGET |
+                                   MPI2_SAS_DEVICE_INFO_END_DEVICE) :
             (MPI2_SAS_DEVICE_INFO_SSP_TARGET | MPI2_SAS_DEVICE_INFO_END_DEVICE);
         pg.DeviceName.High = 0x5000C500; pg.DeviceName.Low = 0xABC00000u + h;
         memcpy(Ptr(((uint64_t)sge.Address.High << 32) | sge.Address.Low, sizeof(pg)), &pg, sizeof(pg));
         AddressReply(smid, &cr, sizeof(cr));
+    }
+    /* SATA_PASSTHROUGH IDENTIFY DEVICE (FreeBSD mpssas_get_sata_identify): 512 bytes PIO in. */
+    void AnswerIdentify(uint8_t *f, uint16_t smid, uint8_t descType) {
+        auto *q = (MPI2_SATA_PASSTHROUGH_REQUEST *)f;
+        CHECK(descType == MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE);
+        CHECK(q->CommandFIS[0] == 0x27 && q->CommandFIS[1] == 0x80 && q->CommandFIS[2] == 0xEC);
+        CHECK(q->DataLength == 512);
+        identifies++;
+        if (dropIdentify) return;
+        MPI2_SGE_SIMPLE64 sge; memcpy(&sge, &q->SGL, sizeof(sge));
+        if (((sge.FlagsLength >> MPI2_SGE_FLAGS_SHIFT) & MPI2_SGE_FLAGS_ELEMENT_MASK) == MPI2_SGE_FLAGS_CHAIN_ELEMENT) {
+            MPI2_SGE_CHAIN64 ce; memcpy(&ce, &q->SGL, sizeof(ce));
+            memcpy(&sge, Ptr(((uint64_t)ce.Address.High << 32) | ce.Address.Low, sizeof(sge)), sizeof(sge));
+        }
+        const uint32_t fl = sge.FlagsLength >> MPI2_SGE_FLAGS_SHIFT;
+        CHECK((fl & MPI2_SGE_FLAGS_ELEMENT_MASK) == MPI2_SGE_FLAGS_SIMPLE_ELEMENT && !(fl & MPI2_SGE_FLAGS_HOST_TO_IOC));
+        CHECK((sge.FlagsLength & 0xFFFFFF) == 512);
+        MPI2_SATA_PASSTHROUGH_REPLY r{};
+        r.MsgLength = sizeof(r) / 4; r.Function = MPI2_FUNCTION_SATA_PASSTHROUGH; r.DevHandle = q->DevHandle;
+        auto it = sataSerial.find(q->DevHandle);
+        if (it == sataSerial.end()) {
+            r.IOCStatus = MPI2_IOCSTATUS_SCSI_DEVICE_NOT_THERE;
+        } else {
+            uint8_t id[512]{};
+            auto put = [&](int word, int nchar, const std::string &str) {   /* ATA strings: byte-swapped words */
+                for (int i = 0; i < nchar; i++) {
+                    char c = i < (int)str.size() ? str[i] : ' ';
+                    id[word * 2 + (i ^ 1)] = (uint8_t)c;
+                }
+            };
+            put(10, 20, it->second);
+            put(27, 40, "ST18000NM000J-2TV103");
+            id[217 * 2] = 0x20; id[217 * 2 + 1] = 0x1C;          /* 7200 rpm */
+            memcpy(Ptr(((uint64_t)sge.Address.High << 32) | sge.Address.Low, 512), id, 512);
+        }
+        AddressReply(smid, &r, sizeof(r));
     }
     void RequestPosted(uint32_t low, uint32_t) {
         if (state != MPI2_IOC_STATE_OPERATIONAL) { dropped++; return; }   /* faulted: ignored */
@@ -677,6 +727,8 @@ struct MockIocModel {
             AnswerTm(f, smid);
         } else if (fn == MPI2_FUNCTION_CONFIG) {
             AnswerConfig(f, smid, descType);
+        } else if (fn == MPI2_FUNCTION_SATA_PASSTHROUGH) {
+            AnswerIdentify(f, smid, descType);
         } else if (fn == MPI2_FUNCTION_SAS_IO_UNIT_CONTROL) {
             auto *q = (MPI2_SAS_IOUNIT_CONTROL_REQUEST *)f;
             CHECK(q->Operation == MPI2_SAS_OP_REMOVE_DEVICE);

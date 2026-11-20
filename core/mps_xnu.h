@@ -111,6 +111,13 @@ struct mps_xnu {
 	int			 reinit_pending;	/* mps_reinit_task queued */
 	int			 disabled;		/* mps_xnu_disable() ran */
 	uint16_t		 tid_handle[MPS_XNU_MAX_TARGETS]; /* last handle */
+	/*
+	 * Device identity behind a target id (SAS address from page 0, or the
+	 * IDENTIFY-derived one for SATA): a different disk behind the same
+	 * handle or bay gets a new generation, so the OS drops the old nub.
+	 */
+	uint64_t		 tid_ident[MPS_XNU_MAX_TARGETS];
+	uint32_t		 tid_gen[MPS_XNU_MAX_TARGETS];
 	int			 reinit_running;	/* mps_reinit() between start and end */
 	int			 stop_reinit;		/* suspend: a running reinit gives up */
 	int			 reinit_owed;		/* abandoned reinit left IN_STARTUP held */
@@ -175,8 +182,13 @@ void	mps_xnu_readd_end(struct mps_softc *sc, uint16_t handle);
 /* MPS_XNU_EVENT_TEMP on the event queue */
 void	mps_xnu_temperature(struct mps_softc *sc);
 
-/* target id for a newly announced device handle (MPS_MAP_BAD_ID: none) */
-u_int	mps_xnu_get_tid(struct mps_softc *sc, uint16_t handle);
+/*
+ * target id for a newly announced device (MPS_MAP_BAD_ID: none): the id
+ * that last had this identity (0: unknown) or, failing that, this handle
+ */
+u_int	mps_xnu_get_tid(struct mps_softc *sc, uint16_t handle, uint64_t ident);
+/* generation of the device behind target `tid' (changes with its identity) */
+uint32_t mps_xnu_target_gen(struct mps_softc *sc, u_int tid);
 /* 1 if target `tid' is attached and not being removed (*handle set) */
 int	mps_xnu_target_present(struct mps_softc *sc, u_int tid,
 	    uint16_t *handle);

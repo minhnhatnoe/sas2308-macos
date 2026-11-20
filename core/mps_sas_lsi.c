@@ -53,12 +53,38 @@ struct mps_fw_event_work {
 	TAILQ_ENTRY(mps_fw_event_work)	ev_link;
 };
 
+union _sata_sas_address {
+	u8 wwid[8];
+	struct {
+		u32 high;
+		u32 low;
+	} word;
+};
+
+/*
+ * define the IDENTIFY DEVICE structure
+ */
+struct _ata_identify_device_data {
+	u16 reserved1[10];	/* 0-9 */
+	u16 serial_number[10];	/* 10-19 */
+	u16 reserved2[7];	/* 20-26 */
+	u16 model_number[20];	/* 27-46*/
+	u16 reserved3[170];	/* 47-216 */
+	u16 rotational_speed;	/* 217 */
+	u16 reserved4[38];	/* 218-255 */
+};
+
 static u32 event_count;
 static void mpssas_fw_work(struct mps_softc *sc,
     struct mps_fw_event_work *fw_event);
 static void mpssas_fw_event_free(struct mps_softc *,
     struct mps_fw_event_work *);
 static int mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate);
+static int mpssas_get_sata_identify(struct mps_softc *sc, u16 handle,
+    Mpi2SataPassthroughReply_t *mpi_reply, char *id_buffer, int sz,
+    u32 devinfo);
+static void mpssas_ata_id_complete(struct mps_softc *, struct mps_command *);
+static void mpssas_ata_id_timeout(struct mps_softc *, struct mps_command *);
 
 void
 mpssas_evt_handler(struct mps_softc *sc, uintptr_t data,
@@ -330,6 +356,7 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
 	int error = 0;
 	struct mpssas_lun *lun;
 	u8 is_SATA_SSD = 0;
+	int ret;
 
 	sassc = sc->sassc;
 	mpssas_startup_increment(sassc);
@@ -375,12 +402,38 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
             "page0 = %jx\n", handle, (uintmax_t)sas_address);
 
 	/*
-	 * XNU: no SATA identify (mpssas_get_sas_address_for_sata_disk), so a
-	 * SATA disk keeps the SAS address the IOC made up for it and is not
-	 * told apart as an SSD.  The target id comes from mps_xnu_get_tid()
-	 * (firmware handle based) instead of mps_mapping.c.
+	 * Always get SATA Identify information because this is used to
+	 * determine if Start/Stop Unit should be sent to the drive when the
+	 * system is shutdown.
 	 */
-	id = mps_xnu_get_tid(sc, handle);
+	if (device_info & MPI2_SAS_DEVICE_INFO_SATA_DEVICE) {
+		ret = mpssas_get_sas_address_for_sata_disk(sc, &sas_address,
+		    handle, device_info, &is_SATA_SSD);
+		if (ret) {
+			mps_dprint(sc, MPS_MAPPING|MPS_ERROR,
+			    "%s: failed to get disk type (SSD or HDD) for SATA "
+			    "device with handle 0x%04x\n",
+			    __func__, handle);
+			/*
+			 * XNU: the IOC makes the SATA SAS address up per PHY,
+			 * so it does not tell disks apart: identity unknown
+			 * (mps_xnu_get_tid treats it as a new disk).
+			 */
+			sc->xnu.stats.sata_identify_failures++;
+			sas_address = 0;
+		} else {
+			mps_dprint(sc, MPS_MAPPING, "Handle 0x%04x SAS Address "
+			    "from SATA device = %jx\n", handle,
+			    (uintmax_t)sas_address);
+		}
+	}
+
+	/*
+	 * XNU: the target id comes from mps_xnu_get_tid() instead of
+	 * mps_mapping.c, keyed like mps_mapping_get_tid on the device's
+	 * identity (SAS address, IDENTIFY-derived for SATA).
+	 */
+	id = mps_xnu_get_tid(sc, handle, sas_address);
 	if (id == MPS_MAP_BAD_ID) {
 		mps_dprint(sc, MPS_INFO, "failure at %s:%d/%s()! "
 		    "Could not get ID for device with handle 0x%04x\n",
@@ -450,8 +503,238 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
 	mps_dprint(sc, MPS_MAPPING, "Target id 0x%x added\n", targ->tid);
 	mps_xnu_readd_cancel(sc, handle);	/* XNU: no later retry */
 
-	/* XNU: no SATA identify, so no MPS_CM_FLAGS_SATA_ID_TIMEOUT commands */
 out:
 	mpssas_startup_decrement(sassc);
 	return (error);
+}
+
+int
+mpssas_get_sas_address_for_sata_disk(struct mps_softc *sc,
+    u64 *sas_address, u16 handle, u32 device_info, u8 *is_SATA_SSD)
+{
+	Mpi2SataPassthroughReply_t mpi_reply;
+	int i, rc, try_count;
+	u32 *bufferptr;
+	union _sata_sas_address hash_address;
+	struct _ata_identify_device_data ata_identify;
+	u8 buffer[MPT2SAS_MN_LEN + MPT2SAS_SN_LEN];
+	u32 ioc_status;
+	u8 sas_status;
+
+	memset(&ata_identify, 0, sizeof(ata_identify));
+	memset(&mpi_reply, 0, sizeof(mpi_reply));	/* XNU: read on failure */
+	try_count = 0;
+	do {
+		rc = mpssas_get_sata_identify(sc, handle, &mpi_reply,
+		    (char *)&ata_identify, sizeof(ata_identify), device_info);
+		try_count++;
+		ioc_status = le16toh(mpi_reply.IOCStatus)
+		    & MPI2_IOCSTATUS_MASK;
+		sas_status = mpi_reply.SASStatus;
+		switch (ioc_status) {
+		case MPI2_IOCSTATUS_SUCCESS:
+			break;
+		case MPI2_IOCSTATUS_SCSI_PROTOCOL_ERROR:
+			/* No sense sleeping.  this error won't get better */
+			break;
+		default:
+			if (sc->spinup_wait_time > 0) {
+				mps_dprint(sc, MPS_INFO, "Sleeping %d seconds "
+				    "after SATA ID error to wait for spinup\n",
+				    sc->spinup_wait_time);
+				msleep(&sc->msleep_fake_chan, &sc->mps_mtx, 0,
+				    "mpsid", sc->spinup_wait_time * hz);
+			}
+		}
+		/* XNU: stopped, gone or asleep: no point in trying again */
+		if (rc == ENXIO && (sc->mps_flags & (MPS_FLAGS_SHUTDOWN |
+		    MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)))
+			break;
+	} while (((rc && (rc != EWOULDBLOCK)) ||
+	    	 (ioc_status && 
+		  (ioc_status != MPI2_IOCSTATUS_SCSI_PROTOCOL_ERROR))
+	       || sas_status) && (try_count < 5));
+
+	if (rc == 0 && !ioc_status && !sas_status) {
+		mps_dprint(sc, MPS_MAPPING, "%s: got SATA identify "
+		    "successfully for handle = 0x%x with try_count = %d\n",
+		    __func__, handle, try_count);
+	} else {
+		mps_dprint(sc, MPS_MAPPING, "%s: handle = 0x%x failed\n",
+		    __func__, handle);
+		return -1;
+	}
+	/* Copy & byteswap the 40 byte model number to a buffer */
+	for (i = 0; i < MPT2SAS_MN_LEN; i += 2) {
+		buffer[i] = ((u8 *)ata_identify.model_number)[i + 1];
+		buffer[i + 1] = ((u8 *)ata_identify.model_number)[i];
+	}
+	/* Copy & byteswap the 20 byte serial number to a buffer */
+	for (i = 0; i < MPT2SAS_SN_LEN; i += 2) {
+		buffer[MPT2SAS_MN_LEN + i] =
+		    ((u8 *)ata_identify.serial_number)[i + 1];
+		buffer[MPT2SAS_MN_LEN + i + 1] =
+		    ((u8 *)ata_identify.serial_number)[i];
+	}
+	bufferptr = (u32 *)buffer;
+	/* There are 60 bytes to hash down to 8. 60 isn't divisible by 8,
+	 * so loop through the first 56 bytes (7*8),
+	 * and then add in the last dword.
+	 */
+	hash_address.word.low  = 0;
+	hash_address.word.high = 0;
+	for (i = 0; (i < ((MPT2SAS_MN_LEN+MPT2SAS_SN_LEN)/8)); i++) {
+		hash_address.word.low += *bufferptr;
+		bufferptr++;
+		hash_address.word.high += *bufferptr;
+		bufferptr++;
+	}
+	/* Add the last dword */
+	hash_address.word.low += *bufferptr;
+	/* Make sure the hash doesn't start with 5, because it could clash
+	 * with a SAS address. Change 5 to a D.
+	 */
+	if ((hash_address.word.high & 0x000000F0) == (0x00000050))
+		hash_address.word.high |= 0x00000080;
+	*sas_address = (u64)hash_address.wwid[0] << 56 |
+	    (u64)hash_address.wwid[1] << 48 | (u64)hash_address.wwid[2] << 40 |
+	    (u64)hash_address.wwid[3] << 32 | (u64)hash_address.wwid[4] << 24 |
+	    (u64)hash_address.wwid[5] << 16 | (u64)hash_address.wwid[6] <<  8 |
+	    (u64)hash_address.wwid[7];
+	if (ata_identify.rotational_speed == 1) {
+		*is_SATA_SSD = 1;
+	}
+
+	return 0;
+}
+
+static int
+mpssas_get_sata_identify(struct mps_softc *sc, u16 handle,
+    Mpi2SataPassthroughReply_t *mpi_reply, char *id_buffer, int sz, u32 devinfo)
+{
+	Mpi2SataPassthroughRequest_t *mpi_request;
+	Mpi2SataPassthroughReply_t *reply = NULL;
+	struct mps_command *cm;
+	char *buffer;
+	int error = 0;
+
+	if ((cm = mps_alloc_command(sc)) == NULL) {
+		return (EBUSY);
+	}
+	mpi_request = (MPI2_SATA_PASSTHROUGH_REQUEST *)cm->cm_req;
+	bzero(mpi_request,sizeof(MPI2_SATA_PASSTHROUGH_REQUEST));
+	mpi_request->Function = MPI2_FUNCTION_SATA_PASSTHROUGH;
+	mpi_request->VF_ID = 0;
+	mpi_request->DevHandle = htole16(handle);
+	mpi_request->PassthroughFlags = (MPI2_SATA_PT_REQ_PT_FLAGS_PIO |
+	    MPI2_SATA_PT_REQ_PT_FLAGS_READ);
+	mpi_request->DataLength = htole32(sz);
+	mpi_request->CommandFIS[0] = 0x27;
+	mpi_request->CommandFIS[1] = 0x80;
+	mpi_request->CommandFIS[2] =  (devinfo &
+	    MPI2_SAS_DEVICE_INFO_ATAPI_DEVICE) ? 0xA1 : 0xEC;
+	cm->cm_sge = &mpi_request->SGL;
+	cm->cm_sglsize = sizeof(MPI2_SGE_IO_UNION);
+	cm->cm_flags = MPS_CM_FLAGS_SGE_SIMPLE | MPS_CM_FLAGS_DATAIN;
+	cm->cm_desc.Default.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE;
+	cm->cm_length = htole32(sz);
+	/*
+	 * XNU: the IOC writes DMA memory: the config page buffer lent to the
+	 * command's map (mps_xnu_config_page, as mps_config.c), not malloc.
+	 * Identify runs on the event queue like the page reads, one at a time.
+	 */
+	buffer = mps_xnu_config_page(sc, cm);
+	if (buffer == NULL) {
+		mps_free_command(sc, cm);
+		return (ENOMEM);
+	}
+	cm->cm_data = buffer;
+
+	/*
+	 * Use a custom handler to avoid reinit'ing the controller on timeout.
+	 * This fixes a problem where the FW does not send a reply sometimes
+	 * when a bad disk is in the topology. So, this is used to timeout the
+	 * command so that processing can continue normally.
+	 */
+	cm->cm_timeout_handler = mpssas_ata_id_timeout;
+
+	error = mps_wait_command(sc, &cm, MPS_ATA_ID_TIMEOUT, CAN_SLEEP);
+
+	/* mpssas_ata_id_timeout does not reset controller */
+	KASSERT(cm != NULL, ("%s: surprise command freed", __func__));
+
+	reply = (Mpi2SataPassthroughReply_t *)cm->cm_reply;
+	if (error || (reply == NULL)) {
+		/* FIXME */
+ 		/*
+ 		 * If the request returns an error then we need to do a diag
+ 		 * reset
+ 		 */ 
+ 		mps_dprint(sc, MPS_INFO|MPS_FAULT|MPS_MAPPING,
+		    "Request for SATA PASSTHROUGH page completed with error %d\n",
+		    error);
+		error = ENXIO;
+		goto out;
+	}
+	bcopy(buffer, id_buffer, sz);
+	bcopy(reply, mpi_reply, sizeof(Mpi2SataPassthroughReply_t));
+	if ((le16toh(reply->IOCStatus) & MPI2_IOCSTATUS_MASK) !=
+	    MPI2_IOCSTATUS_SUCCESS) {
+		mps_dprint(sc, MPS_INFO|MPS_MAPPING|MPS_FAULT,
+		    "Error reading device %#x SATA PASSTHRU; iocstatus= 0x%x\n",
+		    handle, reply->IOCStatus);
+		error = ENXIO;
+		goto out;
+	}
+out:
+	/*
+	 * If the SATA_ID_TIMEOUT flag has been set for this command, don't free
+	 * it.  The command and buffer will be freed after we send a Target
+	 * Reset TM and the command comes back from the controller.
+	 */
+	if ((cm->cm_flags & MPS_CM_FLAGS_SATA_ID_TIMEOUT) == 0) {
+		mps_xnu_config_page_done(sc, buffer);	/* XNU: not free() */
+		bus_dmamap_unload(sc->buffer_dmat, cm->cm_dmamap);	/* XNU */
+		mps_free_command(sc, cm);
+	}
+	return (error);
+}
+
+/*
+ * This is completion handler to make sure that commands and allocated
+ * buffers get freed when timed out SATA ID commands finally complete after
+ * we've reset the target.  In the normal case, we wait for the command to
+ * complete.
+ */
+static void
+mpssas_ata_id_complete(struct mps_softc *sc, struct mps_command *cm)
+{
+	mps_dprint(sc, MPS_INFO, "%s ATA ID completed late cm %p sc %p\n",
+	    __func__, cm, sc);
+
+	/* XNU: the lent config page buffer, not free(cm->cm_data) */
+	mps_xnu_config_page_done(sc, sc->xnu.cfg_page);
+	bus_dmamap_unload(sc->buffer_dmat, cm->cm_dmamap);
+	mps_free_command(sc, cm);
+}
+
+
+static void
+mpssas_ata_id_timeout(struct mps_softc *sc, struct mps_command *cm)
+{
+	mps_dprint(sc, MPS_INFO, "%s ATA ID command timeout cm %p sc %p\n",
+	    __func__, cm, sc);
+
+	/*
+	 * The Abort Task cannot be sent from here because the driver has not
+	 * completed setting up targets.  Instead, the command is flagged so
+	 * that special handling will be used to send a target reset.
+	 */
+	cm->cm_flags |= MPS_CM_FLAGS_SATA_ID_TIMEOUT;
+
+	/*
+	 * Since we will no longer be waiting for the command to complete,
+	 * set a completion handler to make sure we free all resources.
+	 */
+	cm->cm_complete = mpssas_ata_id_complete;
 }
