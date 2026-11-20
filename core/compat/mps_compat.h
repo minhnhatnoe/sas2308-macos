@@ -379,7 +379,7 @@ void	wakeup(void *chan);
 void	pause(const char *wmesg, int timo);
 /*
  * XNU: DELAY() of 1 ms or more with a mutex held by the calling thread drops
- * that mutex while waiting (M4 rule: no sleeping with mps_mtx held).
+ * that mutex while waiting (rule: no sleeping with mps_mtx held).
  */
 void	DELAY(int us);
 

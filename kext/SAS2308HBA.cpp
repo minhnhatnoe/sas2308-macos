@@ -6,8 +6,8 @@
  * SAS2308HBA.cpp - IOService life cycle and the IOSCSIParallelInterfaceController
  * callbacks: capabilities, interrupts, IO and task management.
  *
- * Status: compiles and links against the macOS 27 Kernel framework; never
- * loaded or run against hardware. Known gaps are listed in docs/design.md.
+ * Status: runs an LSI 9207-8i in a Thunderbolt enclosure on macOS 27 (Apple
+ * silicon); hardware results and known gaps are in docs/design.md.
  *
  * The core is FreeBSD's sys/dev/mps (core/), reached through
  * mps_xnu_os.{h,cpp}: SCSI tasks become XPT_SCSI_IO ccbs, task-management
@@ -252,7 +252,7 @@ SAS2308HBA::PortCompleteTask(SCSIParallelTaskIdentifier task, int done, uint8_t 
         response = kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
         break;
     case SAS2308GluePort::kDoneReject:
-        /* refused by mpssas_action_scsiio (invalid, too big): as M4's synchronous FUNCTION_REJECTED */
+        /* refused by mpssas_action_scsiio (invalid, too big): synchronous FUNCTION_REJECTED, as the pre-FreeBSD driver */
         status = kSCSITaskStatus_No_Status;
         response = kSCSIServiceResponse_FUNCTION_REJECTED;
         break;

@@ -1,4 +1,22 @@
-# SAS2308HBA.kext — design (milestones 1–5c, review fixes)
+# SAS2308HBA.kext — design notes
+
+Development stages, as named in this file and in older comments (the code of M1-M4, a driver
+written from scratch before the port of FreeBSD's mps, is only in the tag `archive/pre-rewrite`;
+master starts from the FreeBSD vendor import):
+
+| Stage | What |
+|---|---|
+| M1 | first driver: IOC init, queues, SCSI IO path, mock IOC test |
+| M2 | task management, timeout escalation, IOC reinit, multi-LUN |
+| M3 | MPI2 chain SGLs, derived segment limits |
+| M4 | asynchronous recovery, FreeBSD-style logging, statistics |
+| M5a | the FreeBSD-shaped core: compat layer, port of sys/dev/mps, the kext on it |
+| M5b | Mac conventions: kext layout, power management, shutdown, termination, properties |
+| M5c | hot-plug page 0 failures, recovered-sense noise, IOC temperature |
+
+Review findings are written "review C1", "review M3" (ids of `docs/reviews/2026-11-final.md`);
+an M-id in a review context is a finding, not a stage. The test groups `M1`-`M4` of
+`mock_ioc_test` are named after the stages.
 
 Target: LSI SAS 9207-8i (Broadcom SAS2308, PCI 1000:0087, MPI 2.0 IT firmware) in a
 Thunderbolt 3 PCIe dock (JHL7440, PCIe 3.0 x4 tunnel) on an Apple-silicon Mac mini

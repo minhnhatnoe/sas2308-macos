@@ -1,8 +1,8 @@
 # Loading SAS2308HBA.kext on the Mac mini (Apple silicon, macOS 27)
 
-Status: the kext builds and its symbols resolve; it has NOT been loaded yet.
-Steps marked (inferred) follow Apple's documented Apple-silicon kext flow but were not
-executed on this Mac.
+Status: these steps load the kext on the Mac mini in use since 2026-11-19 (see the
+"Verified" sections of docs/design.md). Steps marked (inferred) follow Apple's documented
+Apple-silicon kext flow and were written before the first load.
 
 ## One-time security change (needs someone at the Mac's keyboard)
 1. Shut the Mac down. Press and hold the power button until "Loading startup options" →

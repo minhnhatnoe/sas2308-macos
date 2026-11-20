@@ -1,5 +1,5 @@
 # Host-side tests.
-#   mock_ioc_test   the M1-M4 scenarios (IO, chains, recovery, logging) against the
+#   mock_ioc_test   the milestone M1-M4 scenarios (IO, chains, recovery, logging) against the
 #                   FreeBSD-shaped core (core/mps*.c, core/compat) and the IOC model
 #   mps_port_test   attach/discovery/thin CAM/reinit smoke test of the same core
 #   kext_targets_test  the kext's target table (kext/SAS2308HBA_Targets.h, no IOKit)

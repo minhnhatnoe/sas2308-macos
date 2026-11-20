@@ -81,7 +81,7 @@ struct MockIocModel {
     int dropped = 0;                           /* requests posted to a non-operational IOC */
     uint8_t lastLun[8]{};
     uint16_t tmSmidLo = 3, tmSmidHi = 7;       /* TM SMIDs allowed: [lo, hi) */
-    bool strictEventMasks = true;              /* EventMasks[1] all ones (M1-M4 core; mpssas registers IR events) */
+    bool strictEventMasks = true;              /* EventMasks[1] all ones (pre-FreeBSD core; mpssas registers IR events) */
     uint16_t maxTargets = 0;                   /* IOCFacts.MaxTargets */
     uint16_t requestCredit = 100;              /* IOCFacts.RequestCredit */
     uint16_t replyPostDepth = 128;             /* IOCFacts.MaxReplyDescriptorPostQueueDepth */

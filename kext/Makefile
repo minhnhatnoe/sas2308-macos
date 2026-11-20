@@ -100,7 +100,7 @@ check: $(KEXT)
 	@# kernel os_log drops any format with %{...} annotations (EINVAL in log_encode_fmt)
 	! grep -n '%{' $(KEXT_SRCS) mps_xnu_os.cpp mps_kext.cpp $(CORE_SRCS) ../core/*.h
 
-# Default checkers plus the array-bound and cstring ones used since M3.
+# Default checkers plus the array-bound and cstring ones (used since the pre-FreeBSD driver).
 ANALYZE := --analyze -Xanalyzer -analyzer-output=text \
            -Xanalyzer -analyzer-checker=security.ArrayBound,alpha.unix.cstring
 analyze: | $(BUILD)

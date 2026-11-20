@@ -12,7 +12,7 @@
 
 #include <stdint.h>
 
-/* ---- statistics (M4 MpsStats) -------------------------------------------- */
+/* ---- statistics (as the pre-FreeBSD driver's MpsStats) ------------------- */
 
 struct mps_xnu_stats {
 	/* IO */

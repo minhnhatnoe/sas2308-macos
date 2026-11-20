@@ -492,7 +492,7 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
 
     /*
      * Not inline_owner: ProcessParallelTask does not deliver completions
-     * (no family re-entry from the submit path, as in M4); anything another
+     * (no family re-entry from the submit path, as in the pre-FreeBSD driver); anything another
      * ccb completes here goes to the done thread call.
      */
     mps_lock(sc);

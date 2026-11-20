@@ -354,7 +354,7 @@ struct Rig {
         mps_unlock(sc);
         return io->done ? kDone : io->ccb->ccb_h.xnu_held ? kHeld : kPosted;
     }
-    /* A READ(10) of 4 KiB from `buf' (slot = seed % 16), as the M4 rig did. */
+    /* A READ(10) of 4 KiB from `buf' (slot = seed % 16), as the milestone-M4 rig did. */
     Buf rbuf;
     Io *Read(uint16_t handle, uint64_t lun = 0, uint8_t seed = 7) {
         uint8_t cdb[10] = {0x28, 0, 0, 0, 0, seed, 0, 0, 8, 0};

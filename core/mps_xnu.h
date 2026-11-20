@@ -106,7 +106,7 @@ int	mps_xnu_ratelimit_allow(struct mps_xnu_ratelimit *rl, uint64_t now_ms,
 int	mps_xnu_ratelimit_flush(struct mps_xnu_ratelimit *rl, uint64_t now_ms,
 	    uint32_t window_ms, uint32_t *suppressed);
 
-/* ---- statistics (M4 MpsStats): mps_xnu_stats.h ------------------------- */
+/* ---- statistics: mps_xnu_stats.h ---------------------------------------- */
 
 #include "mps_xnu_stats.h"
 
@@ -212,7 +212,8 @@ void	mps_xnu_disable(struct mps_softc *sc, int error);
 void	mps_xnu_stats_update(struct mps_softc *sc);
 /* queue sc->mps_reinit_task (mps_reinit sleeps: never called inline) */
 void	mps_xnu_request_reinit(struct mps_softc *sc, const char *why);
-/* M2-M4: doorbell FAULT check when an interrupt finds the queue empty */
+/* doorbell FAULT check when an interrupt finds the queue empty (as the
+ * pre-FreeBSD driver did) */
 void	mps_xnu_check_fault(struct mps_softc *sc);
 /* 1 s from mps_periodic: rate-limit summaries, statistics */
 void	mps_xnu_periodic(struct mps_softc *sc);

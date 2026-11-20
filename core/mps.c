@@ -2539,7 +2539,7 @@ mps_intr_locked(void *data)
 		}
 	}
 
-	/* XNU: M2-M4 doorbell check when an interrupt finds nothing */
+	/* XNU: doorbell FAULT check when an interrupt finds nothing */
 	if (pq == sc->replypostindex)
 		mps_xnu_check_fault(sc);
 
@@ -2573,7 +2573,7 @@ mps_dispatch_event(struct mps_softc *sc, uintptr_t data,
 
 	/*
 	 * XNU: acknowledge events that ask for it (FreeBSD never sends
-	 * EVENT_ACK; M1-M4 did, as Linux mpt2sas does).
+	 * EVENT_ACK; the pre-FreeBSD driver did, as Linux mpt2sas does).
 	 */
 	sc->xnu.stats.events++;
 	mps_xnu_event_ack(sc, reply);

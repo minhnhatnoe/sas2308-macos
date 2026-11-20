@@ -18,7 +18,7 @@
  *                  segments allowed when the tag allows them (chain pool)
  *      callouts    one thread_call per mutex, armed for its earliest callout
  *      taskqueue   one thread_call per queue (the reinit task)
- *      log         os_log, one category per mps_dprint class (M4), or IOLog
+ *      log         os_log, one category per mps_dprint class, or IOLog
  * 2. The mps_kext_*() calls of mps_xnu_os.h for the IOKit class: the call
  *    sequence of test/mock_ioc_test.cpp `Rig', ccbs for SCSI IO and task
  *    management, completions queued for the class to deliver without
@@ -74,7 +74,7 @@ static_assert(sizeof(struct mps_kext_seg) == sizeof(bus_dma_segment_t) &&
               offsetof(struct mps_kext_seg, len) == offsetof(bus_dma_segment_t, ds_len), "segments");
 
 /* ======================================================================
- * Logging: one os_log handle per FreeBSD debug class (= category), M4.
+ * Logging: one os_log handle per FreeBSD debug class (= category).
  * ==================================================================== */
 
 /* os_log subsystem = the bundle identifier (Makefile: SAS2308_BUNDLE_ID = CFBundleIdentifier) */
@@ -540,7 +540,7 @@ void mps_os_log(device_t dev, uint32_t cls, const char *line)
     mps_kext_log(HostOf(dev), cls, line);
 }
 
-/* KASSERT / panic(): never panic the Mac for the driver's sake (M2-M4). */
+/* KASSERT / panic(): never panic the Mac for the driver's sake. */
 void mps_os_assert_fail(const char *msg)
 {
     char line[256];
