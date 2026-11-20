@@ -2270,7 +2270,7 @@ static void SleepTests()
     }
 }
 
-/* ---- review fixes (docs/reviews/2026-11-final.md) ---------------------------------
+/* ---- review fixes (docs/reviews/2026-11-final.md) ---------------------------
  * Each scenario failed on the code before its fix (REVIEW_BEFORE builds them
  * against the old API; MOCK_ONLY=<id> runs one).
  */

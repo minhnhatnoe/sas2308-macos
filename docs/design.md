@@ -586,7 +586,7 @@ third-party HBAs is used.
   "Config page failures" 0, `ioreg -l | grep "IOC Temperature"`).
 
 ## Review fixes (branch review-fixes, 2026-11-20)
-Driven by `docs/reviews/2026-11-final.md` (ids below are its ids). FreeBSD behaviour preferred;
+Driven by the review in `docs/reviews/2026-11-final.md` (the ids below are its ids: "review C1"). FreeBSD behaviour preferred;
 deviations marked `XNU:` in the code. Every fix has a host scenario that failed on the code before
 it (core: `REVIEW_BEFORE` build of `mock_ioc_test`, `MOCK_ONLY=<id>`; kext: the behaviour-preserving
 glue of the first commit, `KGLUE_ONLY=<id>`) and passes after.
