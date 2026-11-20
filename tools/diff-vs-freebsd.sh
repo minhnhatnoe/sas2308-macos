@@ -8,6 +8,8 @@
 # Mechanical differences are stripped from both sides before diffing: #include
 # lines and __FBSDID. Everything else (including /* XNU: ... */ deviations)
 # shows up. REF overrides the FreeBSD tree (default ref/freebsd-src/sys/dev/mps).
+# Without that tree the pristine files come from the vendor branch
+# (git show vendor/freebsd-mps:core/<file>; VENDOR overrides the branch).
 set -eu
 top=$(cd "$(dirname "$0")/.." && pwd)
 ref=${REF:-$top/ref/freebsd-src/sys/dev/mps}
@@ -15,11 +17,22 @@ files="mpsvar.h mps_sas.h mps_table.h mps.c mps_config.c mps_sas.c mps_sas_lsi.c
 summary_only=0
 if [ "${1:-}" = "-s" ]; then summary_only=1; shift; fi
 [ $# -gt 0 ] && files="$*"
-[ -d "$ref" ] || { echo "no FreeBSD tree at $ref (see ref/FREEBSD_REF.txt)" >&2; exit 1; }
+vendor=${VENDOR:-vendor/freebsd-mps}
+if [ -d "$ref" ]; then
+	upstream() { cat "$ref/$1"; }
+elif [ -z "${REF:-}" ] && git -C "$top" rev-parse -q --verify "$vendor^{commit}" >/dev/null; then
+	upstream() { git -C "$top" show "$vendor:core/$1"; }
+elif [ -n "${REF:-}" ]; then
+	echo "no FreeBSD tree at $ref" >&2
+	exit 1
+else
+	echo "no FreeBSD tree at $ref and no $vendor branch (see core/VENDOR.txt)" >&2
+	exit 1
+fi
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
-strip() { grep -vE '^[[:space:]]*#[[:space:]]*include[[:space:]]|^__FBSDID' "$1" || true; }
+strip() { grep -vE '^[[:space:]]*#[[:space:]]*include[[:space:]]|^__FBSDID' || true; }
 
 printf '%-14s %7s %7s %7s %7s %7s %5s\n' file freebsd ours common added removed xnu > "$tmp/sum"
 tf=0; to=0; tc=0; ta=0; tr=0; tx=0
@@ -28,8 +41,8 @@ for f in $files; do
 		printf '%-14s %s\n' "$f" "(not ported yet)" >> "$tmp/sum"
 		continue
 	fi
-	strip "$ref/$f" > "$tmp/a"
-	strip "$top/core/$f" > "$tmp/b"
+	upstream "$f" | strip > "$tmp/a"
+	strip < "$top/core/$f" > "$tmp/b"
 	if [ $summary_only -eq 0 ]; then
 		diff -u --label "freebsd/$f" --label "core/$f" "$tmp/a" "$tmp/b" || true
 	fi
