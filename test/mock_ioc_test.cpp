@@ -1206,7 +1206,9 @@ static void AsyncTests()
 
     printf("async: more timed-out targets than TM SMIDs\n");
     {
-        Rig g({0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x000E});
+        /* 4 TMs (the pool before the review fixes), so 6 targets must wait */
+        Rig g({0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x000E},
+              [](Rig &r) { r.sc->max_prireqframes = 4; r.ioc.tmSmidHi = 1 + 4; });
         MockIocModel &m = g.ioc;
         const size_t mark = LogMark();
         m.holdIo = true; m.tmDeferMask = 1u << kAbortT;
@@ -1216,7 +1218,7 @@ static void AsyncTests()
             CHECK(g.Go(io.back()) == kPosted);
             CHECK(g.Timeout(io.back()) == 0);
         }
-        CHECK(g.TmsBusy() == MPS_XNU_PRI_REQ_FRAMES && m.tms.size() == MPS_XNU_PRI_REQ_FRAMES);
+        CHECK(g.TmsBusy() == 4 && m.tms.size() == 4);
         CHECK(HasLog(mark, "failed to allocate a tm"));
         for (int round = 0; round < 3 && g.Stats().recovered_abort < 6; round++) {
             m.ReleaseTm();
@@ -1431,7 +1433,7 @@ static void LoggingTests()
         Rig g;
         CHECK(HasLog(mark, "Firmware: 20.00.00.00, Driver: "));
         CHECK(HasLog(mark, "IOCCapabilities: "));
-        CHECK(HasLog(mark, "Sized queues to q=1 reqs=76 replies=107"));
+        CHECK(HasLog(mark, "Sized queues to q=1 reqs=80 replies=111"));
         CHECK(HasLog(mark, "FWVersion= 20-0-0-0") && HasLog(mark, "HighPriorityCredit: 8"));
         CHECK(HasLog(mark, "IOCInit"));
         CHECK(HasLog(mark, "reply frames busaddr") && HasLog(mark, "sense frames busaddr"));
@@ -2181,6 +2183,29 @@ static void ReviewTests()
         CHECK(g.Go(r) == kPosted);
         g.Pump();
         CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
+    if (Want("H4")) {
+        /* a whole enclosure goes: 7 removals in one event batch, 4 TMs */
+        const std::vector<uint16_t> seven = {0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x000E, 0x000F};
+        Rig g(seven, [](Rig &r) { r.sc->max_prireqframes = 4; r.ioc.tmSmidHi = 1 + 4; });
+        MockIocModel &m = g.ioc;
+        std::vector<target_id_t> tids;
+        for (uint16_t h : seven) tids.push_back(g.Tid(h));
+        const int removes = m.removeDevices;
+        std::vector<int> scans;
+        for (target_id_t t : tids) scans.push_back(g.Scans(t));
+        m.PostTopologyEvent(seven, MPI2_EVENT_SAS_TOPO_RC_TARG_NOT_RESPONDING);
+        HostRunPending();
+        g.Pump();
+        HostRunPending();
+        CHECK(m.removeDevices == removes + 7);
+        for (size_t i = 0; i < tids.size(); i++) {
+            CHECK(g.Scans(tids[i]) == scans[i] + 1);        /* the OS heard of every removal */
+            CHECK(!mps_xnu_target_present(g.sc, tids[i], nullptr));
+            CHECK(g.sc->sassc->targets[tids[i]].handle == 0);
+        }
+        CHECK(g.TmsBusy() == 0);
     }
 
     if (Want("H5")) {

@@ -48,6 +48,8 @@
 MALLOC_DEFINE(M_MPSSAS, "MPSSAS", "MPS SAS memory");
 
 static void mpssas_remove_device(struct mps_softc *, struct mps_command *);
+static void mpssas_xnu_send_remove(struct mps_softc *, struct mpssas_target *,
+    struct mps_command *);
 static void mpssas_remove_complete(struct mps_softc *, struct mps_command *);
 static void mpssas_action(struct cam_sim *sim, union ccb *ccb);
 static void mpssas_poll(struct cam_sim *sim);
@@ -284,7 +286,6 @@ mpssas_log_command(struct mps_command *cm, u_int level, const char *fmt, ...)
 void
 mpssas_prepare_remove(struct mpssas_softc *sassc, uint16_t handle)
 {
-	MPI2_SCSI_TASK_MANAGE_REQUEST *req;
 	struct mps_softc *sc;
 	struct mps_command *cm;
 	struct mpssas_target *targ = NULL;
@@ -304,15 +305,35 @@ mpssas_prepare_remove(struct mpssas_softc *sassc, uint16_t handle)
 
 	targ->flags |= MPSSAS_TARGET_INREMOVAL;
 
-	cm = mpssas_alloc_tm(sc);
-	if (cm == NULL) {
-		mps_dprint(sc, MPS_ERROR,
-		    "%s: command alloc failure\n", __func__);
-		return;
-	}
-
+	/*
+	 * XNU: the OS learns of the removal now, whether or not a TM is
+	 * free; a removal that finds none waits for one (mpssas_free_tm ->
+	 * mpssas_xnu_retry_recovery) instead of being dropped: one event
+	 * batch can remove more devices than there are TMs.
+	 */
 	mpssas_rescan_target(sc, targ);
 
+	cm = mpssas_alloc_tm(sc);
+	if (cm == NULL) {
+		mps_dprint(sc, MPS_ERROR|MPS_RECOVERY,
+		    "%s: command alloc failure, removal of target %u queued\n",
+		    __func__, targ->tid);
+		targ->flags |= MPSSAS_TARGET_XNU_REMOVE_WAIT;
+		sc->xnu.stats.removals_queued++;
+		return;
+	}
+	mpssas_xnu_send_remove(sc, targ, cm);
+}
+
+/* XNU: the target reset that starts a removal (mpssas_prepare_remove) */
+static void
+mpssas_xnu_send_remove(struct mps_softc *sc, struct mpssas_target *targ,
+    struct mps_command *cm)
+{
+	MPI2_SCSI_TASK_MANAGE_REQUEST *req;
+	uint16_t handle = targ->handle;
+
+	targ->flags &= ~MPSSAS_TARGET_XNU_REMOVE_WAIT;
 	req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)cm->cm_req;
 	req->DevHandle = htole16(targ->handle);
 	req->TaskType = MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET;
@@ -2349,9 +2370,25 @@ mpssas_xnu_retry_recovery(struct mps_softc *sc)
 
 	if (sassc == NULL || MPS_XNU_RESETTING(sc))
 		return;
+	/* removals first: a removed device needs no recovery */
+	for (i = 0; i < sassc->maxtargets; i++) {
+		targ = &sassc->targets[i];
+		if ((targ->flags & MPSSAS_TARGET_XNU_REMOVE_WAIT) == 0)
+			continue;
+		if (targ->handle == 0) {
+			targ->flags &= ~MPSSAS_TARGET_XNU_REMOVE_WAIT;
+			continue;
+		}
+		if ((cm = mpssas_alloc_tm(sc)) == NULL)
+			return;
+		mps_dprint(sc, MPS_RECOVERY|MPS_INFO, "starting the queued "
+		    "removal of target %u (TM freed)\n", targ->tid);
+		mpssas_xnu_send_remove(sc, targ, cm);
+	}
 	for (i = 0; i < sassc->maxtargets; i++) {
 		targ = &sassc->targets[i];
 		if (targ->tm != NULL || targ->handle == 0 ||
+		    (targ->flags & MPSSAS_TARGET_INREMOVAL) ||
 		    (cm = TAILQ_FIRST(&targ->timedout_commands)) == NULL)
 			continue;
 		if ((targ->tm = mpssas_alloc_tm(sc)) == NULL)

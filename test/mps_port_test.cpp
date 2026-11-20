@@ -156,7 +156,7 @@ static void TestAttach(struct mps_softc *sc)
     T(sc->facts->RequestCredit == 100);
     T(sc->num_prireqs == MPS_XNU_PRI_REQ_FRAMES);
     T(sc->num_reqs == MPS_XNU_REQ_FRAMES + MPS_XNU_PRI_REQ_FRAMES);
-    T(sc->num_replies == 107);              /* min(76 + 32, 128) - 1 */
+    T(sc->num_replies == 111);              /* min(80 + 32, 128) - 1 */
     T(sc->fqdepth == 112 && sc->pqdepth == 112);
     T(gIoc.fq == 112 && gIoc.pq == 112 && gIoc.frameSz == 128);
     T(sc->reqframesz == 128 && sc->replyframesz == 128);

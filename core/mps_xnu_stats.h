@@ -71,6 +71,7 @@ struct mps_xnu_stats {
 	int32_t		ioc_temp_c;		/* last reading, degrees C */
 	/* review fixes */
 	uint32_t	reinit_coalesced;	/* reinit requests covered by a running one */
+	uint32_t	removals_queued;	/* removals that waited for a free TM */
 };
 
 #endif /* !_MPS_XNU_STATS_H_ */

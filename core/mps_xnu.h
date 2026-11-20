@@ -24,7 +24,7 @@ struct mps_softc;
 #define MPS_XNU_IO_CMDS		64	/* SCSI IOs the OS may have outstanding */
 #define MPS_XNU_INTERNAL_CMDS	8	/* events, acks, port enable, removal */
 #define MPS_XNU_REQ_FRAMES	(MPS_XNU_IO_CMDS + MPS_XNU_INTERNAL_CMDS)
-#define MPS_XNU_PRI_REQ_FRAMES	4	/* task management */
+#define MPS_XNU_PRI_REQ_FRAMES	8	/* task management (removals of a whole enclosure) */
 #define MPS_XNU_EVT_REPLY_FRAMES 32
 #define MPS_XNU_REPLY_FRAMES	(MPS_XNU_REQ_FRAMES + MPS_XNU_PRI_REQ_FRAMES)
 #define MPS_XNU_MAXIO_PAGES	256	/* 1 MiB */
