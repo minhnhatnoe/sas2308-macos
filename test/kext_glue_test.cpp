@@ -594,6 +594,20 @@ int main()
         f.Detach();
     }
 
+    if (Want("D20a")) {
+        /* CHECK CONDITION whose autosense failed: completed as such, not a delivery failure to retry */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        m.autosenseFailDev = 0x0009;
+        FakeTask *t = f.NewRead(f.Tid(0x0009));
+        CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        CHECK(t->completions == 1 && t->done == SAS2308GluePort::kDoneStatus && t->scsiStatus == 0x02);
+        m.autosenseFailDev = 0;
+        f.Detach();
+    }
+
     printf("PASS (%d checks)\n", gChecks);
     return 0;
 }

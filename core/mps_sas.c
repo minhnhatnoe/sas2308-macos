@@ -1409,10 +1409,12 @@ mps_xnu_ccb_timeout(struct mps_softc *sc, union ccb *ccb)
 }
 
 /*
- * XNU: IO killed by our own reset (reinit, sleep) is retried by the OS only
- * if it is a READ or WRITE (IOSCSIBlockCommandsDevice); anything else
- * (SYNCHRONIZE CACHE, pass-through) would fail upward.  Re-send it from
- * the held queue instead, a few times at most.
+ * XNU: IO killed by our own reset (reinit, sleep) is re-sent from the held
+ * queue, a few times at most, as cam_periph_error retries CAM_SCSI_BUS_RESET
+ * without counting it.  The OS would retry only READ/WRITE, spending one of
+ * IOBlockStorageServices' retries (D20b); anything else (SYNCHRONIZE CACHE,
+ * pass-through) would fail upward.  The drive never saw the command, so a
+ * replayed WRITE is what CAM does too.
  */
 static int
 mpssas_xnu_reset_requeue(struct mps_softc *sc, union ccb *ccb)
@@ -1424,11 +1426,6 @@ mpssas_xnu_reset_requeue(struct mps_softc *sc, union ccb *ccb)
 		return (0);
 	op = (ccb->ccb_h.flags & CAM_CDB_POINTER) ?
 	    ccb->csio.cdb_io.cdb_ptr[0] : ccb->csio.cdb_io.cdb_bytes[0];
-	switch (op) {
-	case 0x08: case 0x0a: case 0x28: case 0x2a:	/* READ/WRITE 6, 10 */
-	case 0x88: case 0x8a: case 0xa8: case 0xaa:	/* 16, 12 */
-		return (0);
-	}
 	ccb->ccb_h.xnu_resets++;
 	sc->xnu.stats.reset_requeues++;
 	mps_dprint(sc, MPS_RECOVERY, "%s for target %u killed by a reset: "
@@ -2000,8 +1997,12 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 		 */
 		if (cm->cm_targ->devinfo == 0)
 			mpssas_set_ccbstatus(ccb, CAM_REQ_CMP);
-		else
+		else {
 			mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
+			/* XNU: cam_periph_error's AC_LOST_DEVICE (D20c) */
+			if ((cm->cm_targ->flags & MPSSAS_TARGET_INREMOVAL) == 0)
+				mpssas_rescan_target(sc, cm->cm_targ);
+		}
 		break;
 	case MPI2_IOCSTATUS_INVALID_SGL:
 		mps_print_scsiio_cmd(sc, cm);

@@ -129,6 +129,14 @@ static void mps_kext_result(struct mps_kext_task *t, struct mps_kext_io_result *
     case CAM_NO_HBA:
         res->kind = MPSK_IO_GONE;
         break;
+    case CAM_AUTOSENSE_FAIL:
+        /*
+         * CHECK CONDITION whose sense could not be fetched: the device's
+         * answer, without sense (cam_periph_error: EIO, no retry; D20a).
+         */
+        res->kind = MPSK_IO_STATUS;
+        res->scsi_status = MPI2_SCSI_STATUS_CHECK_CONDITION;
+        break;
     case CAM_CMD_TIMEOUT:
         res->kind = MPSK_IO_TIMEOUT;
         break;

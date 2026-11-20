@@ -479,6 +479,13 @@ static uint64_t Fast(uint16_t smid)
     return (uint64_t)MPI2_RPY_DESCRIPT_FLAGS_SCSI_IO_SUCCESS | ((uint64_t)smid << 16);
 }
 
+/* D20b: READ/WRITE killed by our reset is re-sent (outstanding or held again, or done) */
+static void CheckResent(Io *io)
+{
+    CHECK(io->ccb->ccb_h.xnu_resets >= 1);
+    CHECK(!io->done || io->status == CAM_REQ_CMP);
+}
+
 static void AsyncTests();
 static void LoggingTests();
 static void ConfigTests();
@@ -655,12 +662,16 @@ int main()
         const uint32_t reinits = g.Stats().reinits;
         CHECK(g.ForceReinit() == 0 && g.Stats().reinits == reinits + 1);
         HostRunPending();                                           /* rediscovery */
-        CHECK(a->status == CAM_SCSI_BUS_RESET);
-        CHECK(b->status == CAM_SCSI_BUS_RESET);
-        CHECK(c->status == CAM_SCSI_BUS_RESET);
-        CHECK(g.ChainsFree() == g.ChainsTotal() && g.ChainsTotal() == ioc.requestCredit * 29);
+        /* killed by our reset: re-sent after it (D20b), the IOC holds them again */
+        CHECK(!a->done && !b->done && !c->done);
+        CHECK(g.IoOutstanding(a) && g.IoOutstanding(b) && g.IoOutstanding(c));
+        CHECK(g.ChainsFree() == g.ChainsTotal() - 2 - 29 - 29 && g.ChainsTotal() == ioc.requestCredit * 29);
         CHECK(g.MaxSegs() == MPS_XNU_MAXIO_PAGES + 1);
         ioc.holdIo = false;
+        ioc.ReleasePending();
+        g.Pump();
+        CHECK(a->status == CAM_REQ_CMP && b->status == CAM_REQ_CMP && c->status == CAM_REQ_CMP);
+        CHECK(g.ChainsFree() == g.ChainsTotal());
         DataIo(g, CAM_DIR_IN, sMax, big, 7);
     }
 
@@ -787,8 +798,8 @@ int main()
         CHECK(g.ReinitQueued() && ioc.diagResetCount == diag);      /* decided, not done: nothing blocked */
         CHECK(g.RunReinit() == 0);
         CHECK(ioc.diagResetCount == diag + 1 && g.AsyncCount(AC_BUS_RESET) == rs + 1 && ioc.portEnables == pe + 1);
-        CHECK(io->status == CAM_SCSI_BUS_RESET);
-        CHECK(by->status == CAM_SCSI_BUS_RESET);
+        CheckResent(io);
+        CheckResent(by);
         CHECK(g.Scans(0) == scans + 1 && g.sc->port_enable_complete && g.Present(0, 0x0009));
         CHECK(!(ioc.him & MPI2_HIM_RIM));                            /* interrupts restored */
         CHECK(ioc.state == MPI2_IOC_STATE_OPERATIONAL && g.Stats().reinits == kReinits0 + 1);
@@ -808,7 +819,10 @@ int main()
         CHECK(g.RunReinit() == 0);
         CHECK(ioc.tms.size() == n + 1);                              /* no LUN/target reset */
         CHECK(g.Stats().tm_timeouts == 1 && g.Stats().reinits == kReinits0 + 2);
-        CHECK(io->status == CAM_SCSI_BUS_RESET);
+        CheckResent(io);
+        ioc.ReleasePending();                                        /* the re-sent IO */
+        g.Pump();
+        CHECK(io->done && io->status == CAM_REQ_CMP);
         ioc.tmIgnoreMask = 0;
     }
 
@@ -822,7 +836,7 @@ int main()
         ioc.dropCompletion = false;
         g.Escalate(io);
         CHECK(g.RunReinit() == 0);
-        CHECK(io->status == CAM_SCSI_BUS_RESET);
+        CheckResent(io);
         Io *again = ioAt(0);
         CHECK(g.Go(again) == kPosted);                               /* and the path works again */
         g.Pump();
@@ -843,8 +857,8 @@ int main()
         CHECK(c->ccb->ccb_h.xnu_held && g.HeldCount() == 1);
         CHECK(g.Tm(kTgtT, 0, 0)->status == CAM_BUSY);
         CHECK(g.RunReinit() == 0 && !g.Faulted());
-        CHECK(a->status == CAM_SCSI_BUS_RESET);
-        CHECK(b->status == CAM_SCSI_BUS_RESET);
+        CheckResent(a);
+        CheckResent(b);
         CHECK(g.IoOutstanding(c) && g.HeldCount() == 0);             /* posted after the reinit */
         ioc.holdIo = false;
         ioc.ReleasePending();
@@ -862,8 +876,11 @@ int main()
         g.Interrupt();                                               /* nothing answered: doorbell check */
         CHECK(g.Faulted() && g.ReinitQueued());
         CHECK(g.RunReinit() == 0);
-        CHECK(io->status == CAM_SCSI_BUS_RESET);
+        CheckResent(io);
         ioc.holdIo = false; ioc.faultOnTm = false;
+        ioc.ReleasePending();                                        /* the re-sent IO */
+        g.Pump();
+        CHECK(io->done && io->status == CAM_REQ_CMP);
         Io *again = ioAt(0);
         CHECK(g.Go(again) == kPosted);
         g.Pump();
@@ -907,8 +924,8 @@ int main()
         g2.ioc.diagStuck = true;
         CHECK(g2.ForceReinit() != 0 && g2.Gone());
         CHECK(g2.Stats().reinit_failures == MPS_XNU_REINIT_TRIES && g2.ioc.diagResetCount == 3 + 1);
-        /* completed (retryably) once RESET_ADAPTER was written: the IOC no longer owned it */
-        CHECK(r->status == CAM_SCSI_BUS_RESET);
+        /* requeued once RESET_ADAPTER was written (D20b), failed with the dead controller */
+        CHECK(r->ccb->ccb_h.xnu_resets == 1 && r->status == CAM_DEV_NOT_THERE);
         Io *r2 = g2.NewIo(0, 0, CAM_DIR_IN, rd10, 10, {{d2.iova, 4096}});
         CHECK(g2.Go(r2) == kDone && r2->status == CAM_DEV_NOT_THERE);
         FreeBuf(g2.ioc, d2);
@@ -988,7 +1005,8 @@ int main()
         m.ioc.holdIo = false;
         CHECK(m.ForceReinit() == 0 && m.ChainsFree() == 5 && m.ChainsTotal() == 5);
         HostRunPending();                                             /* rediscovery, f sent */
-        CHECK(e->status == CAM_SCSI_BUS_RESET && f->status == CAM_REQ_CMP);
+        m.Pump();
+        CHECK(e->status == CAM_REQ_CMP && e->ccb->ccb_h.xnu_resets == 1 && f->status == CAM_REQ_CMP);
         DataIo(m, CAM_DIR_IN, s17, b, 9);
         FreeBuf(m.ioc, b);
         m.Detach();
@@ -1135,7 +1153,7 @@ static void AsyncTests()
         CHECK(g.RunReinit() == 0);
         gHost.onOtherThreads = nullptr;
         CHECK(during > 0 && f6 != nullptr);
-        CHECK(f->status == CAM_SCSI_BUS_RESET);
+        CHECK(f->status == CAM_REQ_CMP && f->ccb->ccb_h.xnu_resets == 1);   /* re-sent after the reset (D20b) */
         CHECK(f5->status == CAM_CMD_TIMEOUT);
         CHECK(f6->done == 1 && f6->status == CAM_REQ_CMP && g.HeldCount() == 0);   /* sent after the reinit */
         CHECK(m.portEnables == 2);
@@ -1266,7 +1284,8 @@ static void AsyncTests()
         CHECK(m.diagResetCount == diag + 2 && g.Stats().reinit_failures == 1 && g.Stats().reinits == 1);
         CHECK(HasLog(mark, "reinit attempt 1 of 3 failed, retrying"));
         CHECK(HasLog(mark, "reinit done in"));
-        CHECK(f->status == CAM_SCSI_BUS_RESET && f->done == 1);
+        g.Pump();
+        CHECK(f->status == CAM_REQ_CMP && f->done == 1 && f->ccb->ccb_h.xnu_resets == 1);   /* re-sent (D20b) */
         Io *again = g.Read(0x0009, 0, 7);
         CHECK(g.Go(again) == kPosted);
         g.Pump();
@@ -2178,7 +2197,7 @@ static void SleepTests()
         CHECK(Resume(g) == 0);
     }
 
-    printf("sleep: IO still in flight after the drain -> MUR, completed as a reset (retried, held), resumes after wake\n");
+    printf("sleep: IO still in flight after the drain -> MUR, requeued (held), re-sent after wake\n");
     {
         Rig g;
         MockIocModel &m = g.ioc;
@@ -2189,16 +2208,16 @@ static void SleepTests()
         const uint64_t t0 = m.nowUs;
         CHECK(Suspend(g, 200) == 0);
         CHECK(m.nowUs - t0 >= 200000 && m.nowUs - t0 < 1000000);     /* waited the drain time, not more */
-        CHECK(a->done && a->status == CAM_SCSI_BUS_RESET);            /* kext: DeliveryFailure, retried */
+        CHECK(!a->done && a->ccb->ccb_h.xnu_held && a->ccb->ccb_h.xnu_resets == 1);   /* requeued (D20b) */
         CHECK(m.pending.empty() && g.ChainsFree() == g.ChainsTotal());
         CHECK(g.Stats().suspend_drain_left == 1);
         CHECK(HasLog(mark, "suspend: 1 commands still outstanding after 200 ms, stopping the IOC"));
         m.holdIo = false;
-        /* the retry and new IO while asleep: held, not posted */
+        /* new IO while asleep: held, not posted */
         const int posted = (int)m.sglChecked;
         Io *r = g.Read(0x0009, 0, 3), *n = g.Read(0x000A, 0, 4), *t = g.Read(0x000A, 0, 5);
-        CHECK(g.Go(r) == kHeld && g.Go(n) == kHeld && g.Go(t) == kHeld && g.HeldCount() == 3);
-        CHECK(g.Timeout(t) == 0 && t->done && t->status == CAM_CMD_TIMEOUT && g.HeldCount() == 2);
+        CHECK(g.Go(r) == kHeld && g.Go(n) == kHeld && g.Go(t) == kHeld && g.HeldCount() == 4);
+        CHECK(g.Timeout(t) == 0 && t->done && t->status == CAM_CMD_TIMEOUT && g.HeldCount() == 3);
         Io *tm = g.Tm(MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET, g.Tid(0x0009), 0);
         CHECK(tm->done && tm->status == CAM_BUSY);                    /* no TMs while asleep */
         g.Pump(); HostAdvance(2000);
@@ -2206,6 +2225,7 @@ static void SleepTests()
         CHECK(Resume(g) == 0);
         g.Pump();
         CHECK(r->done && r->status == CAM_REQ_CMP && n->done && n->status == CAM_REQ_CMP);
+        CHECK(a->done && a->status == CAM_REQ_CMP);
         CHECK(g.HeldCount() == 0 && g.sc->io_cmds_active == 0);
     }
 
@@ -2236,9 +2256,11 @@ static void SleepTests()
         CHECK(!tm->done && g.TmsBusy() == 1);
         CHECK(Suspend(g, 100) == 0);
         CHECK(tm->done && tm->status == CAM_REQ_ABORTED);
-        CHECK(a->done && a->status == CAM_SCSI_BUS_RESET && g.TmsBusy() == 0);
+        CHECK(!a->done && a->ccb->ccb_h.xnu_resets == 1 && g.TmsBusy() == 0);   /* requeued (D20b) */
         m.holdDev = 0; m.tmIgnoreMask = 0;
         CHECK(Resume(g) == 0);
+        g.Pump();
+        CHECK(a->done && a->status == CAM_REQ_CMP);
         Io *b = g.Read(0x0009, 0, 7);
         CHECK(g.Go(b) == kPosted);
         g.Pump();
@@ -2413,8 +2435,11 @@ static void ReviewTests()
         const uint64_t t0 = m.nowUs;
         Suspend(g, 100);
         CHECK(m.nowUs - t0 < 15000000);
-        CHECK(a->done && a->deadAtDone == dead + 1);
+        CHECK(gHost.dead == dead + 1);
+        CHECK(a->done ? a->deadAtDone == dead + 1 : a->ccb->ccb_h.xnu_held);   /* D20b: requeued, held */
         m.holdIo = false;
+        g.Detach();
+        CHECK(a->done && a->deadAtDone >= dead + 1);
     }
 
     if (Want("M2")) {
@@ -2448,7 +2473,7 @@ static void ReviewTests()
     }
 
     if (Want("M6")) {
-        /* SYNCHRONIZE CACHE in flight at a reinit: re-sent (the OS retries only READ/WRITE) */
+        /* SYNCHRONIZE CACHE in flight at a reinit: re-sent (the OS retries only READ/WRITE; D20b: those too) */
         Rig g;
         MockIocModel &m = g.ioc;
         m.holdIo = true;
@@ -2461,7 +2486,7 @@ static void ReviewTests()
         RequestReinit(g, "test");
         HostAdvance(2000);
         g.Pump();
-        CHECK(r->done && r->status == CAM_SCSI_BUS_RESET);     /* READ: retried by the OS */
+        CHECK(r->done && r->status == CAM_REQ_CMP);           /* READ: re-sent too since D20b */
         CHECK(s->done && s->status == CAM_REQ_CMP);           /* re-sent by us after the reinit */
         /* bounded: killed by 4 resets in a row, the 4th failure goes up */
         m.holdIo = true;
@@ -2636,6 +2661,45 @@ static void DeviationTests()
         CHECK(g.Go(r) == kPosted);
         g.Pump();
         CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
+    if (Want("D20b")) {
+        /* READ/WRITE killed by our own reset: re-sent (CAM requeues it uncounted), bounded */
+        Rig g;
+        MockIocModel &m = g.ioc;
+        m.holdIo = true;
+        Io *r = g.Read(0x0009, 0, 4);
+        CHECK(g.Go(r) == kPosted);
+        m.holdIo = false;
+        RequestReinit(g, "test");
+        HostAdvance(2000);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);             /* no SAM retry spent */
+        m.holdIo = true;
+        Io *r2 = g.Read(0x0009, 0, 5);
+        CHECK(g.Go(r2) == kPosted);
+        for (int i = 0; i < 4 && !r2->done; i++) {
+            RequestReinit(g, "test");
+            HostAdvance(2000);
+            g.Pump();
+        }
+        CHECK(r2->done && r2->status == CAM_SCSI_BUS_RESET);    /* the 4th reset in a row goes up */
+        m.holdIo = false;
+    }
+
+    if (Want("D20c")) {
+        /* the firmware says the device is not there: DEV_NOT_THERE, and the OS rechecks the target now */
+        Rig g;
+        MockIocModel &m = g.ioc;
+        const target_id_t t = g.Tid(0x0009);
+        const int scans = g.Scans(t);
+        m.notThereDev = 0x0009;
+        Io *r = g.Read(0x0009, 0, 4);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_DEV_NOT_THERE);
+        CHECK(g.Scans(t) == scans + 1);
+        m.notThereDev = 0;
     }
 
     /* D8: a SATA IDENTIFY that fails in a reinit's rediscovery (spin-up after a wake) */

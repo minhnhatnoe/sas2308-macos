@@ -71,6 +71,8 @@ struct MockIocModel {
     uint16_t failDev = 0;                      /* IOs to this handle fail: IO_DATA_ERROR + MEDIUM ERROR sense */
     uint16_t ccDev = 0;                        /* IOs to this handle: IOCStatus success, CHECK CONDITION ccKey/ccAsc/ccAscq */
     uint8_t ccKey = 0x03, ccAsc = 0x11, ccAscq = 0x00;
+    uint16_t autosenseFailDev = 0;             /* IOs to this handle: CHECK CONDITION, autosense failed */
+    uint16_t notThereDev = 0;                  /* IOs to this handle: IOCStatus SCSI_DEVICE_NOT_THERE */
     std::vector<uint16_t> devices = {0x0009};  /* announced by PortEnable */
     uint32_t tmIgnoreMask = 0;                 /* 1 << TaskType: never answer */
     uint32_t tmDeferMask = 0;                  /* 1 << TaskType: answer only on ReleaseTm() */
@@ -744,6 +746,18 @@ struct MockIocModel {
                 MPI2_SCSI_IO_REPLY sr{};
                 sr.MsgLength = sizeof(sr) / 4; sr.Function = fn; sr.DevHandle = q->DevHandle;
                 sr.SCSIStatus = 0x02; sr.SCSIState = MPI2_SCSI_STATE_AUTOSENSE_VALID; sr.SenseCount = 18;
+                AddressReply(smid, &sr, sizeof(sr));
+                return;
+            }
+            if ((autosenseFailDev && q->DevHandle == autosenseFailDev) ||
+                (notThereDev && q->DevHandle == notThereDev)) {
+                MPI2_SCSI_IO_REPLY sr{};
+                sr.MsgLength = sizeof(sr) / 4; sr.Function = fn; sr.DevHandle = q->DevHandle;
+                if (q->DevHandle == notThereDev) {
+                    sr.IOCStatus = MPI2_IOCSTATUS_SCSI_DEVICE_NOT_THERE;
+                } else {
+                    sr.SCSIStatus = 0x02; sr.SCSIState = MPI2_SCSI_STATE_AUTOSENSE_FAILED;
+                }
                 AddressReply(smid, &sr, sizeof(sr));
                 return;
             }

@@ -364,9 +364,10 @@ SAS2308Glue::DeliverCompletions(void)
         case MPSK_IO_REJECT:  done = SAS2308GluePort::kDoneReject; break;
         default:
             /*
-             * Reset (CAM_SCSI_BUS_RESET: reinit, or the IOC stopped for
-             * sleep), OS abort (CAM_REQ_ABORTED), transport errors: not the
-             * device's fault, a failure the upper layers retry.
+             * Reset (CAM_SCSI_BUS_RESET: killed by the 4th reinit or sleep
+             * in a row; the core re-sends it after the first 3, D20b), OS
+             * abort (CAM_REQ_ABORTED), transport errors: not the device's
+             * fault, a failure the upper layers retry.
              */
             done = SAS2308GluePort::kDoneRetry;
             break;

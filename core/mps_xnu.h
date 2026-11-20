@@ -44,7 +44,7 @@ struct mps_softc;
 #define MPS_XNU_SLEEP_STOP_MS	10000	/* sleep / detach: stop the IOC within */
 #define MPS_XNU_REINIT_STOP_MS	2000	/* suspend waits for a running reinit */
 #define MPS_XNU_RESUME_TRIES	20	/* all-ones tolerated 20 x 100 ms after wake */
-#define MPS_XNU_RESET_REQUEUES	3	/* non-R/W IO re-sent after our resets */
+#define MPS_XNU_RESET_REQUEUES	3	/* IO re-sent after our resets (M6, D20b) */
 
 /* ---- log levels: presets of the mps_dprint class mask ------------------ */
 
