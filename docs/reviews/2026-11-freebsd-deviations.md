@@ -45,22 +45,65 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 
 | Batch | Item | Status | Commit | Host test | Hardware |
 |---|---|---|---|---|---|
-| A | D1 | done | 2665587 | core `D1` | regression only (no SSD) |
-| A | D2 | done | f865cc8 | core `D2` | regression only |
+| A | D1 | done | 2665587 | core `D1` | regression OK; SSD: still to run |
+| A | D2 | done | f865cc8 | core `D2` | regression OK |
 | A | D5 | done | 5870a52 | glue `D5` | still to run (dock unplug) |
-| A | D3 | done | bb0b43e | glue `D3` | see "Batch A hardware results" |
-| A | D8 | done | 1297470 | core `D8`, `D8-swap`, `D8-giveup`; glue `D8` | see "Batch A hardware results" |
+| A | D3 | done | bb0b43e | glue `D3` | confirmed: 35 UAs (29/00) re-sent over 5 wakes, 0 F_FULLFSYNC errors |
+| A | D8 | done | 1297470 | core `D8`, `D8-swap`, `D8-giveup`; glue `D8` | 5x sleep/wake: no eject, 0 generation changes; swap: still to run |
 | A | D14 | done | 705347e | glue `D14`, `D14-cap` | still to run (disk pull) |
-| A | D20 | done | 3715d37 | glue `D20a`; core `D20b`, `D20c` | regression only |
+| A | D20 | done | 3715d37 | glue `D20a`; core `D20b`, `D20c` | regression OK |
 | A | KEEP comments D28, D43, D46 | done | 51b85a5 | none (comments) | |
 
 ### Batch A hardware results
 
-(filled in after the install)
+Build **DDA7E6AD** (fix-batch-A bb3a24c), installed 2026-11-20 18:23, 7 drives, 0 config page failures.
+
+- **D3 + D8, 5x sleep/wake under IO** (`pmset sleepnow` + `pmset schedule wake` 60 s later):
+  `~/hwA/fsyncw` writing 1 MiB + F_FULLFSYNC in a loop on both mounted JHFS+ test volumes, `sasbench`
+  4K random reads QD8 on the other 5 drives. Each wake: one diag reset (reinit 496 ms), and every
+  drive answered the first command with **UNIT ATTENTION 29/00**: `Unit attentions after reset
+  retried` 7 per wake, 35 in all, each re-sent (log `UNIT ATTENTION 29/00 after our reset,
+  re-sending the command`). **0 F_FULLFSYNC errors, 0 write errors**, both volumes stayed mounted
+  through all 5 cycles, `diskutil verifyVolume`: both OK. 0 targets destroyed, 0 identity changes,
+  0 IO timeouts / TMs / recoveries, no Error or Fault log lines. D3's symptom is confirmed real
+  (29/00 after every wake); before this batch each of those 7 would have reached SAM. The D8
+  keep-identity path did not trigger (every IDENTIFY answered: the drives stay spun up across a
+  Mac sleep, the dock has its own power); it is covered by the host tests and test 3 below.
+- **Regression** (drives unmounted): random 4K read QD32 all 7, 60 s: **1770 IOPS** (before 1748);
+  seq 1 MiB read QD2 all 7, 60 s: **1945.5 MB/s** (before 1941.5); verify 64 KiB random QD64,
+  256 MiB per drive: **0 mismatches, 0 errors**. `sas2308ctl stats` after all: 0 timeouts, 0 TMs,
+  0 recoveries, 0 held timeouts, 0 stale/bad replies; Reinits/Diag resets 5 (the 5 wakes); IOC 61 C.
 
 ### Hardware tests still to run
 
-(filled in after the install)
+Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found with
+`~/sasbench/sasdisks.sh`; after each test `sas2308ctl stats` and
+`/usr/bin/log show --last 10m --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'`.
+
+1. **D14 / M7, disk pull under IO.** Start `sasbench -b 4K -q 8 -p rand -t 300` on all 7 raw drives
+   (unmounted). Pull one drive from its breakout. Expect: its sasbench job gets errors, the other 6
+   continue at full rate; log `target N destroyed` and no `IOs still outstanding`; if the removal TM
+   never answers, `IOs still outstanding 60000 ms after its removal: controller reinit` and the
+   destroy only after it; no panic. Re-insert: the drive comes back (same disk = its old target id),
+   `Config page failures` 0.
+2. **D5, dock unplug under IO.** Mount one JHFS+ test volume, run `~/hwA/fsyncw <volume>/f 256 300`
+   on it and `sasbench` reads on 4 raw drives, then unplug the Thunderbolt cable of the dock. Expect:
+   no panic; log `terminating (controller gone)`, `surprise removal: controller disabled`, no
+   `IOs still outstanding at termination`; the writers end with ENXIO/EIO; the volume is
+   force-unmounted. Re-plug: the kext attaches again and finds the 7 drives.
+3. **D8, disk swapped during sleep.** `pmset sleepnow`; while asleep, exchange two drives between
+   their bays (or put a different drive in one bay); wake. Expect: drives that stayed keep their
+   nubs (no `target N destroyed`); a bay with another drive: its old nub destroyed and a new one
+   created, no IO of the old drive reaches the new one (`IDENTIFY shows a different disk` if that
+   IDENTIFY failed at first); a mounted volume of a moved drive is not written through the wrong nub.
+4. **D1, SATA SSD.** Attach a SATA SSD to a free breakout port; with IO on it, pull or reset another
+   drive (any TM is freed). Expect: the SSD keeps its target (no `starting the queued removal`,
+   no REMOVE_DEVICE for it); `MPS_TARGET_IS_SATA_SSD` is only used at shutdown (batch D, D9).
+5. **D3, forced target reset.** No unattended trigger exists (`sas2308ctl` has no TM command); the
+   target-reset path is covered by the host test (glue `D3`); the reinit path is confirmed on
+   hardware (sleep/wake above). With a TM trigger (pulled-and-reinserted cable while a drive is
+   busy, or a later debug hook): F_FULLFSYNC right after it must succeed and `Unit attentions after
+   reset retried` must go up.
 
 ## Ranked table: changes (CHANGE)
 

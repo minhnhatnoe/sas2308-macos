@@ -752,6 +752,11 @@ in `docs/reviews/2026-11-decisions.md`). Each host test failed on the code befor
 Comments for KEEP items in the files touched: D28 (EEDP), D43 (drain pump), D46 (no ORDERED tags).
 Hardware tests and their results: `docs/reviews/2026-11-freebsd-deviations.md` (Status).
 
+Verified on the Mac (build DDA7E6AD, 2026-11-20): every wake from sleep makes each of the 7 drives
+answer the first command with 29/00 (7 per wake, all re-sent); 5 sleep/wake cycles with
+F_FULLFSYNC writers on two mounted JHFS+ volumes: 0 errors, no eject, 0 identity changes, volumes
+verify OK. Random 4K QD32 1770 IOPS, seq 1 MiB 1945.5 MB/s, verify 0 mismatches.
+
 ## What is implemented (M1 – M4)
 > **Names after M5.** The tables and sections below are the M1–M4 history and use the names of
 > the deleted C++ core. Old → new: `MpsCore::Attach/Detach/Shutdown` → `mps_attach`/`mps_free`;
