@@ -728,7 +728,7 @@ struct MockIocModel {
                 /*
                  * TEST UNIT READY to a spun-down SATA drive (SAS2308, hardware
                  * 2026-11-20): CHECK CONDITION, NOT READY 0x04/0x02, IOCStatus
-                 * success, TransferCount 65536 although DataLength is 0.
+                 * success, TransferCount 65536 (also 0, 512, ...) although DataLength is 0.
                  */
                 uint8_t *s = Ptr(((uint64_t)senseHigh << 32) | q->SenseBufferLowAddress, 18);
                 memset(s, 0, 18); s[0] = 0x70; s[2] = 0x02; s[7] = 10; s[12] = 0x04; s[13] = 0x02;

@@ -2026,7 +2026,8 @@ static void CheckConditionLogTests(Rig &g)
     CHECK(g.Stats().err_check_condition == before.err_check_condition + 1);
     CHECK(HasLog(mark, "TEST UNIT READY lba 0 blocks 0 failed: IOCStatus success (0x0000) SCSI status check condition "
                        "(0x02) state 0x01 sense NOT READY (0x2) ASC/ASCQ 0x04/0x02 "));
-    CHECK(HasLog(mark, " len 0 IOC TransferCount 65536"));
+    CHECK(HasLog(mark, "ASC/ASCQ 0x04/0x02 LOGICAL UNIT NOT READY, INITIALIZING COMMAND REQUIRED no data") &&
+          !HasLog(mark, "TransferCount"));   /* the reply's TransferCount (65536) is meaningless without data */
     CHECK(LogClass(mark, "TEST UNIT READY lba 0 blocks 0 failed") == MPS_XINFO);
     for (size_t i = mark; i < gHost.log.size(); i++) CHECK(mps_xnu_log_type(gHost.log[i].cls) != MPS_XNU_LOG_ERROR);
     /* a flood (macOS polls every ~3 s per drive): none of it is an error line, none suppressed */

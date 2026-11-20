@@ -759,7 +759,7 @@ mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm, union ccb *ccb,
 	uint32_t blocks = 0;
 	const uint8_t *cdb = mps_xnu_cdb(ccb);
 	const char *ascs;
-	char li[64];
+	char li[64], xf[48];
 	struct mpssas_target *targ = cm->cm_targ;
 	int sense, recovered;
 	uint32_t cls;
@@ -892,38 +892,42 @@ mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm, union ccb *ccb,
 		snprintf(li, sizeof(li), " loginfo %s", d);
 	}
 	/*
-	 * len: the request's DataLength (dxfer_len; 0 with NODATATRANSFER for
-	 * a no-data CDB).  IOC TransferCount: the reply frame's field as the
-	 * IOC wrote it; like FreeBSD it is used only for DATA_UNDERRUN
-	 * (resid).  The SAS2308 reports 65536 for a SATA TEST UNIT READY
-	 * answered NOT READY (DataLength 0): the family still gets 0 bytes.
+	 * XNU: the transfer as "len N IOC TransferCount M": N is the request's
+	 * DataLength (dxfer_len), M the reply frame's field, which like
+	 * FreeBSD we use only for DATA_UNDERRUN (resid).  A no-data CDB is
+	 * sent with DataLength 0 and NODATATRANSFER; its reply's
+	 * TransferCount is not meaningful (SAS2308 on SATA TEST UNIT READY:
+	 * 0, 512, ... 65536, mostly 65536), so it is not printed: "no data".
 	 */
+	if (cm->cm_length == 0)
+		snprintf(xf, sizeof(xf), "no data");
+	else
+		snprintf(xf, sizeof(xf), "len %u IOC TransferCount %u",
+		    cm->cm_length, le32toh(rep->TransferCount));
 	if (sense) {
 		ascs = mps_xnu_asc_str(asc, ascq);
 		mps_dprint(sc, cls, "target %u (handle 0x%04x) lun %ju "
 		    "SMID %u %s lba %ju blocks %u %s: IOCStatus %s "
 		    "(0x%04x)%s SCSI status %s (0x%02x) state 0x%02x sense %s "
-		    "(0x%x) ASC/ASCQ 0x%02x/0x%02x%s%s len %u IOC TransferCount %u\n",
+		    "(0x%x) ASC/ASCQ 0x%02x/0x%02x%s%s %s\n",
 		    targ->tid, targ->handle, (uintmax_t)ccb->ccb_h.target_lun,
 		    cm->cm_desc.Default.SMID, mps_xnu_cdb_str(cdb[0]),
 		    (uintmax_t)lba, blocks, recovered ? "recovered" : "failed",
 		    mps_describe_table(mps_iocstatus_string, ioc), ioc, li,
 		    mps_describe_table(mps_scsi_status_string, rep->SCSIStatus),
 		    rep->SCSIStatus, rep->SCSIState, mps_xnu_sense_key_str(key),
-		    key, asc, ascq, ascs ? " " : "", ascs ? ascs : "",
-		    cm->cm_length, le32toh(rep->TransferCount));
+		    key, asc, ascq, ascs ? " " : "", ascs ? ascs : "", xf);
 	} else {
 		mps_dprint(sc, cls, "target %u (handle 0x%04x) lun %ju "
 		    "SMID %u %s lba %ju blocks %u failed: IOCStatus %s "
 		    "(0x%04x)%s SCSI status %s (0x%02x) state 0x%02x "
-		    "len %u IOC TransferCount %u\n", targ->tid, targ->handle,
+		    "%s\n", targ->tid, targ->handle,
 		    (uintmax_t)ccb->ccb_h.target_lun,
 		    cm->cm_desc.Default.SMID, mps_xnu_cdb_str(cdb[0]),
 		    (uintmax_t)lba, blocks,
 		    mps_describe_table(mps_iocstatus_string, ioc), ioc, li,
 		    mps_describe_table(mps_scsi_status_string, rep->SCSIStatus),
-		    rep->SCSIStatus, rep->SCSIState,
-		    cm->cm_length, le32toh(rep->TransferCount));
+		    rep->SCSIStatus, rep->SCSIState, xf);
 	}
 }
 
