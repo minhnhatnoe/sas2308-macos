@@ -22,6 +22,7 @@
 #include <functional>
 #include <vector>
 #include <map>
+#include <set>
 #include <string>
 #include "../core/mps_mpi.h"
 
@@ -98,6 +99,7 @@ struct MockIocModel {
     std::map<uint16_t, uint64_t> sasAddr;
     int identifies = 0;
     bool dropIdentify = false;                 /* lose IDENTIFY replies */
+    std::set<uint16_t> identifyFail;           /* IDENTIFY of these handles fails */
     bool murIgnored = false;                   /* MUR never stops the IOC (wedged) */
     uint64_t deadUntilUs = 0;                  /* registers read all-ones until then */
     /*
@@ -613,7 +615,7 @@ struct MockIocModel {
         MPI2_SATA_PASSTHROUGH_REPLY r{};
         r.MsgLength = sizeof(r) / 4; r.Function = MPI2_FUNCTION_SATA_PASSTHROUGH; r.DevHandle = q->DevHandle;
         auto it = sataSerial.find(q->DevHandle);
-        if (it == sataSerial.end()) {
+        if (it == sataSerial.end() || identifyFail.count(q->DevHandle)) {
             r.IOCStatus = MPI2_IOCSTATUS_SCSI_DEVICE_NOT_THERE;
         } else {
             uint8_t id[512]{};

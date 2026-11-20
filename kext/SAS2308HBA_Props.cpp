@@ -92,8 +92,8 @@ SAS2308HBA::ApplyLogSettings(void)
     else if (OSBoolean *b = OSDynamicCast(OSBoolean, getProperty(kIOLogKey)))
         fHost.use_iolog = b->isTrue();
     fDebugMask = mask;
-    if (fMps)
-        mps_kext_set_debug(fMps, mask);
+    if (fGlue.fMps)
+        mps_kext_set_debug(fGlue.fMps, mask);
     setProperty(kLogLevelKey, (unsigned long long)level, 32);
     setProperty(kDebugMaskKey, (unsigned long long)mask, 32);
     char names[128];
@@ -135,8 +135,8 @@ SAS2308HBA::setProperties(OSObject *properties)
     if (handled) {
         const uint32_t old = fDebugMask;
         fDebugMask = mask;
-        if (fMps)
-            mps_kext_set_debug(fMps, mask);
+        if (fGlue.fMps)
+            mps_kext_set_debug(fGlue.fMps, mask);
         if (level >= 0)
             setProperty(kLogLevelKey, (unsigned long long)level, 32);
         setProperty(kDebugMaskKey, (unsigned long long)mask, 32);
@@ -152,13 +152,13 @@ SAS2308HBA::setProperties(OSObject *properties)
     }
     if (d->getObject(kResetStatsKey)) {
         if (Enter()) {
-            mps_kext_reset_stats(fMps);
+            mps_kext_reset_stats(fGlue.fMps);
             Leave();
         }
-        if (fLock) {
-            IOLockLock(fLock);
-            fKStats = KStats();
-            IOLockUnlock(fLock);
+        if (fGlue.HasLock()) {
+            fGlue.Lock();
+            fGlue.fKStats = KStats();
+            fGlue.Unlock();
         }
         Klog(MPSK_INFO, "statistics reset from userland");
         PublishStats(true);
@@ -186,7 +186,7 @@ SAS2308HBA::PublishControllerCharacteristics(void)
 
     if (!Enter())
         return;
-    mps_kext_controller_info(fMps, &ci);
+    mps_kext_controller_info(fGlue.fMps, &ci);
     Leave();
 
     const UInt16 subVendor = fPCI ? fPCI->configRead16(kIOPCIConfigSubSystemVendorID) : 0;
@@ -244,18 +244,18 @@ bool
 SAS2308HBA::Snapshot(struct mps_kext_snapshot *snap)
 {
     if (Enter()) {
-        mps_kext_snapshot(fMps, snap);
+        mps_kext_snapshot(fGlue.fMps, snap);
         Leave();
         return true;
     }
-    if (!fLock || !fMps)
+    if (!fGlue.HasLock() || !fGlue.fMps)
         return false;
-    IOLockLock(fLock);
-    const bool detached = !fCoreAttached && !fBusy;
-    IOLockUnlock(fLock);
+    fGlue.Lock();
+    const bool detached = !fGlue.fCoreAttached && !fGlue.fBusy;
+    fGlue.Unlock();
     if (!detached)
         return false;
-    mps_kext_snapshot(fMps, snap);
+    mps_kext_snapshot(fGlue.fMps, snap);
     return true;
 }
 
@@ -267,16 +267,16 @@ SAS2308HBA::Snapshot(struct mps_kext_snapshot *snap)
 void
 SAS2308HBA::PublishStats(bool force)
 {
-    if (!fLock)
+    if (!fGlue.HasLock())
         return;
     const uint64_t now = UptimeUs();
-    IOLockLock(fLock);
+    fGlue.Lock();
     if (!force && now - fLastPublishUs < (uint64_t)kStatsPublishMs * 1000) {
-        IOLockUnlock(fLock);
+        fGlue.Unlock();
         return;
     }
-    const KStats ks = fKStats;
-    IOLockUnlock(fLock);
+    const KStats ks = fGlue.fKStats;
+    fGlue.Unlock();
 
     struct mps_kext_snapshot snap;
     if (!Snapshot(&snap))
@@ -290,14 +290,14 @@ SAS2308HBA::PublishStats(bool force)
                          snap.held + snap.tms_busy + (gone ? 1 : 0) + (resetting ? 2 : 0) + (fSuspended ? 4 : 0) + mask +
                          st.suspends + st.resumes + st.config_reads + st.config_retries + st.readd_scheduled +
                          st.recovered_sense + st.temp_reads + (uint32_t)st.ioc_temp_c;
-    IOLockLock(fLock);
+    fGlue.Lock();
     if (!force && sig == fLastPublishedSig) {
-        IOLockUnlock(fLock);
+        fGlue.Unlock();
         return;
     }
     fLastPublishUs = now;
     fLastPublishedSig = sig;
-    IOLockUnlock(fLock);
+    fGlue.Unlock();
 
     OSDictionary *d = OSDictionary::withCapacity(64);
     if (!d)
@@ -378,14 +378,14 @@ SAS2308HBA::PublishStats(bool force)
 void
 SAS2308HBA::LogCounters(const char *why)
 {
-    if (!fLock)
+    if (!fGlue.HasLock())
         return;
     struct mps_kext_snapshot snap;
     if (!Snapshot(&snap))
         return;
-    IOLockLock(fLock);
-    const KStats ks = fKStats;
-    IOLockUnlock(fLock);
+    fGlue.Lock();
+    const KStats ks = fGlue.fKStats;
+    fGlue.Unlock();
     const struct mps_xnu_stats &st = snap.st;
     Klog(MPSK_INFO, "%s: %llu IOs (%llu B read, %llu B written), latency avg %llu us max %u us; errors: "
          "check-condition %u, scsi-status %u, terminated %u, device-gone %u, transport %u",
@@ -401,11 +401,11 @@ void
 SAS2308HBA::StatsTimerFired(OSObject *owner, IOTimerEventSource *sender)
 {
     SAS2308HBA *self = OSDynamicCast(SAS2308HBA, owner);
-    if (!self || !self->fLock)
+    if (!self || !self->fGlue.HasLock())
         return;
-    IOLockLock(self->fLock);
-    const bool run = self->fStarted && !self->fStopping;
-    IOLockUnlock(self->fLock);
+    self->fGlue.Lock();
+    const bool run = self->fGlue.fStarted && !self->fGlue.fStopping;
+    self->fGlue.Unlock();
     if (!run)
         return;
     self->DeliverCompletions();                     /* belt and braces: nothing should wait here */

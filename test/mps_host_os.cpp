@@ -90,6 +90,18 @@ void HostRunPending()
                 gHost.running.erase(tq);
             progress = true;
         }
+        for (HostThreadCall *tc : std::vector<HostThreadCall *>(gHost.threadCalls)) {
+            if (!tc->queued)
+                continue;
+            tc->queued = false;
+            if (tc->running)
+                tc->concurrent++;
+            tc->running++;
+            tc->invocations++;
+            tc->fn();
+            tc->running--;
+            progress = true;
+        }
         if (gHost.onOtherThreads)
             gHost.onOtherThreads();
         if (!progress)

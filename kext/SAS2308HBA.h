@@ -15,6 +15,11 @@
  *   SAS2308HBA_Props.cpp    registry properties: logging control,
  *                           controller characteristics, statistics
  *   SAS2308HBA_Targets.h    the target table (no IOKit, host-tested)
+ *   SAS2308Glue.{h,cpp}     the IOKit-free half of the class: task slots,
+ *                           ProcessParallelTask / HandleTimeout / delivery,
+ *                           the hotplug thread (host-tested against a fake
+ *                           family, test/kext_glue_test.cpp)
+ *   mps_kext.cpp            the mps_kext_*() calls (portable, host-tested)
  *   mps_xnu_os.{h,cpp}      the core's platform hooks (mps_pci.c's role)
  */
 #ifndef _SAS2308HBA_H
@@ -34,10 +39,32 @@
 #include <os/log.h>
 
 #include "mps_xnu_os.h"
-#include "SAS2308HBA_Targets.h"
+#include "SAS2308Glue.h"
+
+class SAS2308HBA;
+
+/* SAS2308GluePort on IOKit: forwards to SAS2308HBA's Port* methods. */
+class SAS2308_HIDDEN SAS2308HBAPort : public SAS2308GluePort
+{
+public:
+    SAS2308HBA *fHba = nullptr;
+    bool TaskDescribe(void *task, TaskDesc *d) override;
+    bool TaskMapBegin(void *task, uint64_t length) override;
+    bool TaskMapNext(void *task, uint64_t *offset, struct mps_kext_seg *chunk, uint32_t *n) override;
+    void TaskUnmap(void *task) override;
+    void SetTimeoutForTask(void *task) override;
+    void CompleteTask(void *task, int done, uint8_t scsiStatus, uint64_t transferred,
+                      const uint8_t *sense, uint32_t senseLen) override;
+    bool CreateTarget(uint32_t id) override;
+    void DestroyTarget(uint32_t id) override;
+    bool CallEnter(int which) override;
+    bool CallCancel(int which) override;
+    void Log(uint32_t cls, const char *line) override;
+};
 
 class SAS2308HBA : public IOSCSIParallelInterfaceController
 {
+    friend class SAS2308HBAPort;
     OSDeclareDefaultStructors(SAS2308HBA)
 
 public:
@@ -108,21 +135,7 @@ protected:
     virtual SCSIServiceResponse TargetResetRequest(SCSITargetIdentifier theT) APPLE_KEXT_OVERRIDE;
 
 private:
-    struct KStats {                     /* glue-level counters (core counters: struct mps_xnu_stats) */
-        uint64_t tasks;                 /* ProcessParallelTask accepted */
-        uint32_t tasksHeld;             /* ... of which the thin CAM held (recovery, sleep) */
-        uint32_t tasksRejected;         /* not accepted (mapping, invalid, gone) */
-        uint32_t familyTimeouts;        /* HandleTimeout calls */
-        uint32_t tmRequests, tmRequestsFailed;
-        uint32_t deadEvents;            /* controller declared dead */
-    };
-    struct Slot {                       /* an outstanding task, for AbortTaskRequest() */
-        SCSIParallelTaskIdentifier task;
-        bool        prepared;           /* IODMACommand::prepare() done */
-        uint32_t    target;             /* I_T_L_Q nexus */
-        uint64_t    lun;
-        SCSITaggedTaskIdentifier tag;
-    };
+    typedef SAS2308Glue::KStats KStats;
     enum { kPowerStateOff = 0, kPowerStateOn, kPowerStateCount };
 
     /* ---- SAS2308HBA.cpp: core callbacks (mps_mtx may be held: no family or mps_kext_* calls) */
@@ -132,14 +145,12 @@ private:
     static void HostControllerDead(void *hba);
     static void HostDoneKick(void *hba);
 
-    bool Enter(void);                   /* gate around mps_kext_* calls; false once stopping */
-    void Leave(void);
-    void StopCore(void);                /* stop new calls, wait for the running ones, mps_free */
+    /* the gate and delivery live in fGlue (SAS2308Glue.cpp) */
+    bool Enter(void) { return fGlue.Enter(); }
+    void Leave(void) { fGlue.Leave(); }
+    void DeliverCompletions(void) { fGlue.DeliverCompletions(); }
     void ReleaseResources(void);        /* idempotent */
-    void DeliverCompletions(void);      /* no lock held: CompleteParallelTask for queued ccbs */
     static void DoneThread(thread_call_param_t self, thread_call_param_t);
-    void ScheduleDone(void);            /* fLock held */
-    void QuiesceDone(void);             /* fLock not held; may sleep */
     SCSIServiceResponse SendTaskMgmt(uint8_t taskType, SCSITargetIdentifier theT,
                                      SCSILogicalUnitNumber theL, SCSITaggedTaskIdentifier theQ);
 
@@ -150,14 +161,18 @@ private:
     void ResumeController(void);                                  /* wake */
 
     /* ---- SAS2308HBA_Hotplug.cpp */
-    static void HostAsync(void *hba, int event, uint64_t tids, uint64_t present);
+    static void HostAsync(void *hba, int event, uint64_t tids, uint64_t present, const uint32_t *gens);
     static void HotplugThread(thread_call_param_t self, thread_call_param_t);
-    void Hotplug(void);
-    void ScheduleHotplug(void);         /* fLock held */
-    void QuiesceHotplug(void);          /* fLock not held; may sleep */
     OSDictionary *CopyTargetProperties(SCSITargetIdentifier targetID);
     void PublishTargetCharacteristics(SCSITargetIdentifier targetID);
-    void TerminateTargets(void);        /* willTerminate, after the family's loop */
+    /* SAS2308GluePort on IOKit (SAS2308HBA.cpp, SAS2308HBA_Hotplug.cpp) */
+    bool PortTaskDescribe(SCSIParallelTaskIdentifier task, SAS2308GluePort::TaskDesc *d);
+    bool PortTaskMapBegin(SCSIParallelTaskIdentifier task, uint64_t length);
+    bool PortTaskMapNext(SCSIParallelTaskIdentifier task, uint64_t *offset, struct mps_kext_seg *chunk, uint32_t *n);
+    void PortTaskUnmap(SCSIParallelTaskIdentifier task);
+    void PortCompleteTask(SCSIParallelTaskIdentifier task, int done, uint8_t scsiStatus, uint64_t transferred,
+                          const uint8_t *sense, uint32_t senseLen);
+    bool PortCreateTarget(uint32_t id);
 
     /* ---- SAS2308HBA_Props.cpp */
     void Klog(uint32_t cls, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
@@ -172,21 +187,11 @@ private:
     IOPCIDevice   *fPCI   = nullptr;
     IOMemoryMap   *fMap   = nullptr;
     IOMapper      *fMapper = nullptr;   /* the DART in front of fPCI, or NULL */
-    IOLock        *fLock  = nullptr;    /* class state below; a leaf under mps_mtx */
     thread_call_t  fHotplugCall = nullptr;
     thread_call_t  fDoneCall = nullptr; /* delivers completions queued by callouts / the reinit task */
     IOTimerEventSource *fStatsTimer = nullptr;
     bool           fBusLeadOff = false;     /* bus mastering cut after the IOC died */
-    bool           fStarted = false;
-    bool           fStopping = false;       /* no new mps_kext_* calls */
-    bool           fCoreAttached = false;   /* mps_attach done, mps_free not yet */
-    bool           fHotplugStop = false;    /* no new hotplug calls */
-    bool           fDoneStop = false;
     bool           fTunnelled = false;      /* IOPCITunnelled: behind Thunderbolt */
-    uint32_t       fHotplugPending = 0;     /* thread calls queued or running */
-    uint32_t       fDonePending = 0;
-    uint32_t       fBusy = 0;               /* threads inside Enter()/Leave() */
-    uint32_t       fMaxSegs = 0;            /* per IO, from the core's buffer_dmat */
 
     /* power management (SAS2308HBA_PM.cpp) */
     bool           fPMInitialized = false;
@@ -194,19 +199,21 @@ private:
     bool           fShutdown = false;       /* systemWillShutdown ran: stays stopped */
     unsigned long  fPowerState = kPowerStateOn;
 
-    /* the core */
-    struct mps_kext      *fMps = nullptr;
+    /* the core (fGlue.fMps) */
     struct mps_kext_host  fHost = {};
 
     /* logging and counters */
     uint32_t       fDebugMask = 0;
     uint32_t       fUnit = 0;
-    KStats         fKStats = {};
     uint64_t       fLastPublishUs = 0;
     uint64_t       fLastPublishedSig = ~0ull;
 
-    Slot               fSlots[kMaxTasks] = {};
-    SAS2308TargetTable fTargets;            /* under fLock */
+    /*
+     * Task slots, the gate, the target table, fLock and the glue counters:
+     * fGlue's members, under fGlue.Lock() (a leaf under mps_mtx).
+     */
+    SAS2308Glue        fGlue;
+    SAS2308HBAPort     fGluePort;
 };
 
 #endif /* _SAS2308HBA_H */

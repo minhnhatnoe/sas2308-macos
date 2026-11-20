@@ -30,14 +30,18 @@ public:
     struct Work {
         Action   action;
         uint32_t targetID;
+        uint32_t gen;               /* kCreate: the generation of the device */
     };
 
     /*
      * A rescan or lost-device event: for each ID in `ids', bit set in
-     * `present' = the core has the device. Returns true if the hotplug
-     * thread has work.
+     * `present' = the core has the device; gens[id] (NULL: unknown, no
+     * change) = its generation (mps_xnu_target_gen), which changes when a
+     * different disk is behind the ID (review C2). A nub is never kept
+     * across a generation change: destroy, then create. Returns true if
+     * the hotplug thread has work.
      */
-    bool Update(uint64_t ids, uint64_t present)
+    bool Update(uint64_t ids, uint64_t present, const uint32_t *gens = nullptr)
     {
         bool changed = false;
         if (fStopped)
@@ -51,9 +55,22 @@ public:
             const bool created = (fCreated & bit) != 0;
             const bool willExist = busy ? (created ? (fWantCreate & bit) != 0 : !(fWantDestroy & bit))
                                         : ((created && !(fWantDestroy & bit)) || (fWantCreate & bit));
+            /* the generation the nub will have once the pending work is done */
+            const uint32_t willGen = (fWantCreate & bit) ? fWantGen[i] : fGen[i];
+            const uint32_t gen = gens ? gens[i] : willGen;
             if ((present & bit) && !willExist) {
                 fWantCreate |= bit;                 /* created and not destroying: Next() skips it */
-                fWantDestroy &= ~bit;
+                fWantGen[i] = gen;
+                /* back while its nub is created or destroyed: kept, unless another disk */
+                if (!((created || busy) && gens && gen != fGen[i]))
+                    fWantDestroy &= ~bit;
+                changed = true;
+            } else if ((present & bit) && gen != willGen) {
+                /* a different disk behind the ID: the old nub goes first */
+                if (created || busy)
+                    fWantDestroy |= bit;
+                fWantCreate |= bit;
+                fWantGen[i] = gen;
                 changed = true;
             } else if (!(present & bit) && willExist) {
                 fWantCreate &= ~bit;
@@ -74,20 +91,22 @@ public:
                 continue;
             if (fWantDestroy & bit) {
                 fWantDestroy &= ~bit;
-                fWantCreate &= ~bit;
                 if (fCreated & bit) {
+                    /* a wanted create (new generation) follows: the cursor stays on this ID */
                     fBusy |= bit;
-                    return Work{kDestroy, cursor++};
+                    return Work{kDestroy, cursor, 0};
                 }
-            } else if (fWantCreate & bit) {
+            }
+            if (fWantCreate & bit) {
                 fWantCreate &= ~bit;
                 if (!(fCreated & bit)) {
                     fBusy |= bit;
-                    return Work{kCreate, cursor++};
+                    fGen[cursor] = fWantGen[cursor];
+                    return Work{kCreate, cursor, fGen[cursor]};
                 }
             }
         }
-        return Work{kNone, kMaxTargets};
+        return Work{kNone, kMaxTargets, 0};
     }
 
     /* The hotplug thread finished `w' (ok: CreateTargetForID() result). */
@@ -133,6 +152,8 @@ private:
     uint64_t fWantCreate = 0;
     uint64_t fWantDestroy = 0;
     uint64_t fBusy = 0;         /* handed to the hotplug thread, not Done() yet */
+    uint32_t fGen[kMaxTargets] = {};        /* generation of the nub created / being created */
+    uint32_t fWantGen[kMaxTargets] = {};    /* generation of a wanted create */
     bool     fStarted = false;  /* StartController ran */
     bool     fStopped = false;  /* willTerminate / stop: no new work */
 };

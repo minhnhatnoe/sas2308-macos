@@ -33,6 +33,13 @@ mps_port_test: mps_port_test.cpp mps_host_os.cpp mps_host_os.h mock_ioc.h $(PORT
 kext_targets_test: kext_targets_test.cpp ../kext/SAS2308HBA_Targets.h
 	$(CXX) $(CXXFLAGS) -o $@ kext_targets_test.cpp
 
+# The kext's IOKit-free half (mps_kext.cpp, SAS2308Glue.cpp) against a fake family.
+GLUE_SRCS := ../kext/mps_kext.cpp ../kext/SAS2308Glue.cpp
+GLUE_HDRS := ../kext/mps_xnu_os.h ../kext/SAS2308Glue.h ../kext/SAS2308HBA_Targets.h
+kext_glue_test: kext_glue_test.cpp mps_host_os.cpp mps_host_os.h mock_ioc.h $(GLUE_SRCS) $(GLUE_HDRS) $(PORT_OBJS)
+	$(CXX) $(CXXFLAGS) -I../core -I../kext -Wno-unknown-pragmas -o $@ kext_glue_test.cpp mps_host_os.cpp \
+	    $(GLUE_SRCS) $(PORT_OBJS)
+
 FREESTANDING_INC := $(shell $(CC) -print-file-name=include)
 freestanding: $(PORT_SRCS) $(PORT_HDRS)
 	@for f in $(PORT_SRCS); do \
@@ -43,12 +50,13 @@ freestanding: $(PORT_SRCS) $(PORT_HDRS)
 		    -c -o /dev/null $$f || exit 1; \
 	done
 
-test: mock_ioc_test mps_port_test kext_targets_test freestanding
+test: mock_ioc_test mps_port_test kext_targets_test kext_glue_test freestanding
 	./mock_ioc_test
 	./mps_port_test
 	./kext_targets_test
+	./kext_glue_test
 
 clean:
-	rm -rf mock_ioc_test mps_port_test kext_targets_test obj
+	rm -rf mock_ioc_test mps_port_test kext_targets_test kext_glue_test obj
 
 .PHONY: test clean freestanding

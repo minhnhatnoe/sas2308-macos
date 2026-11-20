@@ -16,14 +16,15 @@
  *    async callbacks run with it held, so they only queue work: completed
  *    tasks go on a done queue that DeliverCompletions() empties without any
  *    lock, from the thread that made the core call or from fDoneCall.
- *  - fLock (an IOLock) protects this class's tables and flags. It is a leaf:
- *    taken inside mps_mtx by the host callbacks, never held across an
- *    mps_kext_*() call or a family call.
+ *  - fGlue.fLock (an IOLock) protects the glue's tables and flags
+ *    (SAS2308Glue.h) and this class's PM flags. It is a leaf: taken inside
+ *    mps_mtx by the host callbacks, never held across an mps_kext_*() call
+ *    or a family call.
  *  - Nothing that calls back into the SCSI family (CompleteParallelTask,
  *    CreateTargetForID, DestroyTargetForID) runs with either lock held.
- *  - Enter()/Leave() count the threads inside the core; StopController sets
- *    fStopping, wakes the TM waiters and waits for the count to drop to 0
- *    before mps_free().
+ *  - Enter()/Leave() (fGlue) count the threads inside the core; StopController
+ *    sets fStopping, wakes the TM waiters and waits for the count to drop to
+ *    0 before mps_free().
  */
 #include "SAS2308HBA.h"
 
@@ -100,11 +101,11 @@ void
 SAS2308HBA::HostControllerDead(void *hba)
 {
     SAS2308HBA *self = (SAS2308HBA *)hba;
-    IOLockLock(self->fLock);
+    self->fGlue.Lock();
     const bool first = !self->fBusLeadOff;
-    self->fKStats.deadEvents++;
+    self->fGlue.fKStats.deadEvents++;
     self->fBusLeadOff = true;
-    IOLockUnlock(self->fLock);
+    self->fGlue.Unlock();
     if (first) {
         self->Klog(MPSK_FAULT | MPSK_INFO, "controller is gone or disabled: disabling bus mastering");
         if (self->fPCI)
@@ -121,145 +122,154 @@ void
 SAS2308HBA::HostDoneKick(void *hba)
 {
     SAS2308HBA *self = (SAS2308HBA *)hba;
-    IOLockLock(self->fLock);
-    self->ScheduleDone();
-    IOLockUnlock(self->fLock);
+    self->fGlue.Lock();
+    self->fGlue.ScheduleDone();
+    self->fGlue.Unlock();
 }
 
 #if 0
 #pragma mark -
-#pragma mark The gate around the core, completion delivery
+#pragma mark SAS2308GluePort: the family and IOKit for the glue
 #endif
 
-bool
-SAS2308HBA::Enter(void)
+bool SAS2308HBAPort::TaskDescribe(void *t, TaskDesc *d) { return fHba->PortTaskDescribe((SCSIParallelTaskIdentifier)t, d); }
+bool SAS2308HBAPort::TaskMapBegin(void *t, uint64_t len) { return fHba->PortTaskMapBegin((SCSIParallelTaskIdentifier)t, len); }
+bool SAS2308HBAPort::TaskMapNext(void *t, uint64_t *off, struct mps_kext_seg *c, uint32_t *n)
 {
-    if (!fLock)
+    return fHba->PortTaskMapNext((SCSIParallelTaskIdentifier)t, off, c, n);
+}
+void SAS2308HBAPort::TaskUnmap(void *t) { fHba->PortTaskUnmap((SCSIParallelTaskIdentifier)t); }
+/* 0: the task's own timeout (SCSIParallelTimer::SetTimeout); only CompleteParallelTask disarms it */
+void SAS2308HBAPort::SetTimeoutForTask(void *t) { fHba->SetTimeoutForTask((SCSIParallelTaskIdentifier)t, 0); }
+void SAS2308HBAPort::CompleteTask(void *t, int done, uint8_t st, uint64_t xfer, const uint8_t *sense, uint32_t slen)
+{
+    fHba->PortCompleteTask((SCSIParallelTaskIdentifier)t, done, st, xfer, sense, slen);
+}
+bool SAS2308HBAPort::CreateTarget(uint32_t id) { return fHba->PortCreateTarget(id); }
+void SAS2308HBAPort::DestroyTarget(uint32_t id) { fHba->DestroyTargetForID(id); }
+bool SAS2308HBAPort::CallEnter(int which)
+{
+    thread_call_t c = which == kCallHotplug ? fHba->fHotplugCall : fHba->fDoneCall;
+    return c ? thread_call_enter(c) : true;         /* true: no new invocation */
+}
+bool SAS2308HBAPort::CallCancel(int which)
+{
+    thread_call_t c = which == kCallHotplug ? fHba->fHotplugCall : fHba->fDoneCall;
+    return c ? thread_call_cancel(c) : false;
+}
+void SAS2308HBAPort::Log(uint32_t cls, const char *line) { fHba->Klog(cls, "%s", line); }
+
+bool
+SAS2308HBA::PortTaskDescribe(SCSIParallelTaskIdentifier task, SAS2308GluePort::TaskDesc *d)
+{
+    SCSICommandDescriptorBlock cdb = {};
+
+    d->target = (uint32_t)GetTargetIdentifier(task);
+    GetCommandDescriptorBlock(task, &cdb);
+    memcpy(d->cdb, cdb, sizeof(d->cdb));
+    d->cdbLen = GetCommandDescriptorBlockSize(task);
+    d->lun = GetLogicalUnitNumber(task);
+    d->tag = GetTaggedTaskIdentifier(task);
+    d->length = GetRequestedDataTransferCount(task);
+    switch (GetDataTransferDirection(task)) {
+    case kSCSIDataTransfer_FromTargetToInitiator: d->dir = MPSK_DIR_IN; break;
+    case kSCSIDataTransfer_FromInitiatorToTarget: d->dir = MPSK_DIR_OUT; break;
+    default: d->dir = MPSK_DIR_NONE; break;
+    }
+    d->td = GetHBADataPointer(task);
+    d->tdSize = GetHBADataSize(task);
+    d->timeoutMs = GetTimeoutDuration(task);
+    return GetTargetIdentifier(task) < kMaxTargets;
+}
+
+/* the family owns the IODMACommand and its memory descriptor: prepare the range, list it, complete it */
+bool
+SAS2308HBA::PortTaskMapBegin(SCSIParallelTaskIdentifier task, uint64_t length)
+{
+    IODMACommand *dma = GetDMACommand(task);
+    return dma && dma->prepare(GetDataBufferOffset(task), length) == kIOReturnSuccess;
+}
+
+bool
+SAS2308HBA::PortTaskMapNext(SCSIParallelTaskIdentifier task, uint64_t *offset, struct mps_kext_seg *chunk,
+                            uint32_t *n)
+{
+    IODMACommand *dma = GetDMACommand(task);
+    IODMACommand::Segment64 seg[16];
+    UInt32 count = *n > 16 ? 16 : *n;
+    UInt64 off = *offset;
+
+    if (!dma || dma->gen64IOVMSegments(&off, seg, &count) != kIOReturnSuccess)
         return false;
-    IOLockLock(fLock);
-    const bool ok = !fStopping && fCoreAttached && fMps;
-    if (ok)
-        fBusy++;
-    IOLockUnlock(fLock);
-    return ok;
+    for (UInt32 i = 0; i < count; i++) {
+        chunk[i].addr = seg[i].fIOVMAddr;
+        chunk[i].len = seg[i].fLength;
+    }
+    *offset = off;
+    *n = count;
+    return true;
 }
 
 void
-SAS2308HBA::Leave(void)
+SAS2308HBA::PortTaskUnmap(SCSIParallelTaskIdentifier task)
 {
-    IOLockLock(fLock);
-    if (--fBusy == 0 && fStopping)
-        IOLockWakeup(fLock, &fBusy, false);
-    IOLockUnlock(fLock);
+    IODMACommand *dma = GetDMACommand(task);
+    if (dma)
+        dma->complete();
 }
 
 //-----------------------------------------------------------------------------
-//	DeliverCompletions - mpssas_scsiio_complete() result -> SAM status for
+//	PortCompleteTask - mpssas_scsiio_complete() result -> SAM status for
 //	the family. No lock held.										[PRIVATE]
 //-----------------------------------------------------------------------------
 
 void
-SAS2308HBA::DeliverCompletions(void)
+SAS2308HBA::PortCompleteTask(SCSIParallelTaskIdentifier task, int done, uint8_t scsiStatus, uint64_t transferred,
+                             const uint8_t *sense, uint32_t senseLen)
 {
-    if (!fMps || !fLock)
-        return;
-    for (;;) {
-        struct mps_kext_io_result res;
-        SCSIParallelTaskIdentifier task = (SCSIParallelTaskIdentifier)mps_kext_next_done(fMps, &res);
-        if (!task)
-            break;
+    SCSITaskStatus status;
+    SCSIServiceResponse response = kSCSIServiceResponse_TASK_COMPLETE;
 
-        bool prepared = false;
-        IOLockLock(fLock);
-        for (uint32_t i = 0; i < kMaxTasks; i++) {
-            if (fSlots[i].task == task) {
-                prepared = fSlots[i].prepared;
-                fSlots[i] = Slot();
-                break;
-            }
-        }
-        IOLockUnlock(fLock);
-        if (prepared) {
-            IODMACommand *dma = GetDMACommand(task);
-            if (dma)
-                dma->complete();
-        }
-
-        SCSITaskStatus status;
-        SCSIServiceResponse response = kSCSIServiceResponse_TASK_COMPLETE;
-        switch (res.kind) {
-        case MPSK_IO_STATUS:
-            /* CAM_REQ_CMP / CAM_SCSI_STATUS_ERROR: the SAM status byte, same encoding as SCSITaskStatus */
-            status = (SCSITaskStatus)res.scsi_status;
-            SetRealizedDataTransferCount(task, res.transferred);
-            if (res.sense_len)
-                SetAutoSenseData(task, (SCSI_Sense_Data *)res.sense, (UInt8)res.sense_len);
-            break;
-        case MPSK_IO_GONE:
-            status = kSCSITaskStatus_DeviceNotPresent;
-            response = kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
-            break;
-        case MPSK_IO_TIMEOUT:
-            /* terminated by the recovery after the family's timeout (CAM_CMD_TIMEOUT) */
-            status = kSCSITaskStatus_ProtocolTimeoutOccurred;
-            response = kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
-            break;
-        default:
-            /*
-             * Reset (CAM_SCSI_BUS_RESET: reinit, or the IOC stopped for
-             * sleep), OS abort (CAM_REQ_ABORTED), transport errors: not the
-             * device's fault, a failure the upper layers retry. The core
-             * logged the decoded failure (rate-limited).
-             */
-            status = kSCSITaskStatus_DeliveryFailure;
-            response = kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
-            break;
-        }
-        CompleteParallelTask(task, status, response);
+    switch (done) {
+    case SAS2308GluePort::kDoneStatus:
+        /* CAM_REQ_CMP / CAM_SCSI_STATUS_ERROR: the SAM status byte, same encoding as SCSITaskStatus */
+        status = (SCSITaskStatus)scsiStatus;
+        SetRealizedDataTransferCount(task, transferred);
+        if (senseLen)
+            SetAutoSenseData(task, (SCSI_Sense_Data *)sense, (UInt8)senseLen);
+        break;
+    case SAS2308GluePort::kDoneGone:
+        status = kSCSITaskStatus_DeviceNotPresent;
+        response = kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
+        break;
+    case SAS2308GluePort::kDoneTimeout:
+        /* terminated by the recovery after the family's timeout (CAM_CMD_TIMEOUT) */
+        status = kSCSITaskStatus_ProtocolTimeoutOccurred;
+        response = kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
+        break;
+    case SAS2308GluePort::kDoneReject:
+        /* refused by mpssas_action_scsiio (invalid, too big): as M4's synchronous FUNCTION_REJECTED */
+        status = kSCSITaskStatus_No_Status;
+        response = kSCSIServiceResponse_FUNCTION_REJECTED;
+        break;
+    default:
+        /*
+         * Reset (CAM_SCSI_BUS_RESET: reinit, or the IOC stopped for
+         * sleep), OS abort (CAM_REQ_ABORTED), transport errors: not the
+         * device's fault, a failure the upper layers retry. The core
+         * logged the decoded failure (rate-limited).
+         */
+        status = kSCSITaskStatus_DeliveryFailure;
+        response = kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
+        break;
     }
+    CompleteParallelTask(task, status, response);
 }
 
 void
 SAS2308HBA::DoneThread(thread_call_param_t self, thread_call_param_t)
 {
-    SAS2308HBA *hba = (SAS2308HBA *)self;
-
-    hba->DeliverCompletions();
-    IOLockLock(hba->fLock);
-    if (--hba->fDonePending == 0)
-        IOLockWakeup(hba->fLock, &hba->fDonePending, false);
-    IOLockUnlock(hba->fLock);
-}
-
-//-----------------------------------------------------------------------------
-//	ScheduleDone / QuiesceDone - thread_call_cancel_wait() is only exported
-//	by com.apple.kpi.private, which a third-party kext cannot link against,
-//	so count the invocations that are queued or running; Quiesce waits for
-//	zero. thread_call_enter() returns TRUE if the call was already queued,
-//	in which case no additional invocation will happen.				[PRIVATE]
-//-----------------------------------------------------------------------------
-
-void
-SAS2308HBA::ScheduleDone(void)
-{
-    if (!fDoneCall || fDoneStop)
-        return;
-    if (!thread_call_enter(fDoneCall))
-        fDonePending++;
-}
-
-void
-SAS2308HBA::QuiesceDone(void)
-{
-    if (!fDoneCall || !fLock)
-        return;
-    IOLockLock(fLock);
-    fDoneStop = true;
-    if (thread_call_cancel(fDoneCall) && fDonePending)
-        fDonePending--;                             /* was queued, will not run */
-    while (fDonePending)
-        IOLockSleep(fLock, &fDonePending, THREAD_UNINT);
-    IOLockUnlock(fLock);
+    ((SAS2308HBA *)self)->fGlue.DoneCallBody();
 }
 
 #if 0
@@ -293,10 +303,10 @@ SAS2308HBA::InitializeController(void)
     }
     fPCI->retain();
 
-    fLock = IOLockAlloc();
+    fGluePort.fHba = this;
     fHotplugCall = thread_call_allocate(&SAS2308HBA::HotplugThread, this);
     fDoneCall = thread_call_allocate(&SAS2308HBA::DoneThread, this);
-    if (!fLock || !fHotplugCall || !fDoneCall)
+    if (!fGlue.Init(&fGluePort) || !fHotplugCall || !fDoneCall)
         goto fail;
 
     /* PCI command register: memory decode + bus mastering (DMA and MSI). */
@@ -324,21 +334,21 @@ SAS2308HBA::InitializeController(void)
          (unsigned long long)fMap->getLength(), fMapper ? "present" : "ABSENT (bus address = physical)",
          fTunnelled ? "Thunderbolt tunnel (IOPCITunnelled)" : "not tunnelled");
 
-    fMps = mps_kext_create(&fHost, fPCI->configRead16(kIOPCIConfigDeviceID));
-    if (!fMps) {
+    fGlue.fMps = mps_kext_create(&fHost, fPCI->configRead16(kIOPCIConfigDeviceID));
+    if (!fGlue.fMps) {
         Klog(MPSK_FAULT | MPSK_INIT, "cannot allocate the softc");
         goto fail;
     }
     {
         /* mps_attach() frees what it allocated on failure; no mps_free() then */
-        int rc = mps_kext_attach(fMps, fDebugMask);
+        int rc = mps_kext_attach(fGlue.fMps, fDebugMask);
         if (rc != 0) {
             Klog(MPSK_FAULT | MPSK_INIT, "mps_attach failed (%d)", rc);
             goto fail;
         }
-        IOLockLock(fLock);
-        fCoreAttached = true;
-        IOLockUnlock(fLock);
+        fGlue.Lock();
+        fGlue.fCoreAttached = true;
+        fGlue.Unlock();
     }
 
     /*
@@ -347,8 +357,8 @@ SAS2308HBA::InitializeController(void)
      * chain frames) could not describe a page-scattered buffer of that size.
      */
     {
-        fMaxSegs = mps_kext_max_segs(fMps);
-        UInt64 segs = fMaxSegs;
+        fGlue.fMaxSegs = mps_kext_max_segs(fGlue.fMps);
+        UInt64 segs = fGlue.fMaxSegs;
         UInt64 maxBytes = 1024 * 1024;
         if (segs < 2)
             maxBytes = PAGE_SIZE;
@@ -376,29 +386,23 @@ fail:
 bool
 SAS2308HBA::StartController(void)
 {
-    IOLockLock(fLock);
-    fStarted = true;
-    fStopping = false;
-    fHotplugStop = false;
-    fDoneStop = false;
-    fTargets.Start();
-    IOLockUnlock(fLock);
+    fGlue.Start();
 
     EnableInterrupt();                              /* family: enable the event source */
     if (!Enter()) {
         Klog(MPSK_FAULT | MPSK_INIT, "StartController without an attached core");
         return false;
     }
-    mps_kext_start(fMps);                           /* config_intrhook: unmask, port enable (async) */
+    mps_kext_start(fGlue.fMps);                     /* config_intrhook: unmask, port enable (async) */
     Leave();
     DeliverCompletions();
 
     /* Before any target exists, so the target nubs join the power tree below us. */
     InitializePowerManagement(GetProvider());
 
-    IOLockLock(fLock);
-    ScheduleHotplug();                              /* targets seen before we were started */
-    IOLockUnlock(fLock);
+    fGlue.Lock();
+    fGlue.ScheduleHotplug();                        /* targets seen before we were started */
+    fGlue.Unlock();
 
     /* Statistics publication (the core's own timers are callouts: mps_periodic, TM timeouts). */
     IOWorkLoop *wl = GetWorkLoop();
@@ -411,36 +415,6 @@ SAS2308HBA::StartController(void)
     }
     Klog(MPSK_INIT | MPSK_INFO, "controller started");
     return true;
-}
-
-//-----------------------------------------------------------------------------
-//	StopCore - no new core calls, TM waiters released, running calls
-//	finished, then mps_free(): message unit reset (the IOC stops touching
-//	our memory), every ccb completed once (CAM_DEV_NOT_THERE), DMA freed.
-//	Idempotent.														[PRIVATE]
-//-----------------------------------------------------------------------------
-
-void
-SAS2308HBA::StopCore(void)
-{
-    if (!fLock)
-        return;
-    IOLockLock(fLock);
-    fStarted = false;
-    fStopping = true;
-    fTargets.Stop();
-    const bool attached = fCoreAttached;
-    IOLockUnlock(fLock);
-    if (!attached)
-        return;
-    mps_kext_stop_waiters(fMps);
-    IOLockLock(fLock);
-    while (fBusy)
-        IOLockSleep(fLock, &fBusy, THREAD_UNINT);
-    fCoreAttached = false;
-    IOLockUnlock(fLock);
-    mps_kext_detach(fMps);
-    DeliverCompletions();
 }
 
 //-----------------------------------------------------------------------------
@@ -460,9 +434,9 @@ SAS2308HBA::StopController(void)
         OSSafeReleaseNULL(fStatsTimer);
     }
     DisableInterrupt();
-    StopCore();
-    QuiesceHotplug();
-    QuiesceDone();
+    fGlue.StopCore();                               /* no new core calls, mps_free: every ccb completed */
+    fGlue.QuiesceHotplug();
+    fGlue.QuiesceDone();
     DeliverCompletions();
     LogCounters("stopped");
 }
@@ -476,7 +450,7 @@ void
 SAS2308HBA::TerminateController(void)
 {
     StopPowerManagement();
-    StopCore();                                     /* if StopController did not run */
+    fGlue.StopCore();                               /* if StopController did not run */
     Klog(MPSK_INIT | MPSK_INFO, "terminated: DMA freed, unloading");
     ReleaseResources();
 }
@@ -490,19 +464,19 @@ void
 SAS2308HBA::ReleaseResources(void)
 {
     if (fHotplugCall) {
-        QuiesceHotplug();
+        fGlue.QuiesceHotplug();
         thread_call_free(fHotplugCall);
         fHotplugCall = nullptr;
     }
     if (fDoneCall) {
-        QuiesceDone();
+        fGlue.QuiesceDone();
         thread_call_free(fDoneCall);
         fDoneCall = nullptr;
     }
-    if (fMps) {
+    if (fGlue.fMps) {
         DeliverCompletions();
-        mps_kext_destroy(fMps);                     /* after mps_free or a failed mps_attach */
-        fMps = nullptr;
+        mps_kext_destroy(fGlue.fMps);               /* after mps_free or a failed mps_attach */
+        fGlue.fMps = nullptr;
     }
     fHost.regs = nullptr;
     fHost.mapper = nullptr;
@@ -513,10 +487,7 @@ SAS2308HBA::ReleaseResources(void)
             fPCI->setBusLeadEnable(false);
         OSSafeReleaseNULL(fPCI);
     }
-    if (fLock) {
-        IOLockFree(fLock);
-        fLock = nullptr;
-    }
+    fGlue.Fini();
 }
 
 //-----------------------------------------------------------------------------
@@ -533,19 +504,15 @@ SAS2308HBA::willTerminate(IOService *provider, IOOptionBits options)
     bool present = true;
 
     if (Enter()) {
-        present = mps_kext_check_present(fMps) != 0;
+        present = mps_kext_check_present(fGlue.fMps) != 0;
         Leave();
         DeliverCompletions();
     }
     Klog(MPSK_INIT | MPSK_INFO, "terminating (%s)", present ? "unload or stop" : "controller gone");
-    if (fLock) {
-        IOLockLock(fLock);
-        fTargets.Stop();
-        IOLockUnlock(fLock);
-    }
-    QuiesceHotplug();
+    fGlue.StopTargets();
+    fGlue.QuiesceHotplug();
     const bool result = super::willTerminate(provider, options);
-    TerminateTargets();
+    fGlue.TerminateTargets((uint32_t)ReportHighestSupportedDeviceID());
     return result;
 }
 
@@ -604,7 +571,7 @@ SAS2308HBA::ReportHBAConstraints(OSDictionary *constraints)
     const UInt64 segBytes = mps_kext_max_seg_bytes() & ~(UInt64)PAGE_MASK;
 
     /* If it ever came before the attach, report 1 (always safe) and say so. */
-    UInt64 maxSegs = fMaxSegs;
+    UInt64 maxSegs = fGlue.fMaxSegs;
     if (maxSegs == 0) {
         Klog(MPSK_INIT | MPSK_ERROR, "ReportHBAConstraints before attach: reporting 1 segment per IO");
         maxSegs = 1;
@@ -687,7 +654,7 @@ SAS2308HBA::HandleInterruptRequest(void)
 {
     if (!Enter())
         return;
-    mps_kext_intr(fMps);
+    mps_kext_intr(fGlue.fMps);
     Leave();
     DeliverCompletions();
 }
@@ -699,171 +666,38 @@ SAS2308HBA::HandleInterruptRequest(void)
 
 //-----------------------------------------------------------------------------
 //	ProcessParallelTask - SCSIParallelTask -> XPT_SCSI_IO ccb
-//	(mpssas_action_scsiio via xpt_action).							[PROTECTED]
+//	(mpssas_action_scsiio via xpt_action): SAS2308Glue::ProcessTask.
+//																	[PROTECTED]
 //-----------------------------------------------------------------------------
 
 SCSIServiceResponse
 SAS2308HBA::ProcessParallelTask(SCSIParallelTaskIdentifier task)
 {
-    SCSITargetIdentifier targetID = GetTargetIdentifier(task);
-    if (targetID >= kMaxTargets)
-        return kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
-
-    SCSICommandDescriptorBlock cdb = {};
-    GetCommandDescriptorBlock(task, &cdb);
-    const uint8_t cdbLen = GetCommandDescriptorBlockSize(task);
-    if (cdbLen == 0 || cdbLen > sizeof(cdb))
+    switch (fGlue.ProcessTask(task)) {
+    case SAS2308Glue::kInProcess:
+        return kSCSIServiceResponse_Request_In_Process;
+    case SAS2308Glue::kRejected:
         return kSCSIServiceResponse_FUNCTION_REJECTED;
-    const SCSILogicalUnitNumber lun = GetLogicalUnitNumber(task);
-    const SCSITaggedTaskIdentifier tag = GetTaggedTaskIdentifier(task);
-
-    UInt64 length = GetRequestedDataTransferCount(task);
-    int dir;
-    switch (GetDataTransferDirection(task)) {
-    case kSCSIDataTransfer_FromTargetToInitiator: dir = MPSK_DIR_IN; break;
-    case kSCSIDataTransfer_FromInitiatorToTarget: dir = MPSK_DIR_OUT; break;
-    default: dir = MPSK_DIR_NONE; length = 0; break;
-    }
-    if (dir != MPSK_DIR_NONE && (length == 0 || length > 0xFFFFFFFFull))
-        return kSCSIServiceResponse_FUNCTION_REJECTED;
-
-    /*
-     * The ccb and its segment list live in the task's HBA data (sized by
-     * ReportHBASpecificTaskDataSize()), not on the kernel stack: they stay
-     * valid until the task completes, which a held IO needs.
-     */
-    void *td = GetHBADataPointer(task);
-    if (!td || GetHBADataSize(task) < mps_kext_task_size() || fMaxSegs == 0)
-        return kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
-
-    /*
-     * bus_dmamap_load_ccb() input (CAM_DATA_SG_PADDR): the family owns the
-     * IODMACommand and its memory descriptor; we prepare() the range and
-     * complete() it when the IO is done.
-     */
-    IODMACommand *dma = nullptr;
-    uint32_t nsegs = 0;
-    if (length) {
-        struct mps_kext_seg *segs = mps_kext_task_segs(td);
-        const uint64_t maxSegBytes = mps_kext_max_seg_bytes();
-        dma = GetDMACommand(task);
-        if (!dma || dma->prepare(GetDataBufferOffset(task), length) != kIOReturnSuccess)
-            return kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
-
-        UInt64 offset = 0;
-        IOReturn ret = kIOReturnSuccess;
-        while (offset < length && nsegs < fMaxSegs) {
-            IODMACommand::Segment64 chunk[16];
-            UInt32 n = fMaxSegs - nsegs;
-            if (n > sizeof(chunk) / sizeof(chunk[0]))
-                n = sizeof(chunk) / sizeof(chunk[0]);
-            ret = dma->gen64IOVMSegments(&offset, chunk, &n);
-            if (ret != kIOReturnSuccess || n == 0)
-                break;
-            for (UInt32 i = 0; i < n; i++) {
-                if (chunk[i].fLength == 0 || chunk[i].fLength > maxSegBytes) {
-                    ret = kIOReturnInternalError;
-                    break;
-                }
-                segs[nsegs].addr = chunk[i].fIOVMAddr;
-                segs[nsegs].len = chunk[i].fLength;
-                nsegs++;
-            }
-            if (ret != kIOReturnSuccess)
-                break;
-        }
-        if (ret != kIOReturnSuccess || offset != length || nsegs == 0) {
-            Klog(MPSK_ERROR | MPSK_INFO, "cannot map IO for target %u: ret 0x%x, %u segments for %llu of %llu bytes (cap %u)",
-                 (unsigned)targetID, ret, nsegs, offset, length, fMaxSegs);
-            dma->complete();
-            return kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
-        }
-    }
-
-    /* A slot (for AbortTaskRequest) and a pass through the gate. */
-    Slot *slot = nullptr;
-    IOLockLock(fLock);
-    const bool open = !fStopping && fCoreAttached && fMps;
-    if (open) {
-        for (uint32_t i = 0; i < kMaxTasks && !slot; i++)
-            if (!fSlots[i].task)
-                slot = &fSlots[i];
-    }
-    if (slot) {
-        slot->task = task;
-        slot->prepared = dma != nullptr;
-        slot->target = (uint32_t)targetID;
-        slot->lun = lun;
-        slot->tag = tag;
-        fBusy++;
-    } else {
-        fKStats.tasksRejected++;
-    }
-    IOLockUnlock(fLock);
-    if (!slot) {
-        if (dma)
-            dma->complete();
-        if (open)
-            Klog(MPSK_ERROR, "more than %u tasks outstanding: rejecting one", kMaxTasks);
-        return open ? kSCSIServiceResponse_FUNCTION_REJECTED : kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
-    }
-
-    struct mps_kext_io_result res;
-    const int rc = mps_kext_submit(fMps, td, task, tag, (uint32_t)targetID, lun, cdb, cdbLen, dir, nsegs,
-                                   length, &res);
-
-    IOLockLock(fLock);
-    if (rc == MPSK_SUBMIT_DONE) {
-        *slot = Slot();
-        fKStats.tasksRejected++;
-    } else {
-        fKStats.tasks++;
-        if (rc == MPSK_SUBMIT_HELD)
-            fKStats.tasksHeld++;
-    }
-    if (--fBusy == 0 && fStopping)
-        IOLockWakeup(fLock, &fBusy, false);
-    IOLockUnlock(fLock);
-
-    if (rc == MPSK_SUBMIT_DONE) {
-        /* refused by mpssas_action_scsiio (unknown target, gone, invalid, too big) */
-        if (dma)
-            dma->complete();
-        if (res.kind == MPSK_IO_REJECT) {
-            Klog(MPSK_ERROR, "IO for target %u refused (CAM status 0x%x)", (unsigned)targetID, res.cam_status);
-            return kSCSIServiceResponse_FUNCTION_REJECTED;
-        }
+    default:
         return kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
     }
-    return kSCSIServiceResponse_Request_In_Process;
 }
 
 //-----------------------------------------------------------------------------
 //	HandleTimeout - mpssas_scsiio_timeout() through mps_xnu_ccb_timeout().
-//	Called on the work loop (gate held) when a task's timer fires.
-//	Asynchronous: the core starts (or queues on) its target's recovery -
-//	ABORT_TASK, then LUN reset, target reset, controller reinit, each step
-//	started from the previous one's completion - and this returns at once.
-//	The task is completed (ProtocolTimeoutOccurred) when the IOC gives it
-//	back; a task the thin CAM was still holding is completed right away.
+//	Called on the work loop (gate held) when a task's timer fires (only
+//	tasks given to SetTimeoutForTask are timed). Asynchronous: the core
+//	starts (or queues on) its target's recovery - ABORT_TASK, then LUN
+//	reset, target reset, controller reinit - and this returns at once. The
+//	task is completed (ProtocolTimeoutOccurred) when the IOC gives it back;
+//	a task the thin CAM was still holding is completed right away.
 //																	[PROTECTED]
 //-----------------------------------------------------------------------------
 
 void
 SAS2308HBA::HandleTimeout(SCSIParallelTaskIdentifier task)
 {
-    if (!Enter()) {
-        Klog(MPSK_RECOVERY | MPSK_ERROR, "timeout while stopping: the stop path completes the task");
-        return;
-    }
-    IOLockLock(fLock);
-    fKStats.familyTimeouts++;
-    IOLockUnlock(fLock);
-    const int rc = mps_kext_timeout(fMps, GetHBADataPointer(task), task);
-    Leave();
-    if (rc != 0)
-        Klog(MPSK_RECOVERY | MPSK_ERROR, "timeout for a task that is not outstanding, ignored");
-    DeliverCompletions();
+    fGlue.HandleTimeout(task);
 }
 
 #if 0
@@ -892,33 +726,27 @@ SAS2308HBA::SendTaskMgmt(uint8_t taskType, SCSITargetIdentifier theT,
 
     SCSIParallelTaskIdentifier victim = nullptr;
     if (taskType == kTmAbortTask) {
-        IOLockLock(fLock);
-        for (uint32_t i = 0; i < kMaxTasks && !victim; i++) {
-            const Slot &s = fSlots[i];
-            if (s.task && s.target == theT && s.lun == theL && s.tag == theQ)
-                victim = s.task;
-        }
-        IOLockUnlock(fLock);
+        victim = (SCSIParallelTaskIdentifier)fGlue.FindTask((uint32_t)theT, theL, theQ);
         if (!victim) {
             Klog(MPSK_RECOVERY | MPSK_USER, "abort task on target %u: nothing left to abort", (unsigned)theT);
             return kSCSIServiceResponse_FUNCTION_COMPLETE;
         }
     }
     if (!Enter()) {
-        if (fLock) {
-            IOLockLock(fLock);
-            fKStats.tmRequests++;
-            fKStats.tmRequestsFailed++;
-            IOLockUnlock(fLock);
+        if (fGlue.HasLock()) {
+            fGlue.Lock();
+            fGlue.fKStats.tmRequests++;
+            fGlue.fKStats.tmRequestsFailed++;
+            fGlue.Unlock();
         }
         return kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
     }
-    IOLockLock(fLock);
-    fKStats.tmRequests++;
-    IOLockUnlock(fLock);
+    fGlue.Lock();
+    fGlue.fKStats.tmRequests++;
+    fGlue.Unlock();
 
     char why[192];
-    const int r = mps_kext_tm(fMps, taskType, (uint32_t)theT, theL, victim ? GetHBADataPointer(victim) : nullptr,
+    const int r = mps_kext_tm(fGlue.fMps, taskType, (uint32_t)theT, theL, victim ? GetHBADataPointer(victim) : nullptr,
                               victim, theQ, why, sizeof(why));
     Leave();
 
@@ -928,9 +756,9 @@ SAS2308HBA::SendTaskMgmt(uint8_t taskType, SCSITargetIdentifier theT,
     Klog(MPSK_RECOVERY | MPSK_USER, "%s on target %u: %s (%s)", mps_kext_tm_type_str(taskType), (unsigned)theT,
          r == MPSK_TM_COMPLETE ? "complete" : r == MPSK_TM_REJECTED ? "rejected" : "failed", why);
     if (response != kSCSIServiceResponse_FUNCTION_COMPLETE) {
-        IOLockLock(fLock);
-        fKStats.tmRequestsFailed++;
-        IOLockUnlock(fLock);
+        fGlue.Lock();
+        fGlue.fKStats.tmRequestsFailed++;
+        fGlue.Unlock();
     }
     DeliverCompletions();
     return response;

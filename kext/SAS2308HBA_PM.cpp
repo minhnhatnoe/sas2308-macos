@@ -148,12 +148,12 @@ SAS2308HBA::QuiesceController(uint32_t drainMs, const char *why, bool shutdown)
         return false;
     }
     Klog(MPSK_INIT | MPSK_INFO, "%s: quiescing the controller (drain up to %u ms)", why, drainMs);
-    const int rc = mps_kext_suspend(fMps, drainMs, shutdown ? 1 : 0);
+    const int rc = mps_kext_suspend(fGlue.fMps, drainMs, shutdown ? 1 : 0);
     Leave();
     DeliverCompletions();                           /* what the IOC owned: reset, retried, then held */
-    IOLockLock(fLock);
+    fGlue.Lock();
     fSuspended = true;
-    IOLockUnlock(fLock);
+    fGlue.Unlock();
     DisableInterrupt();
     Klog(rc ? (MPSK_FAULT | MPSK_INIT) : (MPSK_INIT | MPSK_INFO), "%s: controller stopped%s", why,
          rc ? " (the IOC did not acknowledge the message unit reset)" : " (message unit reset)");
@@ -171,12 +171,12 @@ SAS2308HBA::ResumeController(void)
     if (!fSuspended)
         return;
     EnableInterrupt();
-    IOLockLock(fLock);
+    fGlue.Lock();
     fSuspended = false;
-    IOLockUnlock(fLock);
+    fGlue.Unlock();
     int rc = -1;
     if (Enter()) {
-        rc = mps_kext_resume(fMps);
+        rc = mps_kext_resume(fGlue.fMps);
         Leave();
     }
     DeliverCompletions();

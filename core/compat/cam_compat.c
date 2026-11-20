@@ -442,6 +442,30 @@ cam_xnu_flush_held(struct cam_sim *sim, uint32_t status)
 	}
 }
 
+/* XNU: fail the held ccbs of one target (its nub is about to go) */
+int
+cam_xnu_flush_held_target(struct cam_sim *sim, target_id_t tid, uint32_t status)
+{
+	struct ccb_hdr *h, *next;
+	union ccb *ccb;
+	int n = 0;
+
+	mtx_assert(sim->mtx, MA_OWNED);
+	for (h = TAILQ_FIRST(&sim->held); h != NULL; h = next) {
+		next = TAILQ_NEXT(h, sim_links);
+		if (h->target_id != tid)
+			continue;
+		TAILQ_REMOVE(&sim->held, h, sim_links);
+		ccb = (union ccb *)h;
+		ccb->ccb_h.xnu_held = 0;
+		ccb->ccb_h.status = status;
+		if (ccb->ccb_h.cbfcnp != NULL)
+			ccb->ccb_h.cbfcnp(NULL, ccb);
+		n++;
+	}
+	return (n);
+}
+
 int
 cam_xnu_cancel_held(struct cam_sim *sim, union ccb *ccb, uint32_t status)
 {

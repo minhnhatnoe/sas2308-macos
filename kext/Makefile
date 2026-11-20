@@ -54,9 +54,10 @@ CORE_OBJS := $(patsubst ../core/%.c,$(BUILD)/core/%.o,$(CORE_SRCS))
 CORE_CFLAGS := $(COMMON) $(HIDDEN) -std=gnu11 -Wno-sign-compare -Wno-sign-conversion -Wno-shorten-64-to-32 \
                -Wno-implicit-int-conversion -Wno-conditional-uninitialized
 
-KEXT_SRCS := SAS2308HBA.cpp SAS2308HBA_PM.cpp SAS2308HBA_Hotplug.cpp SAS2308HBA_Props.cpp
-KEXT_HDRS := SAS2308HBA.h SAS2308HBA_Targets.h mps_xnu_os.h ../core/mps_xnu_stats.h
-OBJS := $(patsubst %.cpp,$(BUILD)/%.o,$(KEXT_SRCS)) $(BUILD)/mps_xnu_os.o $(CORE_OBJS) $(BUILD)/SAS2308HBA_info.o
+KEXT_SRCS := SAS2308HBA.cpp SAS2308HBA_PM.cpp SAS2308HBA_Hotplug.cpp SAS2308HBA_Props.cpp SAS2308Glue.cpp
+KEXT_HDRS := SAS2308HBA.h SAS2308HBA_Targets.h SAS2308Glue.h mps_xnu_os.h ../core/mps_xnu_stats.h
+OBJS := $(patsubst %.cpp,$(BUILD)/%.o,$(KEXT_SRCS)) $(BUILD)/mps_xnu_os.o $(BUILD)/mps_kext.o $(CORE_OBJS) \
+        $(BUILD)/SAS2308HBA_info.o
 
 all: $(KEXT)
 
@@ -65,6 +66,8 @@ all: $(KEXT)
 $(BUILD)/%.o: %.cpp $(KEXT_HDRS) | $(BUILD)
 	xcrun clang++ $(CXXFLAGS) -fvisibility-inlines-hidden -c $< -o $@
 $(BUILD)/mps_xnu_os.o: mps_xnu_os.cpp mps_xnu_os.h $(CORE_HDRS) | $(BUILD)
+	xcrun clang++ $(CXXFLAGS) $(HIDDEN) -c $< -o $@
+$(BUILD)/mps_kext.o: mps_kext.cpp mps_xnu_os.h $(CORE_HDRS) | $(BUILD)
 	xcrun clang++ $(CXXFLAGS) $(HIDDEN) -c $< -o $@
 $(BUILD)/core/%.o: ../core/%.c $(CORE_HDRS) | $(BUILD)
 	@mkdir -p $(dir $@)
@@ -95,13 +98,13 @@ check: $(KEXT)
 	@wc -l < $(BUILD)/exports.txt
 	! grep -vE '^__ZNK?10SAS2308HBA|^__ZTVN?10SAS2308HBA|^_kmod_info$$' $(BUILD)/exports.txt
 	@# kernel os_log drops any format with %{...} annotations (EINVAL in log_encode_fmt)
-	! grep -n '%{' $(KEXT_SRCS) mps_xnu_os.cpp $(CORE_SRCS) ../core/*.h
+	! grep -n '%{' $(KEXT_SRCS) mps_xnu_os.cpp mps_kext.cpp $(CORE_SRCS) ../core/*.h
 
 # Default checkers plus the array-bound and cstring ones used since M3.
 ANALYZE := --analyze -Xanalyzer -analyzer-output=text \
            -Xanalyzer -analyzer-checker=security.ArrayBound,alpha.unix.cstring
 analyze: | $(BUILD)
-	@for f in $(KEXT_SRCS) mps_xnu_os.cpp; do echo "  ANALYZE $$f"; \
+	@for f in $(KEXT_SRCS) mps_xnu_os.cpp mps_kext.cpp; do echo "  ANALYZE $$f"; \
 	  xcrun clang++ $(CXXFLAGS) $(ANALYZE) -o /dev/null $$f || exit 1; done
 	@for f in $(CORE_SRCS); do echo "  ANALYZE $$f"; \
 	  xcrun clang $(CORE_CFLAGS) $(ANALYZE) -o /dev/null $$f || exit 1; done

@@ -161,6 +161,35 @@ int main()
         CHECK(Drain(t).empty() && t.Created(12));
     }
 
+    printf("targets: a different disk behind an ID (new generation) -> destroy, then create (review C2)\n");
+    {
+        T t;
+        t.Start();
+        uint32_t g[64] = {};
+        g[4] = 1;
+        t.Update(Bit(4), Bit(4), g);
+        Drain(t);
+        CHECK(t.Created(4));
+        CHECK(!t.Update(Bit(4), Bit(4), g));              /* same disk: the nub stays */
+        g[4] = 2;
+        CHECK(t.Update(Bit(4), Bit(4), g));
+        std::vector<T::Work> d = Drain(t);
+        CHECK(d.size() == 2 && d[0].action == T::kDestroy && d[1].action == T::kCreate && d[1].gen == 2);
+        CHECK(t.Created(4) && !t.Pending());
+        /* a new disk while the old one's create runs: created, then replaced */
+        g[5] = 1;
+        t.Update(Bit(5), Bit(5), g);
+        uint32_t c = 0;
+        T::Work w = t.Next(c);
+        while (w.action != T::kNone && w.targetID != 5) { t.Done(w, true); w = t.Next(c); }
+        CHECK(w.action == T::kCreate && w.targetID == 5);
+        g[5] = 2;
+        CHECK(t.Update(Bit(5), Bit(5), g));
+        t.Done(w, true);
+        d = Drain(t);
+        CHECK(d.size() == 2 && d[0].action == T::kDestroy && d[1].action == T::kCreate && d[1].gen == 2);
+    }
+
     printf("targets: hotplug thread racing termination (create of 5 and 63 in progress)\n");
     for (uint32_t id : {5u, 63u}) {
         T t;

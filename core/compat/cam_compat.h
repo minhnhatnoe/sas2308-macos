@@ -350,6 +350,8 @@ void		 scsi_command_string(struct ccb_scsiio *csio, struct sbuf *sb);
 int		 cam_xnu_held_count(struct cam_sim *sim);
 /* XNU: complete every held ccb with `status' (detach, controller gone). */
 void		 cam_xnu_flush_held(struct cam_sim *sim, uint32_t status);
+int		 cam_xnu_flush_held_target(struct cam_sim *sim, target_id_t tid,
+		    uint32_t status);
 /*
  * XNU: if `ccb' is held, take it off the held queue and complete it with
  * `status' (OS timeout or abort of a task that never reached the SIM).

@@ -5,7 +5,8 @@
  *
  * Target creation runs on its own thread call: CreateTargetForID() probes
  * the device synchronously, and those probe IOs complete on the work loop.
- * The bookkeeping is SAS2308TargetTable (SAS2308HBA_Targets.h, host-tested).
+ * The thread's loop and the bookkeeping are IOKit-free (SAS2308Glue.cpp,
+ * SAS2308HBA_Targets.h, host-tested); this file has the IOKit parts.
  *
  * Per-target properties, as the family and Apple's drivers expect them:
  *   - "SAS Address" (kIOPropertySASAddressKey, 8 bytes, big-endian) from
@@ -33,33 +34,14 @@
 #endif
 
 //-----------------------------------------------------------------------------
-//	HostAsync - CAM async events (mps_mtx held). `present' was sampled
-//	(mps_xnu_target_present) when the event happened; the hotplug thread
-//	acts on it later. A rescan finds a target present -> create it; absent
-//	(removed, or not rediscovered after a reinit: the core rescans the whole
-//	bus when port enable completes) -> destroy it. AC_BUS_RESET alone changes
-//	nothing (targets survive a reinit if the rediscovery finds them again).
-//																	[PRIVATE]
+//	HostAsync - CAM async events (mps_mtx held): SAS2308Glue::Async updates
+//	the target table and kicks the hotplug thread.					[PRIVATE]
 //-----------------------------------------------------------------------------
 
 void
-SAS2308HBA::HostAsync(void *hba, int event, uint64_t tids, uint64_t present)
+SAS2308HBA::HostAsync(void *hba, int event, uint64_t tids, uint64_t present, const uint32_t *gens)
 {
-    SAS2308HBA *self = (SAS2308HBA *)hba;
-    if (event == MPSK_ASYNC_BUS_RESET) {
-        self->Klog(MPSK_MAPPING | MPSK_RECOVERY, "IOC reset: targets wait for the rediscovery");
-        return;
-    }
-    if (event == MPSK_ASYNC_SENT_BDR) {
-        for (uint32_t i = 0; i < kMaxTargets; i++)
-            if (tids & (1ull << i))
-                self->Klog(MPSK_RECOVERY, "target %u: target reset sent", i);
-        return;
-    }
-    IOLockLock(self->fLock);
-    if (self->fTargets.Update(tids, present))
-        self->ScheduleHotplug();
-    IOLockUnlock(self->fLock);
+    ((SAS2308HBA *)hba)->fGlue.Async(event, tids, present, gens);
 }
 
 #if 0
@@ -70,77 +52,28 @@ SAS2308HBA::HostAsync(void *hba, int event, uint64_t tids, uint64_t present)
 void
 SAS2308HBA::HotplugThread(thread_call_param_t self, thread_call_param_t)
 {
-    SAS2308HBA *hba = (SAS2308HBA *)self;
-
-    hba->Hotplug();
-    IOLockLock(hba->fLock);
-    if (--hba->fHotplugPending == 0)
-        IOLockWakeup(hba->fLock, &hba->fHotplugPending, false);
-    IOLockUnlock(hba->fLock);
-}
-
-void
-SAS2308HBA::ScheduleHotplug(void)
-{
-    if (!fHotplugCall || fHotplugStop)
-        return;
-    if (!thread_call_enter(fHotplugCall))
-        fHotplugPending++;
+    ((SAS2308HBA *)self)->fGlue.HotplugCallBody();
 }
 
 //-----------------------------------------------------------------------------
-//	QuiesceHotplug - no new invocations; wait for the running one, which
-//	finishes the CreateTargetForID()/DestroyTargetForID() it is in. [PRIVATE]
+//	PortCreateTarget - CreateTargetForID() for the hotplug thread (no lock
+//	held): it probes the device synchronously. Never once terminating.
+//																	[PRIVATE]
 //-----------------------------------------------------------------------------
 
-void
-SAS2308HBA::QuiesceHotplug(void)
+bool
+SAS2308HBA::PortCreateTarget(uint32_t targetID)
 {
-    if (!fHotplugCall || !fLock)
-        return;
-    IOLockLock(fLock);
-    fHotplugStop = true;
-    if (thread_call_cancel(fHotplugCall) && fHotplugPending)
-        fHotplugPending--;                          /* was queued, will not run */
-    while (fHotplugPending)
-        IOLockSleep(fLock, &fHotplugPending, THREAD_UNINT);
-    IOLockUnlock(fLock);
-}
-
-void
-SAS2308HBA::Hotplug(void)
-{
-    uint32_t cursor = 0;
-
-    for (;;) {
-        SAS2308TargetTable::Work w = { SAS2308TargetTable::kNone, 0 };
-        IOLockLock(fLock);
-        if (!fHotplugStop)
-            w = fTargets.Next(cursor);
-        IOLockUnlock(fLock);
-        if (w.action == SAS2308TargetTable::kNone)
-            break;
-
-        bool ok = true;
-        if (w.action == SAS2308TargetTable::kCreate) {
-            if (isInactive()) {
-                ok = false;                         /* terminating: never attach a new nub */
-                Klog(MPSK_MAPPING | MPSK_INFO, "target %u: not created, controller terminating", w.targetID);
-            } else {
-                OSDictionary *props = CopyTargetProperties(w.targetID);
-                ok = props ? CreateTargetForID(w.targetID, props) : CreateTargetForID(w.targetID);
-                OSSafeReleaseNULL(props);
-                Klog(ok ? (MPSK_MAPPING | MPSK_INFO) : (MPSK_MAPPING | MPSK_ERROR), "CreateTargetForID(%u) %s",
-                     w.targetID, ok ? "done" : "FAILED");
-            }
-        } else {
-            DestroyTargetForID(w.targetID);
-            Klog(MPSK_MAPPING | MPSK_INFO, "target %u destroyed", w.targetID);
-        }
-        IOLockLock(fLock);
-        fTargets.Done(w, ok);
-        IOLockUnlock(fLock);
+    if (isInactive()) {
+        Klog(MPSK_MAPPING | MPSK_INFO, "target %u: not created, controller terminating", targetID);
+        return false;
     }
+    OSDictionary *props = CopyTargetProperties(targetID);
+    const bool ok = props ? CreateTargetForID(targetID, props) : CreateTargetForID(targetID);
+    OSSafeReleaseNULL(props);
+    Klog(ok ? (MPSK_MAPPING | MPSK_INFO) : (MPSK_MAPPING | MPSK_ERROR), "CreateTargetForID(%u) %s", targetID,
+         ok ? "done" : "FAILED");
+    return ok;
 }
 
 #if 0
@@ -161,7 +94,7 @@ SAS2308HBA::CopyTargetProperties(SCSITargetIdentifier targetID)
     int found = 0;
 
     if (Enter()) {
-        found = mps_kext_target_info(fMps, (uint32_t)targetID, &ti);
+        found = mps_kext_target_info(fGlue.fMps, (uint32_t)targetID, &ti);
         Leave();
     }
     if (!found || ti.sas_address == 0)
@@ -193,7 +126,7 @@ SAS2308HBA::InitializeTargetForID(SCSITargetIdentifier targetID)
 {
     if (targetID >= kMaxTargets || !Enter())
         return false;
-    bool present = mps_kext_target_present(fMps, (uint32_t)targetID) != 0;
+    bool present = mps_kext_target_present(fGlue.fMps, (uint32_t)targetID) != 0;
     Leave();
     if (present)
         PublishTargetCharacteristics(targetID);
@@ -249,34 +182,4 @@ SAS2308HBA::PublishTargetCharacteristics(SCSITargetIdentifier targetID)
         dict->setObject(kIOPropertyWriteTimeOutDurationKey, n);
     nub->setProperty(kIOPropertyProtocolCharacteristicsKey, dict);
     dict->release();
-}
-
-#if 0
-#pragma mark -
-#pragma mark Termination
-#endif
-
-//-----------------------------------------------------------------------------
-//	TerminateTargets - after IOSCSIParallelInterfaceController::willTerminate:
-//	its loop destroys IDs 0 .. fHighestSupportedDeviceID - 1 only, so destroy
-//	ID 63 ourselves (DestroyTargetForID of a missing ID is a no-op).
-//																	[PRIVATE]
-//-----------------------------------------------------------------------------
-
-void
-SAS2308HBA::TerminateTargets(void)
-{
-    uint64_t left = 0;
-
-    if (fLock) {
-        IOLockLock(fLock);
-        left = fTargets.Leftovers((uint32_t)ReportHighestSupportedDeviceID());
-        IOLockUnlock(fLock);
-    }
-    for (uint32_t i = 0; i < kMaxTargets; i++) {
-        if (left & (1ull << i)) {
-            DestroyTargetForID(i);
-            Klog(MPSK_MAPPING | MPSK_INFO, "target %u destroyed (missed by the family's willTerminate)", i);
-        }
-    }
 }

@@ -26,7 +26,23 @@ struct HostLogRec {
     std::string line;
 };
 
+/*
+ * A thread_call with xnu semantics (TF1): enter returns true if the call
+ * was already queued (no new invocation); an enter while it runs queues a
+ * second invocation, which HostRunPending starts at once, nested ("another
+ * thread", concurrently); cancel dequeues a queued invocation only.
+ */
+struct HostThreadCall {
+    std::function<void()> fn;
+    bool queued = false;
+    int running = 0;
+    int invocations = 0, concurrent = 0;
+    bool Enter() { if (queued) return true; queued = true; return false; }
+    bool Cancel() { if (!queued) return false; queued = false; return true; }
+};
+
 struct MpsHostOs {
+    std::vector<HostThreadCall *> threadCalls;  /* run by HostRunPending */
     MockIocModel *ioc = nullptr;
     struct mps_softc *sc = nullptr;         /* interrupts go to mps_intr_msi(sc) */
     bool verbose = false;

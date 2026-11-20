@@ -58,9 +58,11 @@ struct mps_kext_host {
 	/*
 	 * CAM async events (mps_mtx held). MPSK_ASYNC_SCAN / LOST_DEVICE: for
 	 * every target id in `tids', bit = 1 if mps_xnu_target_present() at
-	 * the time of the event.
+	 * the time of the event; gens[id] = the generation of the device
+	 * behind the id (mps_xnu_target_gen: changes with its identity).
 	 */
-	void	(*async)(void *hba, int event, uint64_t tids, uint64_t present);
+	void	(*async)(void *hba, int event, uint64_t tids, uint64_t present,
+		    const uint32_t *gens);
 };
 
 enum {
@@ -119,12 +121,19 @@ struct mps_kext_io_result {
 };
 
 enum { MPSK_SUBMIT_POSTED, MPSK_SUBMIT_HELD, MPSK_SUBMIT_DONE };
-/* xpt_action with mps_mtx held; DONE: completed synchronously (*res) */
+/*
+ * xpt_action with mps_mtx held. DONE: completed synchronously (*res, for
+ * the log); the task is on the done queue like any other completion, so
+ * the family sees it through CompleteParallelTask. timeout_ms: the
+ * task's own timeout; the core arms its callout 10 s after it, a
+ * backstop should the family's timer be lost (0: none).
+ */
 int	 mps_kext_submit(struct mps_kext *k, void *td, void *os_task,
 	    uint64_t os_tag, uint32_t tid, uint64_t lun, const uint8_t *cdb,
 	    uint8_t cdblen,
-	    int dir, uint32_t nsegs, uint64_t len,
+	    int dir, uint32_t nsegs, uint64_t len, uint32_t timeout_ms,
 	    struct mps_kext_io_result *res);
+#define	MPSK_BACKSTOP_MS	10000	/* core timeout = task timeout + this */
 /* pop one completed task (NULL: none); usable until mps_kext_destroy */
 void	*mps_kext_next_done(struct mps_kext *k, struct mps_kext_io_result *res);
 /* the OS timer of a task fired: mps_xnu_ccb_timeout */
@@ -158,9 +167,29 @@ int	 mps_kext_suspend(struct mps_kext *k, uint32_t drain_ms, int shutdown);
 /* reinit on the core's taskqueue; IO held until the rediscovery is done */
 int	 mps_kext_resume(struct mps_kext *k);
 
+/* ---- locks and time for the IOKit-free glue (SAS2308Glue) -------------- */
+
+/* the core's mps_os_lock_* hooks: IOLock on xnu, the host model in tests */
+void	*mps_kext_lock_alloc(const char *name);
+void	 mps_kext_lock_free(void *lock);
+void	 mps_kext_lock(void *lock);
+void	 mps_kext_unlock(void *lock);
+void	 mps_kext_sleep(void *lock, void *chan);	/* drops `lock' while asleep */
+void	 mps_kext_wakeup(void *chan);
+/* once per kext load (mps_xnu_os.cpp): logs, the wakeup lock; 0 = ok */
+int	 mps_kext_os_init(void);
+
 /* ---- targets, statistics, logging -------------------------------------- */
 
 int	 mps_kext_target_present(struct mps_kext *k, uint32_t tid);
+/*
+ * Before a target's nub is destroyed: fail the target's held IO
+ * (CAM_DEV_NOT_THERE) and wait up to timeout_ms for its posted IO to come
+ * back (the removal's target reset terminates it). Returns what is left.
+ */
+int	 mps_kext_target_drain(struct mps_kext *k, uint32_t tid, uint32_t timeout_ms);
+/* host tests only: the softc, for the model's interrupt delivery */
+void	*mps_kext_softc(struct mps_kext *k);
 
 /* SAS Device Page 0 as read by mpssas_add_device (0: no such target) */
 struct mps_kext_target_info {
