@@ -69,6 +69,8 @@ struct mps_xnu_stats {
 	uint32_t	temp_warnings;		/* crossings of MPS_XNU_TEMP_WARN_C */
 	uint32_t	ioc_temp_valid;		/* ioc_temp_c holds a reading */
 	int32_t		ioc_temp_c;		/* last reading, degrees C */
+	/* review fixes */
+	uint32_t	reinit_coalesced;	/* reinit requests covered by a running one */
 };
 
 #endif /* !_MPS_XNU_STATS_H_ */

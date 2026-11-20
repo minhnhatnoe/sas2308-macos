@@ -308,6 +308,7 @@ struct mps_softc {
  */
 #define	MPS_XNU_ABANDON(sc)						\
 	(((sc)->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) != 0 || \
+	(sc)->xnu.stop_reinit ||					\
 	((sc)->mps_flags & (MPS_FLAGS_SHUTDOWN | MPS_FLAGS_DIAGRESET)) ==	\
 	(MPS_FLAGS_SHUTDOWN | MPS_FLAGS_DIAGRESET))
 /*

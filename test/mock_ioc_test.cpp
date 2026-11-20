@@ -2129,8 +2129,56 @@ static bool Want(const char *id)
     return true;
 }
 
+static void RequestReinit(Rig &g, const char *why)
+{
+    mps_lock(g.sc);
+    mps_xnu_request_reinit(g.sc, why);
+    mps_unlock(g.sc);
+}
+
 static void ReviewTests()
 {
+    if (Want("H2-inline")) {
+        /* a TM timeout (any reinit request) inside the diag reset of an in-line reinit */
+        Rig g;
+        MockIocModel &m = g.ioc;
+        const int resets = m.diagResetCount;
+        bool fired = false;
+        gHost.onOtherThreads = [&]() {
+            if (!fired && g.InReset()) { fired = true; RequestReinit(g, "task management timeout (test)"); }
+        };
+        CHECK(g.ForceReinit() == 0);            /* mps_wait_command's in-line reinit */
+        HostAdvance(2000);
+        gHost.onOtherThreads = nullptr;
+        CHECK(fired);
+        CHECK(!g.ReinitQueued());               /* lost: new IO would be requeued for good */
+        CHECK(m.diagResetCount == resets + 1);  /* doubled: a second diag reset */
+        Io *r = g.Read(0x0009, 0, 3);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
+    if (Want("H2-task")) {
+        /* the running reset is the reinit task itself */
+        Rig g;
+        MockIocModel &m = g.ioc;
+        const int resets = m.diagResetCount;
+        bool fired = false;
+        gHost.onOtherThreads = [&]() {
+            if (!fired && g.InReset()) { fired = true; RequestReinit(g, "task management timeout (test)"); }
+        };
+        RequestReinit(g, "IOC fault (test)");
+        HostAdvance(2000);
+        gHost.onOtherThreads = nullptr;
+        CHECK(fired && !g.ReinitQueued() && !g.InReset());
+        CHECK(m.diagResetCount == resets + 1);
+        Io *r = g.Read(0x000A, 0, 4);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
     if (Want("H5")) {
         /* shutdown: IO fails at once afterwards; a wedged IOC: bounded, bus mastering off, no diag reset */
         Rig g;
@@ -2179,6 +2227,43 @@ static void ReviewTests()
         CHECK(m.nowUs - t0 < 15000000);
         CHECK(a->done && a->deadAtDone == dead + 1);
         m.holdIo = false;
+    }
+
+    if (Want("M2")) {
+        /* detach with device adds queued: each add's page read would wait 60 s on a stopped IOC */
+        Rig g;
+        MockIocModel &m = g.ioc;
+        for (uint16_t h : {0x0010, 0x0011, 0x0012}) {
+            m.devices.push_back(h);
+            m.PostTopologyEvent({h});
+        }
+        g.Pump();                               /* queued on the event taskqueue, not run */
+        const uint64_t t0 = m.nowUs;
+        g.Detach();
+        CHECK(m.nowUs - t0 < 10000000);
+    }
+
+    if (Want("M1")) {
+        /* system sleep while a reinit sleeps in its diag reset: not disabled, works after wake */
+        Rig g;
+        bool fired = false;
+        int rc = -1;
+        gHost.onOtherThreads = [&]() {
+            if (!fired && g.InReset() && !g.sc->xnu.suspending) { fired = true; rc = Suspend(g, 100); }
+        };
+        RequestReinit(g, "IOC fault (test)");
+        HostAdvance(3000);
+        gHost.onOtherThreads = nullptr;
+        CHECK(fired && rc == 0);
+        CHECK(!g.Gone() && !g.sc->xnu.disabled);
+        CHECK(Resume(g) == 0);
+        HostAdvance(3000);
+        CHECK(!g.Gone() && !g.InReset() && !g.ReinitQueued());
+        CHECK(g.Present(g.Tid(0x000A), 0x000A));
+        Io *r = g.Read(0x000A, 0, 6);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->status == CAM_REQ_CMP);
     }
 
 }

@@ -165,6 +165,11 @@ void *mps_os_curthread(void)
 int mps_os_sleep(void *lock, void *chan, uint64_t timo_us)
 {
     gHost.sleeps++;
+    /*
+     * msleep drops the lock and sleeps atomically: a wakeup issued before
+     * (with the lock held, or earlier) is lost on a real kernel.
+     */
+    gHost.woken.erase(chan);
     mps_os_unlock(lock);
     gHost.ioc->nowUs += 100;
     HostRunPending();

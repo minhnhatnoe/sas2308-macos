@@ -586,6 +586,19 @@ mps_xnu_request_reinit(struct mps_softc *sc, const char *why)
 {
 	if ((sc->mps_flags & MPS_FLAGS_SHUTDOWN) || sc->mps_tq == NULL)
 		return;
+	/*
+	 * FreeBSD's mps_reinit returns "Reset already in progress": the reset
+	 * that runs covers this request.  Recording it would leave
+	 * reinit_pending set after that reset (new IO requeued for good) or
+	 * run a second diag reset.  Asleep, MPS_FLAGS_DIAGRESET stays set
+	 * until the resume, which reinitializes anyway.
+	 */
+	if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) && !sc->xnu.suspending) {
+		sc->xnu.stats.reinit_coalesced++;
+		mps_dprint(sc, MPS_RECOVERY, "controller reinit requested: "
+		    "%s; the reset in progress covers it\n", why);
+		return;
+	}
 	if (!sc->xnu.reinit_pending) {
 		sc->xnu.reinit_pending = 1;
 		mps_dprint(sc, MPS_RECOVERY, "controller reinit requested: "

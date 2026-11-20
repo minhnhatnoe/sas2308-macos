@@ -827,7 +827,12 @@ mps_reinit(struct mps_softc *sc)
 		mps_dprint(sc, MPS_INIT, "Reset already in progress\n");
 		return 0;
 	}
-	sc->xnu.reinit_pending = 0;	/* XNU: mps_xnu_request_reinit */
+	/*
+	 * XNU: mps_xnu_request_reinit.  Requests made while this reset runs
+	 * are covered by it (they are dropped while MPS_FLAGS_DIAGRESET is
+	 * set), so clearing the flag once, here, covers every exit.
+	 */
+	sc->xnu.reinit_pending = 0;
 	/*
 	 * XNU: nothing to reset once gone, disabled or detaching; a
 	 * controller found gone is disabled here (everything completed).
@@ -837,6 +842,7 @@ mps_reinit(struct mps_softc *sc)
 			mps_xnu_disable(sc, ENXIO);
 		return (ENXIO);
 	}
+	sc->xnu.reinit_running = 1;	/* XNU: mps_xnu_suspend waits for it */
 	sc->xnu.stats.reinits++;
 	sc->xnu.reinit_start_us = mps_os_uptime_us();
 
@@ -891,8 +897,26 @@ mps_reinit(struct mps_softc *sc)
 	}
 	if (error != 0) {
 		sc->xnu.stats.reinit_failures++;
+		sc->xnu.reinit_running = 0;
+		/*
+		 * XNU: abandoned because the system goes to sleep: not a
+		 * failure of the controller.  The suspend owns
+		 * MPS_FLAGS_DIAGRESET now, the resume reinits again, and the
+		 * discovery hold taken by mpssas_handle_reinit() stays for
+		 * that reinit (reinit_owed).
+		 */
+		if (sc->xnu.suspending &&
+		    (sc->mps_flags & MPS_FLAGS_XNU_GONE) == 0) {
+			mps_dprint(sc, MPS_INIT|MPS_INFO, "reinit abandoned "
+			    "for system sleep; the resume reinitializes\n");
+			if (sassc != NULL && (sassc->flags & MPSSAS_IN_STARTUP))
+				sc->xnu.reinit_owed = 1;
+			wakeup(&sc->xnu.reinit_running);
+			return (error);
+		}
 		sc->mps_flags &= ~MPS_FLAGS_DIAGRESET;
 		mps_xnu_disable(sc, error);
+		wakeup(&sc->xnu.reinit_running);
 		return (error);
 	}
 
@@ -917,6 +941,8 @@ mps_reinit(struct mps_softc *sc)
 
 	mpssas_release_simq_reinit(sassc);
 	mps_xnu_reinit_done(sc);	/* XNU: statistics */
+	sc->xnu.reinit_running = 0;
+	wakeup(&sc->xnu.reinit_running);
 	mps_dprint(sc, MPS_INIT, "%s exit\n", __func__);
 
 	return 0;
@@ -932,7 +958,9 @@ mps_reinit_task(void *arg, int pending)
 	struct mps_softc *sc = arg;
 
 	mps_lock(sc);
-	mps_reinit(sc);
+	/* XNU: a reinit that ran meanwhile (mps_wait_command) covered it */
+	if (sc->xnu.reinit_pending)
+		mps_reinit(sc);
 	mps_unlock(sc);
 }
 
@@ -1009,6 +1037,23 @@ mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms, int shutdown)
 		    "IOC\n", sc->io_cmds_active, drain_ms,
 		    sc->xnu.reinit_pending ? " (reinit pending)" : "");
 	sc->xnu.stats.suspend_drain_left += sc->io_cmds_active;
+
+	/*
+	 * A reinit still running gives up at its next wait (MPS_XNU_ABANDON:
+	 * stop_reinit) without disabling the controller; wait for it, so that
+	 * no two threads drive the doorbell.  If it does not stop in time it
+	 * gives up once MPS_FLAGS_XNU_SUSPENDED is set.
+	 */
+	sc->xnu.stop_reinit = 1;
+	start = ticks;
+	while (sc->xnu.reinit_running &&
+	    (u_int)(ticks - start) < MPS_XNU_REINIT_STOP_MS * (hz / 1000))
+		msleep(&sc->xnu.reinit_running, &sc->mps_mtx, 0, "mpssrei",
+		    hz / 100);
+	sc->xnu.stop_reinit = 0;
+	if (sc->xnu.reinit_running)
+		mps_dprint(sc, MPS_INIT|MPS_FAULT, "suspend: the reinit did "
+		    "not stop in %u ms\n", MPS_XNU_REINIT_STOP_MS);
 
 	callout_stop(&sc->periodic);
 	/* A reinit still running gives up at its next wait (MPS_XNU_ABANDON) */
@@ -2972,6 +3017,10 @@ mps_wait_command(struct mps_softc *sc, struct mps_command **cmp, int timeout,
 
 	if (sc->mps_flags & MPS_FLAGS_DIAGRESET) 
 		return  EBUSY;
+	/* XNU: stopped, unplugged or asleep: no reply will come */
+	if (sc->mps_flags & (MPS_FLAGS_SHUTDOWN | MPS_FLAGS_XNU_GONE |
+	    MPS_FLAGS_XNU_SUSPENDED))
+		return (ENXIO);
 
 	cm->cm_complete = NULL;
 	cm->cm_flags |= MPS_CM_FLAGS_POLLED;

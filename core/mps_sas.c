@@ -805,7 +805,11 @@ mpssas_handle_reinit(struct mps_softc *sc)
 	mps_dprint(sc, MPS_INIT, "%s startup\n", __func__);
 	sc->sassc->flags |= MPSSAS_IN_STARTUP;
 	sc->sassc->flags |= MPSSAS_IN_DISCOVERY;
-	mpssas_startup_increment(sc->sassc);
+	/* XNU: an abandoned reinit (system sleep) still holds the startup */
+	if (sc->xnu.reinit_owed)
+		sc->xnu.reinit_owed = 0;
+	else
+		mpssas_startup_increment(sc->sassc);
 	mps_xnu_readd_cancel(sc, 0);	/* XNU: the rediscovery adds them */
 
 	/* notify CAM of a bus reset */

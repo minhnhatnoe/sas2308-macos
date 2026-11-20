@@ -39,6 +39,7 @@ struct mps_softc;
 #define MPS_XNU_SHUTDOWN_DRAIN_MS 1000	/* shutdown: drain at most, */
 #define MPS_XNU_SHUTDOWN_STOP_MS 2000	/* then stop the IOC within (no diag reset) */
 #define MPS_XNU_SLEEP_STOP_MS	10000	/* sleep / detach: stop the IOC within */
+#define MPS_XNU_REINIT_STOP_MS	2000	/* suspend waits for a running reinit */
 
 /* ---- log levels: presets of the mps_dprint class mask ------------------ */
 
@@ -109,6 +110,9 @@ struct mps_xnu {
 	int			 reinit_pending;	/* mps_reinit_task queued */
 	int			 disabled;		/* mps_xnu_disable() ran */
 	uint16_t		 tid_handle[MPS_XNU_MAX_TARGETS]; /* last handle */
+	int			 reinit_running;	/* mps_reinit() between start and end */
+	int			 stop_reinit;		/* suspend: a running reinit gives up */
+	int			 reinit_owed;		/* abandoned reinit left IN_STARTUP held */
 	uint64_t		 reinit_start_us;
 	int			 gone_logged;
 	/* config pages (mps_config.c): one DMA buffer, one read at a time */
