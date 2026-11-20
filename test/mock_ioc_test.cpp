@@ -50,6 +50,12 @@ static void Fail(const char *file, int line, const char *expr)
 static size_t LogMark() { return gHost.Mark(); }
 static int CountLog(size_t mark, const char *sub) { return gHost.Count(mark, sub); }
 static bool HasLog(size_t mark, const char *sub) { return gHost.Has(mark, sub); }
+static uint32_t LogClass(size_t mark, const char *sub)
+{
+    for (size_t i = mark; i < gHost.log.size(); i++)
+        if (gHost.log[i].line.find(sub) != std::string::npos) return gHost.log[i].cls;
+    return 0;
+}
 
 static const uint8_t kAbortT = MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK;
 static const uint8_t kLunT = MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET;
@@ -475,6 +481,7 @@ static void HotplugTests();
 static void RetryTests();
 static void TemperatureTests();
 static void RecoveredSenseTests();
+static void CheckConditionLogTests(Rig &g);
 static void SleepTests();
 static void ReviewTests();
 
@@ -1463,7 +1470,8 @@ static void LoggingTests()
         CHECK(HasLog(mark, "target 0 (handle 0x0009) lun 0 SMID "));
         CHECK(HasLog(mark, " READ(10) lba 7 blocks 8 failed: IOCStatus scsi io data error "
                            "(0x0046) loginfo 0x31120303 (SAS PL code 0x12 sub 0x0303) SCSI status check condition (0x02) "
-                           "state 0x01 sense MEDIUM ERROR (0x3) ASC/ASCQ 0x11/0x00 UNRECOVERED READ ERROR xfer 0/4096"));
+                           "state 0x01 sense MEDIUM ERROR (0x3) ASC/ASCQ 0x11/0x00 UNRECOVERED READ ERROR len 4096 IOC TransferCount 0"));
+        CHECK(mps_xnu_log_type(LogClass(mark, "READ(10) lba 7 blocks 8 failed")) == MPS_XNU_LOG_ERROR);   /* IOC failure: ERROR */
         CHECK(g.Stats().err_transport == 20 && g.Stats().ios == 20);
         m.nowUs += 11000000;
         g.Callouts();                                                /* mps_periodic flushes the summary */
@@ -1704,13 +1712,6 @@ static int ReaddPending(Rig &g)
     int n = 0;
     for (const auto &r : g.sc->xnu.readd) n += r.handle != 0;
     return n;
-}
-
-static uint32_t LogClass(size_t mark, const char *sub)
-{
-    for (size_t i = mark; i < gHost.log.size(); i++)
-        if (gHost.log[i].line.find(sub) != std::string::npos) return gHost.log[i].cls;
-    return 0;
 }
 
 static void RetryTests()
@@ -2001,14 +2002,102 @@ static void RecoveredSenseTests()
     g.Pump();
     CHECK(io->done && !HasLog(mark, "ATA PASS-THROUGH"));
     g.sc->mps_debug = MPS_DEBUG_ALL;
-    /* a real CHECK CONDITION is still an error line */
-    mark = LogMark();
+    CheckConditionLogTests(g);
+}
+
+/*
+ * A command completed with a SCSI status (IOCStatus success): xinfo (os_log
+ * DEBUG) as FreeBSD mps, except CHECK CONDITION MEDIUM/HARDWARE ERROR (CAM
+ * prints that sense): error, rate limited.  IOC failures stay error.
+ */
+static void CheckConditionLogTests(Rig &g)
+{
+    printf("check condition: NOT READY 0x04/0x02 on TEST UNIT READY is xinfo; MEDIUM/HARDWARE ERROR stay error\n");
+    const struct mps_xnu_stats before = g.Stats();
+    size_t mark = LogMark();
     uint8_t tur[6] = {0x00};
+    Io *io = g.NewIo(g.Tid(0x0009), 0, CAM_DIR_NONE, tur, 6, {});
+    CHECK(g.Go(io) == kPosted);
+    g.Pump();
+    /* no data phase: DataLength 0, NODATATRANSFER, no SGL data; the family gets 0 bytes */
+    CHECK(g.ioc.lastDataLength == 0 &&
+          (g.ioc.lastControl & MPI2_SCSIIO_CONTROL_DATADIRECTION_MASK) == MPI2_SCSIIO_CONTROL_NODATATRANSFER);
+    CHECK(io->done && io->status == CAM_SCSI_STATUS_ERROR && io->scsiStatus == 0x02 && io->resid == 0);
+    CHECK(g.Stats().err_check_condition == before.err_check_condition + 1);
+    CHECK(HasLog(mark, "TEST UNIT READY lba 0 blocks 0 failed: IOCStatus success (0x0000) SCSI status check condition "
+                       "(0x02) state 0x01 sense NOT READY (0x2) ASC/ASCQ 0x04/0x02 "));
+    CHECK(HasLog(mark, " len 0 IOC TransferCount 65536"));
+    CHECK(LogClass(mark, "TEST UNIT READY lba 0 blocks 0 failed") == MPS_XINFO);
+    for (size_t i = mark; i < gHost.log.size(); i++) CHECK(mps_xnu_log_type(gHost.log[i].cls) != MPS_XNU_LOG_ERROR);
+    /* a flood (macOS polls every ~3 s per drive): none of it is an error line, none suppressed */
+    mark = LogMark();
+    for (int i = 0; i < 20; i++) {
+        io = g.NewIo(g.Tid(0x0009), 0, CAM_DIR_NONE, tur, 6, {});
+        CHECK(g.Go(io) == kPosted);
+        g.Pump();
+    }
+    CHECK(CountLog(mark, "TEST UNIT READY lba 0 blocks 0 failed") == 20 && !HasLog(mark, "suppressed"));
+    for (size_t i = mark; i < gHost.log.size(); i++) CHECK(mps_xnu_log_type(gHost.log[i].cls) != MPS_XNU_LOG_ERROR);
+    /* default level: silent */
+    g.sc->mps_debug = mps_xnu_level_mask(MPS_LEVEL_INFO);
+    mark = LogMark();
     io = g.NewIo(g.Tid(0x0009), 0, CAM_DIR_NONE, tur, 6, {});
     CHECK(g.Go(io) == kPosted);
     g.Pump();
-    CHECK(g.Stats().err_check_condition == before.err_check_condition + 1);
-    CHECK(LogClass(mark, "TEST UNIT READY lba 0 blocks 0 failed") & MPS_ERROR);
+    CHECK(io->done && LogMark() == mark);
+    CHECK(g.Stats().err_check_condition == before.err_check_condition + 22);
+
+    /* CHECK CONDITION, IOCStatus success: by sense key */
+    struct { uint8_t key, asc, ascq; bool error; const char *name; } cases[] = {
+        {0x03, 0x11, 0x00, true, "sense MEDIUM ERROR (0x3) ASC/ASCQ 0x11/0x00"},
+        {0x04, 0x44, 0x00, true, "sense HARDWARE ERROR (0x4) ASC/ASCQ 0x44/0x00"},
+        {0x05, 0x24, 0x00, false, "sense ILLEGAL REQUEST (0x5) ASC/ASCQ 0x24/0x00"},
+        {0x06, 0x29, 0x00, false, "sense UNIT ATTENTION (0x6) ASC/ASCQ 0x29/0x00"},
+        {0x0B, 0x47, 0x03, false, "sense ABORTED COMMAND (0xb) ASC/ASCQ 0x47/0x03"},
+    };
+    for (auto &c : cases) {
+        g.sc->mps_debug = mps_xnu_level_mask(MPS_LEVEL_INFO);
+        g.ioc.ccDev = 0x0009; g.ioc.ccKey = c.key; g.ioc.ccAsc = c.asc; g.ioc.ccAscq = c.ascq;
+        g.ioc.nowUs += 11000000;                    /* a fresh rate-limit window */
+        mark = LogMark();
+        io = g.Read(0x0009, 0, 7);
+        CHECK(g.Go(io) == kPosted);
+        g.Pump();
+        CHECK(io->done && io->status == CAM_SCSI_STATUS_ERROR && io->scsiStatus == 0x02);
+        if (c.error) {
+            CHECK(HasLog(mark, c.name) && HasLog(mark, "READ(10) lba 7 blocks 8 failed: IOCStatus success (0x0000)"));
+            CHECK(HasLog(mark, " len 4096 IOC TransferCount 0"));
+            CHECK(mps_xnu_log_type(LogClass(mark, c.name)) == MPS_XNU_LOG_ERROR);
+        } else {
+            CHECK(LogMark() == mark);               /* xinfo: nothing at the default level */
+            g.sc->mps_debug = MPS_DEBUG_ALL;
+            mark = LogMark();
+            io = g.Read(0x0009, 0, 7);
+            CHECK(g.Go(io) == kPosted);
+            g.Pump();
+            CHECK(LogClass(mark, c.name) == MPS_XINFO &&
+                  mps_xnu_log_type(LogClass(mark, c.name)) == MPS_XNU_LOG_DEBUG);
+        }
+    }
+    g.ioc.ccDev = 0;
+    g.sc->mps_debug = MPS_DEBUG_ALL;
+
+    /* an IOC failure is still an ERROR line */
+    mark = LogMark();
+    g.ioc.nowUs += 11000000;
+    g.ioc.failDev = 0x0009;
+    io = g.Read(0x0009, 0, 7);
+    CHECK(g.Go(io) == kPosted);
+    g.Pump();
+    g.ioc.failDev = 0;
+    CHECK(io->done && io->status == CAM_REQ_CMP_ERR);
+    CHECK(mps_xnu_log_type(LogClass(mark, "failed: IOCStatus scsi io data error (0x0046)")) == MPS_XNU_LOG_ERROR);
+
+    /* the class -> os_log type map (the kext's LogType) */
+    CHECK(mps_xnu_log_type(MPS_ERROR) == MPS_XNU_LOG_ERROR && mps_xnu_log_type(MPS_FAULT) == MPS_XNU_LOG_ERROR);
+    CHECK(mps_xnu_log_type(MPS_RECOVERY) == MPS_XNU_LOG_DEFAULT && mps_xnu_log_type(0) == MPS_XNU_LOG_DEFAULT);
+    CHECK(mps_xnu_log_type(MPS_INIT | MPS_INFO) == MPS_XNU_LOG_DEFAULT);
+    CHECK(mps_xnu_log_type(MPS_XINFO) == MPS_XNU_LOG_DEBUG && mps_xnu_log_type(MPS_TRACE) == MPS_XNU_LOG_DEBUG);
 }
 
 /* ---- system sleep and shutdown (mps_xnu_suspend / mps_xnu_resume) ------------ */

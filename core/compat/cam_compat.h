@@ -136,6 +136,8 @@ typedef enum {
 #define IOCDBLEN		16
 #define SSD_FULL_SIZE		252
 #define SSD_KEY_RECOVERED_ERROR	0x01	/* scsi_all.h */
+#define SSD_KEY_MEDIUM_ERROR	0x03
+#define SSD_KEY_HARDWARE_ERROR	0x04
 
 struct scsi_sense_data {
 	uint8_t		error_code;

@@ -105,20 +105,17 @@ static os_log_t LogFor(uint32_t cls)
     return OS_LOG_DEFAULT;
 }
 
-/*
- * os_log type: errors/faults are ERROR; lines tagged with an info-level
- * class are DEFAULT (shown by `log stream`, persisted); XINFO/TRACE/LOG/USER
- * only lines are DEBUG (need `log stream --level debug`).
- */
+/* os_log type: mps_xnu_log_type (core/mps_xnu.c, host-tested) */
 static os_log_type_t LogType(uint32_t cls)
 {
-    if (cls == 0)       /* FreeBSD printf/device_printf (e.g. a config page read failure): console */
-        return OS_LOG_TYPE_DEFAULT;
-    if (cls & (MPS_FAULT | MPS_ERROR))
+    switch (mps_xnu_log_type(cls)) {
+    case MPS_XNU_LOG_ERROR:
         return OS_LOG_TYPE_ERROR;
-    if (cls & (MPS_INFO | MPS_RECOVERY | MPS_INIT | MPS_EVENT | MPS_MAPPING))
+    case MPS_XNU_LOG_DEFAULT:
         return OS_LOG_TYPE_DEFAULT;
-    return OS_LOG_TYPE_DEBUG;
+    default:
+        return OS_LOG_TYPE_DEBUG;
+    }
 }
 
 extern "C" void mps_kext_log(const struct mps_kext_host *host, uint32_t cls, const char *line)

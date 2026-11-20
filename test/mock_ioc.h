@@ -65,6 +65,8 @@ struct MockIocModel {
     bool faultOnIocInitOnce = false;           /* FAULT instead of answering the IOCInit handshake */
     uint16_t holdDev = 0;                      /* hold only IOs for this handle (0: holdIo decides) */
     uint16_t failDev = 0;                      /* IOs to this handle fail: IO_DATA_ERROR + MEDIUM ERROR sense */
+    uint16_t ccDev = 0;                        /* IOs to this handle: IOCStatus success, CHECK CONDITION ccKey/ccAsc/ccAscq */
+    uint8_t ccKey = 0x03, ccAsc = 0x11, ccAscq = 0x00;
     std::vector<uint16_t> devices = {0x0009};  /* announced by PortEnable */
     uint32_t tmIgnoreMask = 0;                 /* 1 << TaskType: never answer */
     uint32_t tmDeferMask = 0;                  /* 1 << TaskType: answer only on ReleaseTm() */
@@ -130,6 +132,7 @@ struct MockIocModel {
     /* ---- what the last SCSI IO's SGL looked like ---- */
     uint32_t lastChains = 0, maxChainsSeen = 0;
     std::vector<MockSegT> lastSgl;
+    uint32_t lastDataLength = 0, lastControl = 0;   /* the last SCSI IO request's DataLength / Control */
     std::vector<uint8_t> lastWrite;            /* data the "disk" received */
     uint64_t sglChecked = 0;
 
@@ -678,6 +681,7 @@ struct MockIocModel {
             CHECK(known);
             nowUs += 37;                            /* the IO takes a little time: nonzero latency */
             lastSgl = WalkSgl(f, true, &lastChains);
+            lastDataLength = q->DataLength; lastControl = q->Control;
             if (lastChains > maxChainsSeen) maxChainsSeen = lastChains;
             memcpy(lastLun, q->LUN, 8);
             if (dropCompletion) return;             /* firmware done, descriptor lost */
@@ -688,6 +692,15 @@ struct MockIocModel {
                 sr.MsgLength = sizeof(sr) / 4; sr.Function = fn; sr.DevHandle = q->DevHandle;
                 sr.IOCStatus = MPI2_IOCSTATUS_SCSI_IO_DATA_ERROR | MPI2_IOCSTATUS_FLAG_LOG_INFO_AVAILABLE;
                 sr.IOCLogInfo = 0x31120303;
+                sr.SCSIStatus = 0x02; sr.SCSIState = MPI2_SCSI_STATE_AUTOSENSE_VALID; sr.SenseCount = 18;
+                AddressReply(smid, &sr, sizeof(sr));
+                return;
+            }
+            if (ccDev && q->DevHandle == ccDev) {
+                uint8_t *s = Ptr(((uint64_t)senseHigh << 32) | q->SenseBufferLowAddress, 18);
+                memset(s, 0, 18); s[0] = 0x70; s[2] = ccKey; s[7] = 10; s[12] = ccAsc; s[13] = ccAscq;
+                MPI2_SCSI_IO_REPLY sr{};
+                sr.MsgLength = sizeof(sr) / 4; sr.Function = fn; sr.DevHandle = q->DevHandle;
                 sr.SCSIStatus = 0x02; sr.SCSIState = MPI2_SCSI_STATE_AUTOSENSE_VALID; sr.SenseCount = 18;
                 AddressReply(smid, &sr, sizeof(sr));
                 return;
@@ -711,11 +724,17 @@ struct MockIocModel {
                 sr.MsgLength = sizeof(sr) / 4; sr.Function = fn; sr.DevHandle = q->DevHandle;
                 sr.SCSIStatus = 0x02; sr.SCSIState = MPI2_SCSI_STATE_AUTOSENSE_VALID; sr.SenseCount = 22;
                 AddressReply(smid, &sr, sizeof(sr));
-            } else if (q->CDB.CDB32[0] == 0x00) {   /* TEST UNIT READY -> CHECK CONDITION */
+            } else if (q->CDB.CDB32[0] == 0x00) {
+                /*
+                 * TEST UNIT READY to a spun-down SATA drive (SAS2308, hardware
+                 * 2026-11-20): CHECK CONDITION, NOT READY 0x04/0x02, IOCStatus
+                 * success, TransferCount 65536 although DataLength is 0.
+                 */
                 uint8_t *s = Ptr(((uint64_t)senseHigh << 32) | q->SenseBufferLowAddress, 18);
-                memset(s, 0, 18); s[0] = 0x70; s[2] = 0x02; s[7] = 10; s[12] = 0x04;
+                memset(s, 0, 18); s[0] = 0x70; s[2] = 0x02; s[7] = 10; s[12] = 0x04; s[13] = 0x02;
                 MPI2_SCSI_IO_REPLY sr{};
                 sr.MsgLength = sizeof(sr) / 4; sr.Function = fn; sr.DevHandle = q->DevHandle;
+                sr.TransferCount = 65536;
                 sr.SCSIStatus = 0x02; sr.SCSIState = MPI2_SCSI_STATE_AUTOSENSE_VALID; sr.SenseCount = 18;
                 AddressReply(smid, &sr, sizeof(sr));
             } else {

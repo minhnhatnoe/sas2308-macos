@@ -91,6 +91,25 @@ mps_xnu_category(uint32_t cls)
 	return ("info");
 }
 
+/*
+ * os_log type: errors/faults are ERROR; lines tagged with an info-level
+ * class are DEFAULT (shown by `log stream`, persisted); XINFO/TRACE/LOG/USER
+ * only lines are DEBUG (need `log stream --level debug`).  FreeBSD
+ * printf/device_printf lines (class 0, e.g. a config page read failure) go
+ * to the console: DEFAULT.
+ */
+int
+mps_xnu_log_type(uint32_t cls)
+{
+	if (cls == 0)
+		return (MPS_XNU_LOG_DEFAULT);
+	if (cls & (MPS_FAULT | MPS_ERROR))
+		return (MPS_XNU_LOG_ERROR);
+	if (cls & (MPS_INFO | MPS_RECOVERY | MPS_INIT | MPS_EVENT | MPS_MAPPING))
+		return (MPS_XNU_LOG_DEFAULT);
+	return (MPS_XNU_LOG_DEBUG);
+}
+
 void
 mps_xnu_describe_debug(uint32_t mask, char *buf, size_t len)
 {
@@ -814,17 +833,45 @@ mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm, union ccb *ccb,
 		    csio->scsi_status), xfer, cm->cm_length, (uintmax_t)lat);
 
 	/*
-	 * The failed-IO line: a reply frame with a real error (not a
-	 * termination by our own task management), rate limited per target.
-	 * A recovered error is an xinfo line, outside the rate limit.
+	 * The failed-IO line: a reply frame with an error (not a termination
+	 * by our own task management).  Error lines are rate limited per
+	 * target; xinfo lines (debug level, opt-in) are not.
+	 *
+	 * XNU: class as FreeBSD.  A command the target completed with a SCSI
+	 * status (CAM_SCSI_STATUS_ERROR: IOCStatus success, data underrun or
+	 * recovered error, status not GOOD: check condition, busy, task set
+	 * full, ...) is printed by mps only at MPS_XINFO
+	 * (mpssas_scsiio_complete: mpssas_log_command(cm, MPS_XINFO, "ioc %x
+	 * scsi %x state %x xfer %u"), mps_sc_failed_io_info); the periph
+	 * driver decides what the status means.  So xinfo here: os_log DEBUG,
+	 * not persisted.  Spun-down SATA drives answer the family's TEST UNIT
+	 * READY polls (~3 s) with NOT READY 0x04/0x02, ~140 ERROR lines a
+	 * minute before.  Exception: CHECK CONDITION with sense key MEDIUM
+	 * ERROR or HARDWARE ERROR stays error: FreeBSD's CAM prints that sense
+	 * on the console (scsi_all.c sense_key_table: SS_RDEF includes
+	 * SSQ_PRINT_SENSE; cam_periph_error -> cam_error_print) while 0x04/0x02
+	 * is SS_START, silent; IOSCSIArchitectureModelFamily logs no sense, so
+	 * this line is the only trace of a failing disk.  Not ABORTED COMMAND
+	 * (also SS_RDEF): SAT maps an ATA ABRT (e.g. an unsupported command
+	 * passed through) to it.  Every other CAM status (IOC and
+	 * transport failures, autosense failed, device gone) stays error.
+	 * Counters are unchanged: every check condition is "Err check
+	 * condition".
 	 */
-	cls = recovered ? MPS_XINFO : MPS_ERROR;
+	if (recovered)
+		cls = MPS_XINFO;
+	else if (status == CAM_SCSI_STATUS_ERROR &&
+	    !(sense && csio->scsi_status == MPI2_SCSI_STATUS_CHECK_CONDITION &&
+	    (key == SSD_KEY_MEDIUM_ERROR || key == SSD_KEY_HARDWARE_ERROR)))
+		cls = MPS_XINFO;
+	else
+		cls = MPS_ERROR;
 	if (rep == NULL || status == CAM_REQ_CMP ||
 	    ioc == MPI2_IOCSTATUS_SCSI_TASK_TERMINATED ||
 	    (sc->mps_debug & cls) == 0)
 		return;
 	sup = 0;
-	if (!recovered) {
+	if (cls == MPS_ERROR) {
 		slot = targ->handle % MPS_XNU_RL_SLOTS;
 		sc->xnu.ioerr_handle[slot] = targ->handle;
 		sc->xnu.ioerr_tid[slot] = targ->tid;
@@ -844,12 +891,19 @@ mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm, union ccb *ccb,
 		mps_xnu_loginfo_str(le32toh(rep->IOCLogInfo), d, sizeof(d));
 		snprintf(li, sizeof(li), " loginfo %s", d);
 	}
+	/*
+	 * len: the request's DataLength (dxfer_len; 0 with NODATATRANSFER for
+	 * a no-data CDB).  IOC TransferCount: the reply frame's field as the
+	 * IOC wrote it; like FreeBSD it is used only for DATA_UNDERRUN
+	 * (resid).  The SAS2308 reports 65536 for a SATA TEST UNIT READY
+	 * answered NOT READY (DataLength 0): the family still gets 0 bytes.
+	 */
 	if (sense) {
 		ascs = mps_xnu_asc_str(asc, ascq);
 		mps_dprint(sc, cls, "target %u (handle 0x%04x) lun %ju "
 		    "SMID %u %s lba %ju blocks %u %s: IOCStatus %s "
 		    "(0x%04x)%s SCSI status %s (0x%02x) state 0x%02x sense %s "
-		    "(0x%x) ASC/ASCQ 0x%02x/0x%02x%s%s xfer %u/%u\n",
+		    "(0x%x) ASC/ASCQ 0x%02x/0x%02x%s%s len %u IOC TransferCount %u\n",
 		    targ->tid, targ->handle, (uintmax_t)ccb->ccb_h.target_lun,
 		    cm->cm_desc.Default.SMID, mps_xnu_cdb_str(cdb[0]),
 		    (uintmax_t)lba, blocks, recovered ? "recovered" : "failed",
@@ -857,19 +911,19 @@ mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm, union ccb *ccb,
 		    mps_describe_table(mps_scsi_status_string, rep->SCSIStatus),
 		    rep->SCSIStatus, rep->SCSIState, mps_xnu_sense_key_str(key),
 		    key, asc, ascq, ascs ? " " : "", ascs ? ascs : "",
-		    le32toh(rep->TransferCount), cm->cm_length);
+		    cm->cm_length, le32toh(rep->TransferCount));
 	} else {
-		mps_dprint(sc, MPS_ERROR, "target %u (handle 0x%04x) lun %ju "
+		mps_dprint(sc, cls, "target %u (handle 0x%04x) lun %ju "
 		    "SMID %u %s lba %ju blocks %u failed: IOCStatus %s "
 		    "(0x%04x)%s SCSI status %s (0x%02x) state 0x%02x "
-		    "xfer %u/%u\n", targ->tid, targ->handle,
+		    "len %u IOC TransferCount %u\n", targ->tid, targ->handle,
 		    (uintmax_t)ccb->ccb_h.target_lun,
 		    cm->cm_desc.Default.SMID, mps_xnu_cdb_str(cdb[0]),
 		    (uintmax_t)lba, blocks,
 		    mps_describe_table(mps_iocstatus_string, ioc), ioc, li,
 		    mps_describe_table(mps_scsi_status_string, rep->SCSIStatus),
 		    rep->SCSIStatus, rep->SCSIState,
-		    le32toh(rep->TransferCount), cm->cm_length);
+		    cm->cm_length, le32toh(rep->TransferCount));
 	}
 }
 

@@ -58,6 +58,11 @@ const char	*mps_xnu_level_name(int level);
 int		 mps_xnu_parse_level(const char *s);
 /* os_log category of a line: its most specific class */
 const char	*mps_xnu_category(uint32_t cls);
+/* os_log type of a line (the kext's os_log_with_type) */
+#define MPS_XNU_LOG_DEFAULT	0	/* shown by `log stream`, persisted */
+#define MPS_XNU_LOG_ERROR	1	/* OS_LOG_TYPE_ERROR */
+#define MPS_XNU_LOG_DEBUG	2	/* `--level debug` only, not persisted */
+int		 mps_xnu_log_type(uint32_t cls);
 void		 mps_xnu_describe_debug(uint32_t mask, char *buf, size_t len);
 
 /* ---- the kernel printf %b conversion -------------------------------------- */
