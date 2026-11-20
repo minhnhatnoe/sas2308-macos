@@ -229,6 +229,7 @@ SAS2308Glue::ProcessTask(void *task)
     /* A slot (for AbortTaskRequest) and a pass through the gate. */
     Slot *slot = nullptr;
     Lock();
+    const uint32_t gen = fTargets.Gen(d.target);   /* the nub's device (mps_kext_submit checks it) */
     const bool open = !fStopping && fCoreAttached && fMps;
     if (open) {
         for (uint32_t i = 0; i < fMaxTasks && !slot; i++)
@@ -264,7 +265,7 @@ SAS2308Glue::ProcessTask(void *task)
     fPort->SetTimeoutForTask(task);
     struct mps_kext_io_result res;
     const int rc = mps_kext_submit(fMps, d.td, task, d.tag, d.target, d.lun, d.cdb, d.cdbLen, d.dir, nsegs,
-                                   d.length, d.timeoutMs, &res);
+                                   d.length, d.timeoutMs, gen, &res);
 
     Lock();
     if (rc == MPSK_SUBMIT_DONE) {

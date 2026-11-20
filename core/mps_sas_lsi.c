@@ -315,9 +315,14 @@ mpssas_fw_work(struct mps_softc *sc, struct mps_fw_event_work *fw_event)
 		u16 handle = *(u16 *)fw_event->event_data;
 		u8 linkrate;
 
-		if (mps_xnu_readd_begin(sc, handle, &linkrate)) {
+		switch (mps_xnu_readd_begin(sc, handle, &linkrate)) {
+		case 1:
 			(void)mpssas_add_device(sc, handle, linkrate);
 			mps_xnu_readd_end(sc, handle);
+			break;
+		case MPS_XNU_READD_REIDENT:
+			mps_xnu_reidentify(sc, handle);
+			break;
 		}
 		break;
 	}
@@ -365,6 +370,7 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
 	struct mpssas_lun *lun;
 	u8 is_SATA_SSD = 0;
 	struct mps_command *cm;
+	int unverified = 0;	/* XNU: D8 */
 
 	sassc = sc->sassc;
 	mpssas_startup_increment(sassc);
@@ -425,10 +431,12 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
 			/*
 			 * XNU: the IOC makes the SATA SAS address up per PHY,
 			 * so it does not tell disks apart: identity unknown
-			 * (mps_xnu_get_tid treats it as a new disk).
+			 * (mps_xnu_get_tid treats it as a new disk), unless
+			 * a reinit's rediscovery keeps it (D8: IO held).
 			 */
 			sc->xnu.stats.sata_identify_failures++;
-			sas_address = 0;
+			sas_address = mps_xnu_ident_keep(sc, handle);
+			unverified = sas_address != 0;
 		} else {
 			mps_dprint(sc, MPS_MAPPING, "Handle 0x%04x SAS Address "
 			    "from SATA device = %jx\n", handle,
@@ -510,6 +518,7 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
 	mpssas_rescan_target(sc, targ);
 	mps_dprint(sc, MPS_MAPPING, "Target id 0x%x added\n", targ->tid);
 	mps_xnu_readd_cancel(sc, handle);	/* XNU: no later retry */
+	mps_xnu_ident_added(sc, targ, unverified);	/* XNU: D8 */
 
 	/*
 	 * Check all commands to see if the SATA_ID_TIMEOUT flag has been set.

@@ -484,6 +484,54 @@ int main()
         f.Detach();
     }
 
+    if (Want("D8")) {
+        /* a different disk in the bay after a wake (its first IDENTIFY failed): the old nub's IO never reaches it */
+        MockIocModel m; m.devices = {0x0009, 0x000B}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        m.sataSerial[0x0009] = "ZR50AAAA"; m.sataSerial[0x000B] = "ZR50BBBB";
+        Family f; f.Attach(&m);
+        const uint32_t tb = f.Tid(0x000B);
+        CHECK(f.creates[tb] == 1);
+        m.identifyFailN[0x000B] = 5;
+        m.sataSerial[0x000B] = "ZR50CCCC";
+        FakeTask *held = nullptr, *late = nullptr;
+        int sentBefore = 0;
+        gHost.onOtherThreads = [&]() {
+            struct mps_softc *sc = gHost.sc;
+            if (!held && (sc->xnu.tid_unverified & (1ull << tb))) {
+                sentBefore = m.ioCount[0x000B];
+                held = f.NewRead(tb);               /* the old nub, identity open: held */
+                CHECK(f.Submit(held) == SAS2308Glue::kInProcess);
+            }
+            if (!late && mps_xnu_target_gen(sc, tb) != f.glue.fTargets.Gen(tb) && f.nubs.count(tb)) {
+                late = f.NewRead(tb);               /* the old nub before the hotplug thread replaced it */
+                CHECK(f.Submit(late) == SAS2308Glue::kInProcess);
+            }
+        };
+        RequestReinit("wake, disk swapped");
+        f.Run(60000);
+        gHost.onOtherThreads = nullptr;
+        CHECK(held && held->completions == 1 && held->done == SAS2308GluePort::kDoneGone);
+        if (late)
+            CHECK(late->completions == 1 && late->done == SAS2308GluePort::kDoneGone);
+        CHECK(m.ioCount[0x000B] == sentBefore);   /* nothing of the old disk's reached the new one */
+        CHECK(f.destroys[tb] == 1 && f.creates[tb] == 2 && f.nubs.count(tb));
+        /* the mechanism itself: a task from a nub of an older generation is refused */
+        mps_lock(gHost.sc); gHost.sc->xnu.tid_gen[tb]++; mps_unlock(gHost.sc);
+        const int sent = m.ioCount[0x000B];
+        FakeTask *stale = f.NewRead(tb);
+        CHECK(f.Submit(stale) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        CHECK(stale->completions == 1 && stale->done == SAS2308GluePort::kDoneGone && m.ioCount[0x000B] == sent);
+        mps_lock(gHost.sc); gHost.sc->xnu.tid_gen[tb]--; mps_unlock(gHost.sc);
+        FakeTask *fresh = f.NewRead(tb);            /* the new nub works */
+        CHECK(f.Submit(fresh) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        CHECK(fresh->completions == 1 && fresh->done == SAS2308GluePort::kDoneStatus && fresh->scsiStatus == 0);
+        printf("  IO from the old nub between the generation change and its destroy: %s\n", late ? "refused" : "none");
+        f.Detach();
+    }
+
     printf("PASS (%d checks)\n", gChecks);
     return 0;
 }

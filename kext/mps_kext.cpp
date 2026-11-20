@@ -526,7 +526,7 @@ static void mps_kext_queue_done(struct mps_kext *k, struct mps_kext_task *t)
 
 int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag, uint32_t tid,
                     uint64_t lun, const uint8_t *cdb, uint8_t cdblen, int dir, uint32_t nsegs, uint64_t len,
-                    uint32_t timeout_ms, struct mps_kext_io_result *res)
+                    uint32_t timeout_ms, uint32_t gen, struct mps_kext_io_result *res)
 {
     struct mps_softc *sc = &k->sc;
     struct mps_kext_task *t = (struct mps_kext_task *)td;
@@ -575,6 +575,18 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
      * ccb completes here goes to the done thread call.
      */
     mps_lock(sc);
+    if (tid < MPSK_MAX_TARGETS && gen != mps_xnu_target_gen(sc, tid)) {
+        /*
+         * Another disk is behind the id now (review C2, D8): this IO was
+         * meant for the old one, whose nub the hotplug thread is about to
+         * destroy. It must not reach the new disk.
+         */
+        mps_unlock(sc);
+        ccb->ccb_h.status = CAM_DEV_NOT_THERE;
+        mps_kext_result(t, res);
+        mps_kext_queue_done(k, t);
+        return MPSK_SUBMIT_DONE;
+    }
     t->state = MPSK_T_SUBMIT;
     xpt_action(ccb);
     if (t->state == MPSK_T_SYNC_DONE) {

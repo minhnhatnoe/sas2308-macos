@@ -164,13 +164,15 @@ enum { MPSK_SUBMIT_POSTED, MPSK_SUBMIT_HELD, MPSK_SUBMIT_DONE };
  * the log); the task is on the done queue like any other completion, so
  * the family sees it through CompleteParallelTask. timeout_ms: the
  * task's own timeout; the core arms its callout 10 s after it, a
- * backstop should the family's timer be lost (0: none).
+ * backstop should the family's timer be lost (0: none). gen: the
+ * generation of the nub the task came from; another device behind tid
+ * now (mps_xnu_target_gen differs): DONE, CAM_DEV_NOT_THERE.
  */
 int	 mps_kext_submit(struct mps_kext *k, void *td, void *os_task,
 	    uint64_t os_tag, uint32_t tid, uint64_t lun, const uint8_t *cdb,
 	    uint8_t cdblen,
 	    int dir, uint32_t nsegs, uint64_t len, uint32_t timeout_ms,
-	    struct mps_kext_io_result *res);
+	    uint32_t gen, struct mps_kext_io_result *res);
 #define	MPSK_BACKSTOP_MS	10000	/* core timeout = task timeout + this */
 /* pop one completed task (NULL: none); usable until mps_kext_destroy */
 void	*mps_kext_next_done(struct mps_kext *k, struct mps_kext_io_result *res);

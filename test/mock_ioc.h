@@ -83,6 +83,7 @@ struct MockIocModel {
     bool uaAfterReset = false;
     std::set<std::pair<uint16_t, uint8_t>> ua;
     int uaSent = 0;
+    std::map<uint16_t, int> ioCount;           /* SCSI IOs that reached each handle */
     void ArmUa(uint16_t dev, int lun) {        /* lun < 0: LUNs 0-7 */
         if (!uaAfterReset) return;
         for (int l = lun < 0 ? 0 : lun; l < (lun < 0 ? 8 : lun + 1); l++) ua.insert({dev, (uint8_t)l});
@@ -124,6 +125,7 @@ struct MockIocModel {
     bool dropIdentify = false;                 /* lose IDENTIFY replies */
     std::set<uint16_t> identifyFail;           /* IDENTIFY of these handles fails */
     std::set<uint16_t> sataSsd;                /* IDENTIFY word 217 = 1 (non-rotating) */
+    std::map<uint16_t, int> identifyFailN;     /* the next N IDENTIFYs of a handle fail */
     std::set<uint16_t> identifyStuck;          /* the next IDENTIFY of these handles gets no reply ... */
     std::vector<std::pair<uint16_t, uint16_t>> stuckIds;   /* ... (SMID, handle) until a TARGET_RESET */
     bool murIgnored = false;                   /* MUR never stops the IOC (wedged) */
@@ -658,7 +660,9 @@ struct MockIocModel {
         MPI2_SATA_PASSTHROUGH_REPLY r{};
         r.MsgLength = sizeof(r) / 4; r.Function = MPI2_FUNCTION_SATA_PASSTHROUGH; r.DevHandle = q->DevHandle;
         auto it = sataSerial.find(q->DevHandle);
-        if (it == sataSerial.end() || identifyFail.count(q->DevHandle)) {
+        bool failN = identifyFailN[q->DevHandle] > 0;
+        if (failN) identifyFailN[q->DevHandle]--;
+        if (it == sataSerial.end() || identifyFail.count(q->DevHandle) || failN) {
             r.IOCStatus = MPI2_IOCSTATUS_SCSI_DEVICE_NOT_THERE;
         } else {
             uint8_t id[512]{};
@@ -715,6 +719,7 @@ struct MockIocModel {
             bool known = false;
             for (uint16_t h : devices) known |= h == q->DevHandle;
             CHECK(known);
+            ioCount[q->DevHandle]++;
             nowUs += 37;                            /* the IO takes a little time: nonzero latency */
             lastSgl = WalkSgl(f, true, &lastChains);
             lastDataLength = q->DataLength; lastControl = q->Control;

@@ -2637,4 +2637,84 @@ static void DeviationTests()
         g.Pump();
         CHECK(r->done && r->status == CAM_REQ_CMP);
     }
+
+    /* D8: a SATA IDENTIFY that fails in a reinit's rediscovery (spin-up after a wake) */
+    auto d8rig = [](Rig &r) {
+        r.ioc.sataSerial[0x0009] = "ZR50AAAA";
+        r.ioc.sataSerial[0x000B] = "ZR50BBBB";
+    };
+    /* IO from the OS while the identity is unconfirmed (the event task sleeps in an IDENTIFY) */
+    struct D8Io { Io *io = nullptr; St st = kDone; int sentBefore = 0; };
+    auto d8io = [](Rig &g, D8Io &d, target_id_t t) {
+        gHost.onOtherThreads = [&g, &d, t]() {
+            if (d.io || (g.sc->xnu.tid_unverified & (1ull << t)) == 0) return;
+            d.sentBefore = g.ioc.ioCount[0x000B];
+            d.io = g.Read(0x000B, 0, 3);
+            d.st = g.Go(d.io);
+        };
+    };
+    if (Want("D8")) {
+        /* the same disk answers later: same id and generation, its IO held, then released */
+        Rig g({0x0009, 0x000B}, d8rig);
+        MockIocModel &m = g.ioc;
+        const target_id_t tb = g.Tid(0x000B), t9 = g.Tid(0x0009);
+        const uint32_t gb = Gen(g, tb), g9 = Gen(g, t9);
+        D8Io d;
+        d8io(g, d, tb);
+        m.identifyFailN[0x000B] = 5 + 2;            /* the add's 5 tries, then 2 of the first re-IDENTIFY */
+        RequestReinit(g, "wake");
+        HostAdvance(60000);
+        gHost.onOtherThreads = nullptr;
+        CHECK(d.io && d.st == kHeld);               /* held while the identity was open */
+        g.Pump();
+        CHECK(d.io->done && d.io->status == CAM_REQ_CMP);
+        CHECK(g.Tid(0x000B) == tb && Gen(g, tb) == gb);        /* the OS kept the nub */
+        CHECK(g.Tid(0x0009) == t9 && Gen(g, t9) == g9);
+        CHECK(g.sc->xnu.tid_unverified == 0 && g.HeldCount() == 0);
+        Io *r2 = g.Read(0x000B, 0, 5);
+        CHECK(g.Go(r2) == kPosted);
+        g.Pump();
+        CHECK(r2->done && r2->status == CAM_REQ_CMP);
+    }
+
+    if (Want("D8-swap")) {
+        /* another disk in the bay across the sleep: no IO of the old one reaches it */
+        Rig g({0x0009, 0x000B}, d8rig);
+        MockIocModel &m = g.ioc;
+        const target_id_t tb = g.Tid(0x000B);
+        const uint32_t gb = Gen(g, tb);
+        D8Io d;
+        d8io(g, d, tb);
+        m.identifyFailN[0x000B] = 5;
+        m.sataSerial[0x000B] = "ZR50CCCC";
+        RequestReinit(g, "wake");
+        HostAdvance(60000);
+        gHost.onOtherThreads = nullptr;
+        g.Pump();
+        CHECK(d.io && d.st == kHeld);
+        CHECK(d.io->done && d.io->status == CAM_DEV_NOT_THERE);     /* failed, never sent */
+        CHECK(m.ioCount[0x000B] == d.sentBefore);
+        CHECK(Gen(g, tb) != gb);                                    /* the OS replaces the nub */
+        CHECK(g.sc->xnu.tid_unverified == 0 && g.HeldCount() == 0);
+    }
+
+    if (Want("D8-giveup")) {
+        /* no answer through the whole re-add schedule: held IO failed, a new device */
+        Rig g({0x0009, 0x000B}, d8rig);
+        MockIocModel &m = g.ioc;
+        const target_id_t tb = g.Tid(0x000B);
+        const uint32_t gb = Gen(g, tb);
+        D8Io d;
+        d8io(g, d, tb);
+        m.identifyFail.insert(0x000B);
+        RequestReinit(g, "wake");
+        HostAdvance(400000);
+        gHost.onOtherThreads = nullptr;
+        g.Pump();
+        CHECK(d.io && d.st == kHeld);
+        CHECK(d.io->done && d.io->status == CAM_DEV_NOT_THERE);
+        CHECK(m.ioCount[0x000B] == d.sentBefore);
+        CHECK(Gen(g, tb) != gb);
+        CHECK(g.sc->xnu.tid_unverified == 0 && g.HeldCount() == 0);
+    }
 }

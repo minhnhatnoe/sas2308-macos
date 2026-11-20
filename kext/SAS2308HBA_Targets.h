@@ -148,6 +148,8 @@ public:
     bool Stopped() const { return fStopped; }
     bool Busy() const { return fBusy != 0; }
     bool Created(uint32_t id) const { return id < kMaxTargets && (fCreated & (1ull << id)); }
+    /* the generation of the nub created or being created for `id' */
+    uint32_t Gen(uint32_t id) const { return id < kMaxTargets ? fGen[id] : 0; }
     uint64_t CreatedMask() const { return fCreated; }
     bool Pending() const { return (fWantCreate | fWantDestroy) != 0; }
 

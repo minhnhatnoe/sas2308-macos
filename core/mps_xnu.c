@@ -527,6 +527,9 @@ mps_xnu_get_tid(struct mps_softc *sc, uint16_t handle, uint64_t ident)
 		    "different device (handle 0x%04x, id 0x%016jx, was 0x%016jx)"
 		    "\n", i, handle, (uintmax_t)ident,
 		    (uintmax_t)sc->xnu.tid_ident[i]);
+		/* D8: IO held for the old device must not reach this one */
+		(void)cam_xnu_flush_held_target(sassc->sim, i,
+		    CAM_DEV_NOT_THERE);
 	}
 	sc->xnu.tid_gen[i]++;
 	sc->xnu.tid_handle[i] = handle;
@@ -1117,6 +1120,8 @@ mps_xnu_readd_find(struct mps_softc *sc, uint16_t handle)
 	return (NULL);
 }
 
+static void mps_xnu_readd_clear(struct mps_softc *, struct mps_xnu_readd *);
+
 void
 mps_xnu_readd_schedule(struct mps_softc *sc, uint16_t handle,
     uint8_t linkrate, int error, const void *mpi_reply)
@@ -1127,6 +1132,10 @@ mps_xnu_readd_schedule(struct mps_softc *sc, uint16_t handle,
 
 	ioc_status = le16toh(((const Mpi2ConfigReply_t *)mpi_reply)->IOCStatus);
 	r = mps_xnu_readd_find(sc, handle);
+	if (r != NULL && r->reident) {		/* D8: the add comes first */
+		mps_xnu_readd_clear(sc, r);
+		r = NULL;
+	}
 	if (!mps_xnu_config_retryable(error, mpi_reply) ||
 	    (r != NULL && r->tries >= MPS_XNU_READD_TRIES)) {
 		if (r != NULL)
@@ -1159,16 +1168,57 @@ mps_xnu_readd_schedule(struct mps_softc *sc, uint16_t handle,
 	    MPS_XNU_READD_TRIES);
 }
 
+/* D8: the target's devq frozen (1) or released (0) */
+static void
+mps_xnu_ident_freeze(struct mps_softc *sc, u_int tid, int freeze)
+{
+	struct cam_path *path;
+
+	if (xpt_create_path(&path, NULL, cam_sim_path(sc->sassc->sim), tid,
+	    CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
+		mps_dprint(sc, MPS_ERROR, "target %u: no path to %s its "
+		    "queue\n", tid, freeze ? "freeze" : "release");
+		return;
+	}
+	if (freeze)
+		xpt_freeze_devq(path, 1);
+	else
+		xpt_release_devq(path, 1, TRUE);
+	xpt_free_path(path);
+}
+
+/* D8: the target's identity is decided (or will be again): IO released */
+static void
+mps_xnu_ident_release(struct mps_softc *sc, u_int tid)
+{
+	if (tid >= MPS_XNU_MAX_TARGETS ||
+	    (sc->xnu.tid_unverified & (1ull << tid)) == 0)
+		return;
+	sc->xnu.tid_unverified &= ~(1ull << tid);
+	mps_xnu_ident_freeze(sc, tid, 0);
+}
+
+/* forget a slot; a pending re-IDENTIFY lets the target's IO go */
+static void
+mps_xnu_readd_clear(struct mps_softc *sc, struct mps_xnu_readd *r)
+{
+	if (r->handle != 0 && r->reident)
+		mps_xnu_ident_release(sc, r->tid);
+	bzero(r, sizeof(*r));
+}
+
 void
 mps_xnu_readd_cancel(struct mps_softc *sc, uint16_t handle)
 {
 	struct mps_xnu_readd *r;
+	int i;
 
 	/* a READD event still queued finds no entry and does nothing */
-	if (handle == 0)
-		bzero(sc->xnu.readd, sizeof(sc->xnu.readd));
-	else if ((r = mps_xnu_readd_find(sc, handle)) != NULL)
-		bzero(r, sizeof(*r));
+	if (handle == 0) {
+		for (i = 0; i < MPS_XNU_READD_SLOTS; i++)
+			mps_xnu_readd_clear(sc, &sc->xnu.readd[i]);
+	} else if ((r = mps_xnu_readd_find(sc, handle)) != NULL)
+		mps_xnu_readd_clear(sc, r);
 }
 
 int
@@ -1179,9 +1229,12 @@ mps_xnu_readd_begin(struct mps_softc *sc, uint16_t handle, uint8_t *linkrate)
 	r = mps_xnu_readd_find(sc, handle);
 	if (r == NULL || !r->queued)
 		return (0);			/* cancelled */
-	if (mpssas_find_target_by_handle(sc->sassc, 0, handle) != NULL ||
+	if (r->reident && !mps_xnu_quiet(sc))
+		return (MPS_XNU_READD_REIDENT);
+	if (r->reident ||
+	    mpssas_find_target_by_handle(sc->sassc, 0, handle) != NULL ||
 	    mps_xnu_quiet(sc)) {
-		bzero(r, sizeof(*r));		/* added meanwhile / reset */
+		mps_xnu_readd_clear(sc, r);	/* added meanwhile / reset */
 		return (0);
 	}
 	mps_dprint(sc, MPS_MAPPING | MPS_INFO, "handle 0x%04x: adding the "
@@ -1201,6 +1254,146 @@ mps_xnu_readd_end(struct mps_softc *sc, uint16_t handle)
 	r = mps_xnu_readd_find(sc, handle);
 	if (r != NULL && r->due_us == 0)
 		bzero(r, sizeof(*r));
+}
+
+/*
+ * D8: a SATA disk whose IDENTIFY fails during a reinit's rediscovery (a
+ * slow spin-up after the diag reset of a wake) was a new disk, so the OS
+ * dropped a mounted volume.  FreeBSD maps such a disk on the IOC's SAS
+ * address, but for a direct-attached SATA disk that address is made up
+ * from the PHY: it identifies the bay, not the disk (review C2).  So the
+ * id keeps its identity and generation (no destroy/create), and its IO is
+ * held (devq frozen, as mpssas_prepare_for_tm does) until an IDENTIFY
+ * decides: the same disk releases it; a different one, or no answer after
+ * the re-add schedule, fails the held IO (CAM_DEV_NOT_THERE) and changes
+ * the generation, so the OS replaces the nub.  Outside a reinit an
+ * unknown identity stays a new disk.
+ */
+void
+mps_xnu_reinit_targets(struct mps_softc *sc)
+{
+	struct mpssas_softc *sassc = sc->sassc;
+	u_int i, n;
+
+	sc->xnu.tid_reset_live = 0;
+	n = MIN(sassc->maxtargets, MPS_XNU_MAX_TARGETS);
+	for (i = 0; i < n; i++)
+		if (sassc->targets[i].handle != 0)
+			sc->xnu.tid_reset_live |= 1ull << i;
+}
+
+uint64_t
+mps_xnu_ident_keep(struct mps_softc *sc, uint16_t handle)
+{
+	struct mpssas_softc *sassc = sc->sassc;
+	u_int i, n;
+
+	n = MIN(sassc->maxtargets, MPS_XNU_MAX_TARGETS);
+	for (i = 0; i < n; i++) {
+		if ((sc->xnu.tid_reset_live & (1ull << i)) == 0 ||
+		    sc->xnu.tid_handle[i] != handle ||
+		    sc->xnu.tid_ident[i] == 0 ||
+		    sassc->targets[i].handle != 0)
+			continue;
+		mps_dprint(sc, MPS_MAPPING|MPS_INFO, "handle 0x%04x: IDENTIFY "
+		    "failed after a reset: target %u keeps its identity, its "
+		    "IO is held until an IDENTIFY answers\n", handle, i);
+		return (sc->xnu.tid_ident[i]);
+	}
+	return (0);
+}
+
+void
+mps_xnu_ident_added(struct mps_softc *sc, struct mpssas_target *targ,
+    int unverified)
+{
+	struct mps_xnu_readd *r;
+	u_int tid = targ->tid;
+
+	if (tid >= MPS_XNU_MAX_TARGETS)
+		return;
+	sc->xnu.tid_reset_live &= ~(1ull << tid);
+	mps_xnu_ident_release(sc, tid);		/* a hold left from before */
+	if (!unverified)
+		return;
+	if ((r = mps_xnu_readd_find(sc, targ->handle)) == NULL &&
+	    (r = mps_xnu_readd_find(sc, 0)) == NULL) {
+		/* no slot to try again: the identity is unknown, a new disk */
+		mps_dprint(sc, MPS_MAPPING|MPS_FAULT, "target %u: no re-add "
+		    "slot for its IDENTIFY: a new disk\n", tid);
+		sc->xnu.tid_ident[tid] = 0;
+		sc->xnu.tid_gen[tid]++;
+		sc->xnu.stats.identity_changes++;
+		return;
+	}
+	bzero(r, sizeof(*r));
+	r->handle = targ->handle;
+	r->reident = 1;
+	r->tid = tid;
+	r->tries = 1;
+	r->due_us = mps_os_uptime_us() + 1000000;
+	sc->xnu.tid_unverified |= 1ull << tid;
+	mps_xnu_ident_freeze(sc, tid, 1);
+}
+
+/* MPS_XNU_EVENT_READD for a target kept on trust: IDENTIFY it again */
+void
+mps_xnu_reidentify(struct mps_softc *sc, uint16_t handle)
+{
+	struct mpssas_target *targ;
+	struct mps_xnu_readd *r;
+	uint64_t ident = 0;
+	u_int tid;
+	u8 is_SATA_SSD = 0;
+	int ret;
+
+	r = mps_xnu_readd_find(sc, handle);
+	if (r == NULL || !r->reident)
+		return;
+	r->queued = 0;
+	tid = r->tid;
+	targ = mpssas_find_target_by_handle(sc->sassc, 0, handle);
+	if (targ == NULL || targ->tid != tid) {
+		mps_xnu_readd_clear(sc, r);	/* removed meanwhile */
+		return;
+	}
+	ret = mpssas_get_sas_address_for_sata_disk(sc, &ident, handle,
+	    targ->devinfo, &is_SATA_SSD);
+	if (ret == 0 && ident == sc->xnu.tid_ident[tid]) {
+		mps_dprint(sc, MPS_MAPPING|MPS_INFO, "target %u: IDENTIFY "
+		    "answered, the same disk: IO released\n", tid);
+		if (is_SATA_SSD)
+			targ->flags |= MPS_TARGET_IS_SATA_SSD;
+		mps_xnu_readd_clear(sc, r);
+		return;
+	}
+	if (ret != 0 && r->tries < MPS_XNU_READD_TRIES && !mps_xnu_quiet(sc)) {
+		r->tries++;
+		r->due_us = mps_os_uptime_us() +
+		    (uint64_t)1000000 * min(r->tries, 5);
+		sc->xnu.stats.readd_scheduled++;
+		mps_dprint(sc, MPS_MAPPING|MPS_INFO, "target %u: IDENTIFY "
+		    "failed again, retried (%u/%u)\n", tid, r->tries,
+		    MPS_XNU_READD_TRIES);
+		return;
+	}
+	if (ret != 0 && mps_xnu_quiet(sc)) {
+		mps_xnu_readd_clear(sc, r);	/* the next reinit decides */
+		return;
+	}
+	/* another disk, or still no answer: the held IO is not for it */
+	mps_dprint(sc, MPS_MAPPING|MPS_FAULT, "target %u: %s: held IO "
+	    "failed, the OS gets a new device\n", tid, ret == 0 ?
+	    "IDENTIFY shows a different disk" : "IDENTIFY keeps failing");
+	if (ret != 0)
+		sc->xnu.stats.readd_given_up++;
+	(void)cam_xnu_flush_held_target(sc->sassc->sim, tid,
+	    CAM_DEV_NOT_THERE);
+	sc->xnu.stats.identity_changes++;
+	sc->xnu.tid_ident[tid] = ret == 0 ? ident : 0;
+	sc->xnu.tid_gen[tid]++;
+	mps_xnu_readd_clear(sc, r);
+	mpssas_rescan_target(sc, targ);
 }
 
 /* 1 s, mps_mtx held: queue the re-adds and the temperature read that are due */

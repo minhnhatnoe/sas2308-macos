@@ -127,6 +127,13 @@ struct mps_xnu {
 	 */
 	uint64_t		 tid_ident[MPS_XNU_MAX_TARGETS];
 	uint32_t		 tid_gen[MPS_XNU_MAX_TARGETS];
+	/*
+	 * D8: ids that had a device when a reinit started (its rediscovery
+	 * may keep their identity), and ids kept on trust after a failed
+	 * IDENTIFY: their devq is frozen until a re-IDENTIFY decides.
+	 */
+	uint64_t		 tid_reset_live;
+	uint64_t		 tid_unverified;
 	int			 reinit_running;	/* mps_reinit() between start and end */
 	int			 stop_reinit;		/* suspend: a running reinit gives up */
 	int			 reinit_owed;		/* abandoned reinit left IN_STARTUP held */
@@ -152,6 +159,8 @@ struct mps_xnu {
 		uint16_t	 handle;		/* 0: free slot */
 		uint8_t		 linkrate;
 		uint8_t		 tries;			/* deferred attempts made */
+		uint8_t		 reident;		/* D8: re-IDENTIFY target `tid' */
+		uint16_t	 tid;
 		int		 queued;		/* on the event queue */
 		uint64_t	 due_us;
 	}			 readd[MPS_XNU_READD_SLOTS];
@@ -188,7 +197,22 @@ void	mps_xnu_readd_cancel(struct mps_softc *sc, uint16_t handle);
  */
 int	mps_xnu_readd_begin(struct mps_softc *sc, uint16_t handle,
 	    uint8_t *linkrate);
+#define	MPS_XNU_READD_REIDENT	2	/* mps_xnu_readd_begin: re-IDENTIFY instead */
 void	mps_xnu_readd_end(struct mps_softc *sc, uint16_t handle);
+/*
+ * D8, identity across a reinit: mpssas_handle_reinit records the ids that
+ * had a device; a SATA IDENTIFY that fails in the rediscovery keeps the
+ * id's identity (and generation) if the same handle had it
+ * (mps_xnu_ident_keep: the identity, 0 if none), and mps_xnu_ident_added
+ * then holds the target's IO until a later IDENTIFY decides
+ * (MPS_XNU_EVENT_READD -> mps_xnu_reidentify).
+ */
+void	mps_xnu_reinit_targets(struct mps_softc *sc);
+uint64_t mps_xnu_ident_keep(struct mps_softc *sc, uint16_t handle);
+struct mpssas_target;
+void	mps_xnu_ident_added(struct mps_softc *sc, struct mpssas_target *targ,
+	    int unverified);
+void	mps_xnu_reidentify(struct mps_softc *sc, uint16_t handle);
 /* MPS_XNU_EVENT_TEMP on the event queue */
 void	mps_xnu_temperature(struct mps_softc *sc);
 
