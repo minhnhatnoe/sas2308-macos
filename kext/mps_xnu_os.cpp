@@ -126,7 +126,14 @@ extern "C" void mps_kext_log(const struct mps_kext_host *host, uint32_t cls, con
         IOLog("SAS2308HBA%u: [%s] %s\n", unit, mps_xnu_category(cls), line);
         return;
     }
-    os_log_with_type(LogFor(cls), LogType(cls), "hba%u: %{public}s", unit, line);
+    /*
+     * Plain %s: the kernel os_log encoder (xnu libkern/os/log_encode.c
+     * log_encode_fmt) has no privacy annotations; a "%" followed by "{public}" hits its
+     * default case, returns EINVAL and the line is dropped (counted in
+     * oslog_p_fmt_invalid_msgcount), and the msgbuf copy prints "{public}s".
+     * Kernel string arguments are always encoded public.
+     */
+    os_log_with_type(LogFor(cls), LogType(cls), "hba%u: %s", unit, line);
 }
 
 static struct mps_kext_host *HostOf(device_t dev)

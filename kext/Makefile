@@ -94,6 +94,8 @@ check: $(KEXT)
 	nm -gU $(BIN) | awk '{print $$3}' | sort > $(BUILD)/exports.txt
 	@wc -l < $(BUILD)/exports.txt
 	! grep -vE '^__ZNK?10SAS2308HBA|^__ZTVN?10SAS2308HBA|^_kmod_info$$' $(BUILD)/exports.txt
+	@# kernel os_log drops any format with %{...} annotations (EINVAL in log_encode_fmt)
+	! grep -n '%{' $(KEXT_SRCS) mps_xnu_os.cpp $(CORE_SRCS) ../core/*.h
 
 # Default checkers plus the array-bound and cstring ones used since M3.
 ANALYZE := --analyze -Xanalyzer -analyzer-output=text \
