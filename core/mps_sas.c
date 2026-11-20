@@ -502,10 +502,9 @@ mpssas_register_events(struct mps_softc *sc)
 	setbit(events, MPI2_EVENT_IR_OPERATION_STATUS);
 	setbit(events, MPI2_EVENT_LOG_ENTRY_ADDED);
 
-	mps_register_events(sc, events, mpssas_evt_handler, NULL,
-	    &sc->sassc->mpssas_eh);
-
-	return (0);
+	/* XNU: a failed registration fails the attach */
+	return (mps_register_events(sc, events, mpssas_evt_handler, NULL,
+	    &sc->sassc->mpssas_eh));
 }
 
 int
@@ -518,6 +517,8 @@ mps_attach_sas(struct mps_softc *sc)
 	mps_dprint(sc, MPS_INIT, "%s entered\n", __func__);
 
 	sassc = malloc(sizeof(struct mpssas_softc), M_MPT2, M_WAITOK|M_ZERO);
+	if (sassc == NULL)		/* XNU: IOMalloc can fail */
+		return (ENOMEM);
 
 	/*
 	 * XXX MaxTargets could change during a reinit.  Since we don't
@@ -528,6 +529,10 @@ mps_attach_sas(struct mps_softc *sc)
 	sassc->maxtargets = sc->facts->MaxTargets + sc->facts->MaxVolumes;
 	sassc->targets = malloc(sizeof(struct mpssas_target) *
 	    sassc->maxtargets, M_MPT2, M_WAITOK|M_ZERO);
+	if (sassc->targets == NULL) {	/* XNU: IOMalloc can fail */
+		free(sassc, M_MPT2);
+		return (ENOMEM);
+	}
 	sc->sassc = sassc;
 	sassc->sc = sc;
 
@@ -553,8 +558,14 @@ mps_attach_sas(struct mps_softc *sc)
 	TASK_INIT(&sassc->ev_task, 0, mpssas_firmware_event_work, sc);
 	sassc->ev_tq = taskqueue_create("mps_taskq", M_NOWAIT | M_ZERO,
 	    taskqueue_thread_enqueue, &sassc->ev_tq);
-	taskqueue_start_threads(&sassc->ev_tq, 1, PRIBIO, "%s taskq", 
-	    device_get_nameunit(sc->mps_dev));
+	/* XNU: both can fail (allocation, thread call) */
+	if (sassc->ev_tq == NULL || taskqueue_start_threads(&sassc->ev_tq, 1,
+	    PRIBIO, "%s taskq", device_get_nameunit(sc->mps_dev)) != 0) {
+		mps_dprint(sc, MPS_INIT|MPS_ERROR, "Cannot start the event "
+		    "taskqueue\n");
+		error = ENOMEM;
+		goto out;
+	}
 
 	mps_lock(sc);
 
@@ -582,7 +593,7 @@ mps_attach_sas(struct mps_softc *sc)
 	mps_unlock(sc);
 
 	/* XNU: no EEDP, so no AC_ADVINFO_CHANGED handler (mpssas_async) */
-	mpssas_register_events(sc);
+	error = mpssas_register_events(sc);	/* XNU: checked */
 out:
 	if (error)
 		mps_detach_sas(sc);

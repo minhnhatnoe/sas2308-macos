@@ -707,7 +707,7 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 	if (error) {
 		mps_dprint(sc, MPS_INIT|MPS_FAULT, "Failed to attach all "
 		    "subsystems: error %d\n", error);
-		mps_free(sc);
+		/* XNU: mps_attach() calls mps_free() once for every failure */
 		return (error);
 	}
 
@@ -718,7 +718,7 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 	if (attaching && (error = mps_pci_setup_interrupts(sc)) != 0) {
 		mps_dprint(sc, MPS_INIT|MPS_FAULT, "Failed to setup "
 		    "interrupts\n");
-		mps_free(sc);
+		/* XNU: mps_attach() calls mps_free() once for every failure */
 		return (error);
 	}
 
@@ -799,6 +799,24 @@ mps_iocfacts_free(struct mps_softc *sc)
 	mps_pci_free_interrupts(sc);
 	free(sc->queues, M_MPT2);
 	sc->queues = NULL;
+
+	/*
+	 * XNU: forget what was freed, so a second call (a failed allocation
+	 * already cleaned up, then mps_free) and a reallocation that fails
+	 * half-way never free or use it again.
+	 */
+	sc->free_busaddr = sc->sense_busaddr = 0;
+	sc->reply_busaddr = sc->req_busaddr = 0;
+	sc->free_queue = NULL;
+	sc->post_queue = NULL;
+	sc->chain_frames = NULL;
+	sc->sense_frames = NULL;
+	sc->reply_frames = NULL;
+	sc->req_frames = NULL;
+	sc->chains = NULL;
+	sc->commands = NULL;
+	sc->queues_dmat = sc->chain_dmat = sc->sense_dmat = NULL;
+	sc->reply_dmat = sc->req_dmat = sc->buffer_dmat = NULL;
 }
 
 /* 
@@ -1654,6 +1672,7 @@ mps_alloc_requests(struct mps_softc *sc)
 		mps_dprint(sc, MPS_ERROR, "Cannot load chain memory\n");
 		bus_dmamem_free(sc->chain_dmat, sc->chain_frames,
 		    sc->chain_map);
+		sc->chain_frames = NULL;	/* XNU: mps_free frees it otherwise */
 		return (ENOMEM);
 	}
 
@@ -1702,6 +1721,10 @@ mps_alloc_requests(struct mps_softc *sc)
 	 */
 	sc->commands = malloc(sizeof(struct mps_command) * sc->num_reqs,
 	    M_MPT2, M_WAITOK | M_ZERO);
+	if (sc->commands == NULL) {	/* XNU: IOMalloc can fail */
+		mps_dprint(sc, MPS_ERROR, "Cannot allocate commands\n");
+		return (ENOMEM);
+	}
 	for (i = 1; i < sc->num_reqs; i++) {
 		cm = &sc->commands[i];
 		cm->cm_req = sc->req_frames + i * sc->reqframesz;
@@ -1721,9 +1744,14 @@ mps_alloc_requests(struct mps_softc *sc)
 			else
 				mps_free_command(sc, cm);
 		else {
-			panic("failed to allocate command %d\n", i);
+			/*
+			 * XNU: no panic: fail the allocation;
+			 * mps_iocfacts_free destroys the maps made so far.
+			 */
+			mps_dprint(sc, MPS_ERROR, "failed to allocate command "
+			    "%d\n", i);
 			sc->num_reqs = i;
-			break;
+			return (ENOMEM);
 		}
 	}
 
@@ -1880,8 +1908,13 @@ mps_attach(struct mps_softc *sc)
 	TASK_INIT(&sc->mps_reinit_task, 0, mps_reinit_task, sc);
 	sc->mps_tq = taskqueue_create("mps_reinit", M_WAITOK | M_ZERO,
 	    taskqueue_thread_enqueue, &sc->mps_tq);
-	taskqueue_start_threads(&sc->mps_tq, 1, PRIBIO, "%s reinit",
-	    device_get_nameunit(sc->mps_dev));
+	if (sc->mps_tq == NULL || taskqueue_start_threads(&sc->mps_tq, 1,
+	    PRIBIO, "%s reinit", device_get_nameunit(sc->mps_dev)) != 0) {
+		mps_dprint(sc, MPS_INIT|MPS_FAULT, "cannot start the reinit "
+		    "taskqueue\n");
+		mps_free(sc);
+		return (ENOMEM);
+	}
 
 	if ((error = mps_transition_ready(sc)) != 0) {
 		mps_dprint(sc, MPS_INIT|MPS_FAULT, "failed to transition "
@@ -2023,10 +2056,9 @@ mps_attach_log(struct mps_softc *sc)
 	setbit(events, MPI2_EVENT_LOG_DATA);
 	setbit(events, MPI2_EVENT_LOG_ENTRY_ADDED);
 
-	mps_register_events(sc, events, mps_log_evt_handler, NULL,
-	    &sc->mps_log_eh);
-
-	return (0);
+	/* XNU: a failed registration fails the attach */
+	return (mps_register_events(sc, events, mps_log_evt_handler, NULL,
+	    &sc->mps_log_eh));
 }
 
 static int
@@ -2047,7 +2079,11 @@ mps_free(struct mps_softc *sc)
 {
 	int error, dead = 0;
 
+	if (sc->xnu.freed)		/* XNU: once */
+		return (0);
 	mps_dprint(sc, MPS_INIT, "%s entered\n", __func__);
+	/* XNU: never started (StartController failed): the hook list is global */
+	config_intrhook_disestablish(&sc->mps_ich);
 	/* Turn off the watchdog */
 	mps_lock(sc);
 	sc->mps_flags |= MPS_FLAGS_SHUTDOWN;
@@ -2119,6 +2155,7 @@ mps_free(struct mps_softc *sc)
 	/* XNU: no sysctl tree, no shutdown handler */
 
 	mtx_destroy(&sc->mps_mtx);
+	sc->xnu.freed = 1;
 	mps_dprint(sc, MPS_INIT, "%s exit\n", __func__);
 
 	return (0);
@@ -2537,6 +2574,8 @@ mps_register_events(struct mps_softc *sc, u32 *mask,
 	int error = 0;
 
 	eh = malloc(sizeof(struct mps_event_handle), M_MPT2, M_WAITOK|M_ZERO);
+	if (eh == NULL)		/* XNU: IOMalloc can fail */
+		return (ENOMEM);
 	eh->callback = cb;
 	eh->data = data;
 	TAILQ_INSERT_TAIL(&sc->event_list, eh, eh_list);
@@ -2658,6 +2697,9 @@ mps_reregister_events(struct mps_softc *sc)
 void
 mps_deregister_events(struct mps_softc *sc, struct mps_event_handle *handle)
 {
+
+	if (handle == NULL)	/* XNU: registration failed (attach) */
+		return;
 
 	TAILQ_REMOVE(&sc->event_list, handle, eh_list);
 	free(handle, M_MPT2);

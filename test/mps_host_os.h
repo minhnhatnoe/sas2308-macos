@@ -51,6 +51,16 @@ struct MpsHostOs {
     /* DMA */
     int dmaAllocs = 0, dmaMultiSeg = 0, maxSegs = 0;
 
+    /* allocation failure injection (TF6): malloc + DMA allocations counted together */
+    long allocs = 0;
+    long failAllocAt = 0;                   /* fail allocation number failAllocAt (0: never) */
+    int allocFailures = 0;
+    bool AllocFails() {
+        allocs++;
+        if (failAllocAt != 0 && allocs == failAllocAt) { allocFailures++; return true; }
+        return false;
+    }
+
     /* platform events */
     int interruptsSetUp = 0, interruptsFreed = 0, pciRestores = 0, dead = 0;
     int interruptsDelivered = 0;

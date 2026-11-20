@@ -117,6 +117,8 @@ extern "C" {
 void *mps_os_malloc(size_t size, int canwait)
 {
     (void)canwait;
+    if (gHost.AllocFails())
+        return nullptr;
     return malloc(size);
 }
 
@@ -228,6 +230,8 @@ struct HostDma {
 
 int mps_os_dmamem_alloc(bus_dma_tag_t tag, void **vaddr, void **cookie)
 {
+    if (gHost.AllocFails())
+        return ENOMEM;
     HostDma *d = new HostDma;
     d->size = (size_t)tag->dt_maxsize;
     CHECK(d->size > 0 && d->size < (64u << 20));

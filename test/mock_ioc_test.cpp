@@ -173,6 +173,7 @@ struct Rig {
     std::vector<std::pair<struct mtx *, uint64_t>> prevArmed;
     long mallocBase;
     static int units;
+    static long failAllocN;                 /* TF6: fail the Nth allocation of mps_attach */
 
     explicit Rig(std::vector<uint16_t> devs = {0x0009, 0x000A},
                  std::function<void(Rig &)> pre = nullptr, bool start = true) {
@@ -195,7 +196,9 @@ struct Rig {
         CHECK(bus_dma_tag_create(bus_get_dma_tag(&dev), 1, 0, BUS_SPACE_MAXADDR, BUS_SPACE_MAXADDR,
                                  NULL, NULL, BUS_SPACE_MAXSIZE_32BIT, BUS_SPACE_UNRESTRICTED,
                                  BUS_SPACE_MAXSIZE_32BIT, 0, NULL, NULL, &sc->mps_parent_dmat) == 0);
+        if (failAllocN) gHost.failAllocAt = gHost.allocs + failAllocN;
         attachRc = mps_attach(sc);
+        gHost.failAllocAt = 0;
         if (attachRc != 0) return;
         struct cam_path *path;
         CHECK(xpt_create_path(&path, NULL, cam_sim_path(sc->sassc->sim), CAM_TARGET_WILDCARD,
@@ -403,6 +406,7 @@ struct Rig {
     }
 };
 int Rig::units = 0;
+long Rig::failAllocN = 0;
 
 static Rig *gRig;
 static uint64_t gNowUs() { return gHost.ioc ? gHost.ioc->nowUs : 0; }
@@ -2241,6 +2245,22 @@ static void ReviewTests()
         const uint64_t t0 = m.nowUs;
         g.Detach();
         CHECK(m.nowUs - t0 < 10000000);
+    }
+
+    if (Want("M3")) {
+        /* fail every allocation of mps_attach in turn: no double mps_free, nothing leaked */
+        int failed = 0;
+        for (long n = 1; n < 400; n++) {
+            Rig::failAllocN = n;
+            if (getenv("M3_TRACE")) printf("  n=%ld\n", n);
+            const int before = gHost.allocFailures;
+            Rig g({0x0009}, nullptr, false);
+            Rig::failAllocN = 0;
+            if (gHost.allocFailures == before) { CHECK(g.attachRc == 0); break; }   /* past the last one */
+            failed += g.attachRc != 0;
+        }
+        printf("  %d injected failures made mps_attach fail\n", failed);
+        CHECK(failed > 10);
     }
 
     if (Want("M1")) {

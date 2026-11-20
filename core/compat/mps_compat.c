@@ -699,6 +699,10 @@ taskqueue_create(const char *name, int mflags, taskqueue_enqueue_fn *enqueue,
 	TAILQ_INIT(&tq->tq_queue);
 	tq->tq_name = name;
 	tq->tq_lock = mps_os_lock_alloc(name);
+	if (tq->tq_lock == NULL) {
+		mps_compat_free(tq, NULL);
+		return (NULL);
+	}
 	return (tq);
 }
 
@@ -1027,7 +1031,7 @@ bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
     bus_size_t buflen, bus_dmamap_callback_t *callback, void *callback_arg,
     int flags)
 {
-	bus_dma_segment_t *segs;
+	bus_dma_segment_t *segs, few[16];
 	bus_dmamap_t mem;
 	bus_size_t left;
 	int error, i, maxsegs, nsegs = 0;
@@ -1036,10 +1040,20 @@ bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 	maxsegs = dmat->dt_nsegments;
 	if (maxsegs <= 0 || maxsegs > MPS_COMPAT_MAXSEGS)
 		maxsegs = MPS_COMPAT_MAXSEGS;
-	segs = mps_compat_malloc(sizeof(*segs) * maxsegs, NULL,
-	    M_NOWAIT | M_ZERO);
-	if (segs == NULL)
-		return (ENOMEM);
+	/*
+	 * XNU: the queue, reply, request and sense loads ignore the result
+	 * and their callbacks read segs[0] (FreeBSD's never fail): no
+	 * allocation for a short list, so they cannot fail here.
+	 */
+	if (maxsegs <= (int)nitems(few)) {
+		segs = few;
+		bzero(few, sizeof(few));
+	} else {
+		segs = mps_compat_malloc(sizeof(*segs) * maxsegs, NULL,
+		    M_NOWAIT | M_ZERO);
+		if (segs == NULL)
+			return (ENOMEM);
+	}
 	mem = (map->dm_lent != NULL) ? map->dm_lent : map;
 	if (mem->dm_cookie == NULL || buf != mem->dm_vaddr ||
 	    buflen > dmat->dt_maxsize)
@@ -1059,7 +1073,8 @@ bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 	} else
 		nsegs = 0;
 	callback(callback_arg, segs, nsegs, error);
-	mps_compat_free(segs, NULL);
+	if (segs != few)
+		mps_compat_free(segs, NULL);
 	return (error);
 }
 

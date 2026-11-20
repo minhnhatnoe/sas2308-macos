@@ -113,6 +113,7 @@ struct mps_xnu {
 	int			 reinit_running;	/* mps_reinit() between start and end */
 	int			 stop_reinit;		/* suspend: a running reinit gives up */
 	int			 reinit_owed;		/* abandoned reinit left IN_STARTUP held */
+	int			 freed;			/* mps_free() ran */
 	uint64_t		 reinit_start_us;
 	int			 gone_logged;
 	/* config pages (mps_config.c): one DMA buffer, one read at a time */
