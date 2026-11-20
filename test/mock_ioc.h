@@ -75,6 +75,18 @@ struct MockIocModel {
     uint32_t tmIgnoreMask = 0;                 /* 1 << TaskType: never answer */
     uint32_t tmDeferMask = 0;                  /* 1 << TaskType: answer only on ReleaseTm() */
     std::vector<uint16_t> deferredTm;          /* SMIDs of TMs waiting for ReleaseTm() */
+    /*
+     * UNIT ATTENTION after a reset: the first command per (handle, LUN)
+     * after a diag reset, target reset or LUN reset gets CHECK CONDITION
+     * 6/29/00 (POWER ON, RESET, OR BUS DEVICE RESET OCCURRED).
+     */
+    bool uaAfterReset = false;
+    std::set<std::pair<uint16_t, uint8_t>> ua;
+    int uaSent = 0;
+    void ArmUa(uint16_t dev, int lun) {        /* lun < 0: LUNs 0-7 */
+        if (!uaAfterReset) return;
+        for (int l = lun < 0 ? 0 : lun; l < (lun < 0 ? 8 : lun + 1); l++) ua.insert({dev, (uint8_t)l});
+    }
     uint32_t tmNoTermMask = 0;                 /* 1 << TaskType: answer, terminate nothing */
     struct TmRec { uint8_t type, msgFlags, descFlags; uint16_t dev, mid; uint8_t lun[8]; };
     std::vector<TmRec> tms;
@@ -247,6 +259,7 @@ struct MockIocModel {
         hs = Idle; used = false; dbData = 0; his = 0;
         him |= MPI2_HIM_RIM;
         pending.clear();
+        for (uint16_t h : devices) ArmUa(h, -1);
         iocPost = iocFree = 0;
         state = diagStuck ? MPI2_IOC_STATE_RESET : MPI2_IOC_STATE_READY;
     }
@@ -492,6 +505,8 @@ struct MockIocModel {
                 n++;
             }
         }
+        if (t->TaskType == MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET) ArmUa(t->DevHandle, -1);
+        if (t->TaskType == MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET) ArmUa(t->DevHandle, t->LUN[1]);
         MPI2_SCSI_TASK_MANAGE_REPLY tr{};
         tr.MsgLength = sizeof(tr) / 4; tr.Function = MPI2_FUNCTION_SCSI_TASK_MGMT; tr.DevHandle = t->DevHandle;
         tr.TaskType = t->TaskType; tr.ResponseCode = MPI2_SCSITASKMGMT_RSP_TM_COMPLETE;
@@ -713,6 +728,16 @@ struct MockIocModel {
                 sr.MsgLength = sizeof(sr) / 4; sr.Function = fn; sr.DevHandle = q->DevHandle;
                 sr.IOCStatus = MPI2_IOCSTATUS_SCSI_IO_DATA_ERROR | MPI2_IOCSTATUS_FLAG_LOG_INFO_AVAILABLE;
                 sr.IOCLogInfo = 0x31120303;
+                sr.SCSIStatus = 0x02; sr.SCSIState = MPI2_SCSI_STATE_AUTOSENSE_VALID; sr.SenseCount = 18;
+                AddressReply(smid, &sr, sizeof(sr));
+                return;
+            }
+            if (ua.erase({q->DevHandle, q->LUN[1]})) {
+                uaSent++;
+                uint8_t *s = Ptr(((uint64_t)senseHigh << 32) | q->SenseBufferLowAddress, 18);
+                memset(s, 0, 18); s[0] = 0x70; s[2] = 0x06; s[7] = 10; s[12] = 0x29; s[13] = 0x00;
+                MPI2_SCSI_IO_REPLY sr{};
+                sr.MsgLength = sizeof(sr) / 4; sr.Function = fn; sr.DevHandle = q->DevHandle;
                 sr.SCSIStatus = 0x02; sr.SCSIState = MPI2_SCSI_STATE_AUTOSENSE_VALID; sr.SenseCount = 18;
                 AddressReply(smid, &sr, sizeof(sr));
                 return;

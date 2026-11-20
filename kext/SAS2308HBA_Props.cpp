@@ -424,6 +424,7 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Device re-adds scheduled", st.readd_scheduled);
     SetNumber(d, "Device re-adds given up", st.readd_given_up);
     SetNumber(d, "Recovered sense (not errors)", st.recovered_sense);
+    SetNumber(d, "Unit attentions after reset retried", st.ua_retries);
     SetNumber(d, "IOC temperature reads", st.temp_reads);
     SetNumber(d, "IOC temperature read failures", st.temp_failures);
     SetNumber(d, "IOC temperature warnings", st.temp_warnings);

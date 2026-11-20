@@ -450,6 +450,40 @@ int main()
         f.Detach();
     }
 
+    if (Want("D3")) {
+        /* the UNIT ATTENTION a drive returns after our resets: SYNCHRONIZE CACHE (sent once by SAM) sees GOOD */
+        MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        m.uaAfterReset = true;
+        const uint32_t t9 = f.Tid(0x0009), ta = f.Tid(0x000A);
+        auto sync = [&](uint32_t tid, uint64_t lun = 0) {
+            FakeTask *s = f.NewRead(tid);
+            s->lun = lun;
+            s->cdb[0] = 0x35; s->cdb[5] = 0; s->cdb[8] = 0; s->dir = MPSK_DIR_NONE; s->len = 0;
+            CHECK(f.Submit(s) == SAS2308Glue::kInProcess);
+            HostRunPending();
+            CHECK(s->completions == 1 && s->done == SAS2308GluePort::kDoneStatus);
+            return s->scsiStatus;
+        };
+        /* a reinit (IOC fault, wake from sleep): every LUN */
+        RequestReinit("test");
+        f.Run(3000);
+        CHECK(sync(t9) == 0x00 && sync(ta) == 0x00 && sync(ta, 1) == 0x00);
+        CHECK(m.uaSent == 3);
+        /* a target reset (recovery, or the OS): that target's LUNs */
+        char why[128];
+        CHECK(mps_kext_tm(f.k, MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET, t9, 0, nullptr, nullptr, 0, why,
+                          sizeof(why)) == MPSK_TM_COMPLETE);
+        HostRunPending();
+        CHECK(sync(t9) == 0x00 && sync(t9, 2) == 0x00 && m.uaSent == 5);
+        CHECK(sync(ta) == 0x00 && m.uaSent == 5);
+        /* bounded: once per LUN and reset; a UA without a reset of ours reaches the OS */
+        m.ua.insert({0x0009, 0});
+        CHECK(sync(t9) == 0x02 && m.uaSent == 6);
+        f.Detach();
+    }
+
     printf("PASS (%d checks)\n", gChecks);
     return 0;
 }

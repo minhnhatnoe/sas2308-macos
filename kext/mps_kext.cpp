@@ -70,6 +70,7 @@ struct mps_kext_task {
 #define MPSK_T_POSTED       2   /* the core (or the thin CAM) has it */
 #define MPSK_T_SYNC_DONE    3   /* completed inside xpt_action() */
 #define MPSK_T_QUEUED       4   /* on the done queue */
+    int                     ua_retried; /* re-sent once for a UNIT ATTENTION after our reset (D3) */
     bus_dma_segment_t       segs[MPSK_TASK_MAXSEGS];
 };
 
@@ -96,6 +97,9 @@ struct mps_kext {
     void                   *inline_owner;   /* this thread drains the done queue itself */
     void                   *done_lock;      /* leaf lock for the done queue (mps_os_lock) */
     struct mps_kext_task   *done_head, *done_tail;
+    /* CAM da's DA_FLAG_RETRY_UA (D3): per target, the LUNs (bit 63: 63 and up) armed by our reset */
+    uint64_t                ua_luns[MPSK_MAX_TARGETS];
+    uint32_t                ua_gen[MPSK_MAX_TARGETS];   /* the target's generation when armed */
 };
 
 static volatile int gKexts = 0;
@@ -140,6 +144,75 @@ static void mps_kext_result(struct mps_kext_task *t, struct mps_kext_io_result *
     }
 }
 
+/*
+ * CAM da's RETRY_UA (scsi_da.c daasync: AC_SENT_BDR / AC_BUS_RESET set
+ * DA_FLAG_RETRY_UA, dadone passes SF_RETRY_UA): the UNIT ATTENTION a drive
+ * returns after a reset of ours (reinit, wake, target or LUN reset) is not
+ * the OS's business. SAM sends SYNCHRONIZE CACHE once and fails it on
+ * anything but GOOD (IOSCSIBlockCommandsDevice::SynchronizeCache), and
+ * absorbs 29/00 only at power-on, so we re-send such a ccb, once per ccb
+ * (like da's DA_CCB_RETRY_UA on every pending ccb), uncounted by SAM, while
+ * its LUN is armed; the first GOOD from the LUN disarms it, and so does a
+ * different disk behind the target id (generation). da retries any sense
+ * key 6 while armed; we match ASC 0x29 (POWER ON, RESET, OR BUS DEVICE
+ * RESET OCCURRED) only, the UA our reset causes. mps_mtx held.
+ */
+static void mps_kext_arm_ua(struct mps_kext *k, target_id_t tid, lun_id_t lun)
+{
+    const uint64_t luns = lun == CAM_LUN_WILDCARD ? ~0ull : 1ull << (lun < 63 ? lun : 63);
+
+    for (u_int i = 0; i < MPSK_MAX_TARGETS; i++) {
+        if (tid != CAM_TARGET_WILDCARD && i != tid)
+            continue;
+        if (k->ua_luns[i] == 0 || k->ua_gen[i] != mps_xnu_target_gen(&k->sc, i)) {
+            k->ua_luns[i] = 0;
+            k->ua_gen[i] = mps_xnu_target_gen(&k->sc, i);
+        }
+        k->ua_luns[i] |= luns;
+    }
+}
+
+static int mps_kext_retry_ua(struct mps_kext *k, struct mps_kext_task *t)
+{
+    union ccb *ccb = &t->ccb;
+    struct ccb_scsiio *csio = &ccb->csio;
+    const target_id_t tid = ccb->ccb_h.path ? ccb->ccb_h.path->target_id : ccb->ccb_h.target_id;
+    const lun_id_t lun = ccb->ccb_h.path ? ccb->ccb_h.path->lun_id : ccb->ccb_h.target_lun;
+    const uint64_t bit = 1ull << (lun < 63 ? lun : 63);
+    const uint32_t st = ccb->ccb_h.status & CAM_STATUS_MASK;
+    const uint8_t *sense = (const uint8_t *)&csio->sense_data;
+    uint8_t key, asc, ascq;
+
+    if (tid >= MPSK_MAX_TARGETS || (k->ua_luns[tid] & bit) == 0)
+        return 0;
+    if (k->ua_gen[tid] != mps_xnu_target_gen(&k->sc, tid)) {
+        k->ua_luns[tid] = 0;                    /* another disk now */
+        return 0;
+    }
+    if (st == CAM_REQ_CMP) {
+        k->ua_luns[tid] &= ~bit;                /* the LUN is past its UA */
+        return 0;
+    }
+    if (st != CAM_SCSI_STATUS_ERROR || csio->scsi_status != MPI2_SCSI_STATUS_CHECK_CONDITION || t->ua_retried ||
+        (ccb->ccb_h.status & CAM_AUTOSNS_VALID) == 0 || csio->sense_len - csio->sense_resid < 14)
+        return 0;
+    if ((sense[0] & 0x7F) >= 0x72) {            /* descriptor format */
+        key = sense[1] & 0x0F; asc = sense[2]; ascq = sense[3];
+    } else {
+        key = sense[2] & 0x0F; asc = sense[12]; ascq = sense[13];
+    }
+    if (key != 0x06 || asc != 0x29)
+        return 0;
+    t->ua_retried = 1;
+    k->sc.xnu.stats.ua_retries++;
+    mps_dprint(&k->sc, MPS_RECOVERY, "target %u lun %u: UNIT ATTENTION 29/%02x after our reset, "
+               "re-sending the command\n", (unsigned)tid, (unsigned)lun, ascq);
+    ccb->ccb_h.status = CAM_REQ_INPROG;
+    csio->scsi_status = 0;
+    xpt_action(ccb);
+    return 1;
+}
+
 /* ccb_h.cbfcnp of a SCSI IO: mps_mtx held, so only queue it. */
 static void mps_kext_io_done(struct cam_periph *periph, union ccb *ccb)
 {
@@ -151,6 +224,8 @@ static void mps_kext_io_done(struct cam_periph *periph, union ccb *ccb)
         t->state = MPSK_T_SYNC_DONE;            /* mps_kext_submit() answers for it */
         return;
     }
+    if (mps_kext_retry_ua(k, t))
+        return;
     t->state = MPSK_T_QUEUED;
     t->done_next = nullptr;
     mps_os_lock(k->done_lock);
@@ -202,10 +277,13 @@ static void mps_kext_async(void *arg, uint32_t code, struct cam_path *path, void
         break;
     case AC_BUS_RESET:
         event = MPSK_ASYNC_BUS_RESET;
+        mps_kext_arm_ua(k, CAM_TARGET_WILDCARD, CAM_LUN_WILDCARD);
         break;
     case AC_SENT_BDR:
         event = MPSK_ASYNC_SENT_BDR;
         tids = one;
+        if (tid < MPSK_MAX_TARGETS)
+            mps_kext_arm_ua(k, tid, path->lun_id);
         break;
     default:
         return;
@@ -457,6 +535,7 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
 
     memset_zero(ccb, sizeof(*ccb));
     t->k = k;
+    t->ua_retried = 0;
     t->os_task = os_task;
     t->os_tag = os_tag;
     t->done_next = nullptr;

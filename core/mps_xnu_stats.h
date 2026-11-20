@@ -77,6 +77,8 @@ struct mps_xnu_stats {
 	uint32_t	removals_queued;	/* removals that waited for a free TM */
 	uint32_t	identity_changes;	/* a different disk behind a target id */
 	uint32_t	sata_identify_failures;
+	/* FreeBSD deviation fixes */
+	uint32_t	ua_retries;		/* UNIT ATTENTION 29/xx after our reset, re-sent (D3) */
 };
 
 #endif /* !_MPS_XNU_STATS_H_ */
