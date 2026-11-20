@@ -1387,8 +1387,11 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 	mtx_assert(&sc->mps_mtx, MA_OWNED);
 
 	csio = &ccb->csio;
-	/* XNU: unplugged or disabled: fail, don't touch the registers */
-	if (sc->mps_flags & MPS_FLAGS_XNU_GONE) {
+	/*
+	 * XNU: unplugged or disabled: fail, don't touch the registers.  After
+	 * the shutdown stop nothing would ever release a held ccb.
+	 */
+	if ((sc->mps_flags & MPS_FLAGS_XNU_GONE) || sc->xnu.shutdown) {
 		mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
 		xpt_done(ccb);
 		return;

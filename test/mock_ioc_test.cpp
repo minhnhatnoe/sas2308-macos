@@ -40,6 +40,12 @@ static void Fail(const char *file, int line, const char *expr)
     exit(1);
 }
 
+#ifdef REVIEW_BEFORE                            /* the review tests against the code before the fixes */
+#define XSUSPEND(sc, ms) mps_xnu_suspend(sc, ms)
+#else
+#define XSUSPEND(sc, ms) mps_xnu_suspend(sc, ms, 0)
+#endif
+
 static size_t LogMark() { return gHost.Mark(); }
 static int CountLog(size_t mark, const char *sub) { return gHost.Count(mark, sub); }
 static bool HasLog(size_t mark, const char *sub) { return gHost.Has(mark, sub); }
@@ -121,6 +127,7 @@ struct Io {
     uint16_t iocStatus = 0;
     uint8_t response = 0;
     uint32_t terminated = 0;
+    int deadAtDone = -1;                    /* gHost.dead (bus mastering off) when it completed */
 };
 
 static uint64_t gNowUs();
@@ -130,6 +137,7 @@ static void IoDone(struct cam_periph *, union ccb *ccb)
     Io *io = (Io *)ccb->ccb_h.ppriv_ptr0;
     CHECK(io->done == 0);                   /* every ccb completes exactly once */
     io->done++;
+    io->deadAtDone = gHost.dead;
     io->fullStatus = ccb->ccb_h.status;
     io->status = ccb->ccb_h.status & CAM_STATUS_MASK;
     io->doneUs = gNowUs();
@@ -463,11 +471,17 @@ static void RetryTests();
 static void TemperatureTests();
 static void RecoveredSenseTests();
 static void SleepTests();
+static void ReviewTests();
 
 int main()
 {
     setvbuf(stdout, nullptr, _IOLBF, 0);    /* LSan exits with _exit */
     gHost.verbose = getenv("MOCK_VERBOSE") != nullptr;
+    if (getenv("MOCK_ONLY")) {              /* one review scenario alone */
+        ReviewTests();
+        printf("PASS (%s)\n", getenv("MOCK_ONLY"));
+        return 0;
+    }
     size_t attachMark = LogMark();
     Rig g({0x0009}, nullptr, false);
     gRig = &g;
@@ -1007,6 +1021,7 @@ int main()
     TemperatureTests();
     RecoveredSenseTests();
     SleepTests();
+    ReviewTests();
     printf("PASS (%llu SGLs walked, %zu log lines checked)\n", (unsigned long long)ioc.sglChecked, gHost.log.size());
     return 0;
 }
@@ -1832,7 +1847,7 @@ static void TemperatureTests()
         printf("temperature: not read while suspended\n");
         const int before = m.iounit7Reads;
         mps_lock(g.sc);
-        CHECK(mps_xnu_suspend(g.sc, 1000) == 0);
+        CHECK(XSUSPEND(g.sc, 1000) == 0);
         mps_unlock(g.sc);
         HostAdvance(65000);
         CHECK(m.iounit7Reads == before);
@@ -1936,7 +1951,7 @@ static void RecoveredSenseTests()
 static int Suspend(Rig &g, u_int drainMs)
 {
     mps_lock(g.sc);
-    int rc = mps_xnu_suspend(g.sc, drainMs);
+    int rc = XSUSPEND(g.sc, drainMs);
     mps_unlock(g.sc);
     return rc;
 }
@@ -2093,4 +2108,77 @@ static void SleepTests()
         CHECK(r->done && r->status == CAM_DEV_NOT_THERE);
         CHECK(m.murCount == murs + 1 && !HasLog(mark, "accessed while suspended"));
     }
+}
+
+/* ---- review fixes (docs/reviews/2026-11-final.md) ---------------------------------
+ * Each scenario failed on the code before its fix (REVIEW_BEFORE builds them
+ * against the old API; MOCK_ONLY=<id> runs one).
+ */
+#ifdef REVIEW_BEFORE
+static int Shutdown(Rig &g, u_int drainMs) { mps_lock(g.sc); int rc = mps_xnu_suspend(g.sc, drainMs); mps_unlock(g.sc); return rc; }
+#else
+static int Shutdown(Rig &g, u_int drainMs) { mps_lock(g.sc); int rc = mps_xnu_suspend(g.sc, drainMs, 1); mps_unlock(g.sc); return rc; }
+#endif
+
+static bool Want(const char *id)
+{
+    const char *only = getenv("MOCK_ONLY");
+    if (only && strcmp(only, id) != 0)
+        return false;
+    printf("review %s\n", id);
+    return true;
+}
+
+static void ReviewTests()
+{
+    if (Want("H5")) {
+        /* shutdown: IO fails at once afterwards; a wedged IOC: bounded, bus mastering off, no diag reset */
+        Rig g;
+        MockIocModel &m = g.ioc;
+        m.holdIo = true;
+        Io *a = g.Read(0x0009, 0, 1);
+        CHECK(g.Go(a) == kPosted);
+        m.murIgnored = true;
+        const uint64_t t0 = m.nowUs;
+        const int dead = gHost.dead, diags = m.diagResetCount;
+        Shutdown(g, 2000);
+        CHECK(m.nowUs - t0 < 5000000);          /* far below the 30 s halt watchdog */
+        CHECK(gHost.dead == dead + 1 && m.diagResetCount == diags);
+        CHECK(a->done && a->deadAtDone == dead + 1);
+        Io *b = g.Read(0x000A, 0, 2);
+        CHECK(g.Go(b) == kDone && b->status == CAM_DEV_NOT_THERE);
+        m.holdIo = false;
+    }
+
+    if (Want("H5-retry")) {
+        /* the R/W retry of IO the shutdown stop failed must not be held */
+        Rig g;
+        MockIocModel &m = g.ioc;
+        m.holdIo = true;
+        Io *a = g.Read(0x0009, 0, 1);
+        CHECK(g.Go(a) == kPosted);
+        Shutdown(g, 100);
+        CHECK(a->done);
+        Io *retry = g.Read(0x0009, 0, 1);
+        CHECK(g.Go(retry) == kDone && retry->status == CAM_DEV_NOT_THERE);
+        CHECK(g.HeldCount() == 0);
+        m.holdIo = false;
+    }
+
+    if (Want("M4")) {
+        /* sleep with an IOC that does not stop: bus mastering off before any buffer goes back */
+        Rig g;
+        MockIocModel &m = g.ioc;
+        m.holdIo = true;
+        Io *a = g.Read(0x0009, 0, 1);
+        CHECK(g.Go(a) == kPosted);
+        m.murIgnored = true;
+        const int dead = gHost.dead;
+        const uint64_t t0 = m.nowUs;
+        Suspend(g, 100);
+        CHECK(m.nowUs - t0 < 15000000);
+        CHECK(a->done && a->deadAtDone == dead + 1);
+        m.holdIo = false;
+    }
+
 }

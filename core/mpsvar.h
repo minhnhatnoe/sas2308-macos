@@ -805,7 +805,7 @@ void mpssas_release_simq_reinit(struct mpssas_softc *sassc);
 int mps_xnu_ccb_timeout(struct mps_softc *sc, union ccb *ccb);
 void mpssas_xnu_fail_all(struct mps_softc *sc);
 /* XNU: system sleep / shutdown (mps_xnu_suspend, mps_xnu_resume) */
-int mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms);
+int mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms, int shutdown);
 int mps_xnu_resume(struct mps_softc *sc);
 void mpssas_xnu_suspend(struct mps_softc *sc);
 int mpssas_send_reset(struct mps_softc *sc, struct mps_command *tm,

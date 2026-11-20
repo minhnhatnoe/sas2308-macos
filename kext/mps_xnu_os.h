@@ -150,8 +150,11 @@ int	 mps_kext_check_present(struct mps_kext *k);
 
 /* ---- system sleep / shutdown (mps_xnu_suspend, mps_xnu_resume) ---------- */
 
-/* hold new IO, drain up to drain_ms, MUR, no register access until resume */
-int	 mps_kext_suspend(struct mps_kext *k, uint32_t drain_ms);
+/*
+ * hold new IO, drain up to drain_ms, MUR, no register access until resume;
+ * shutdown: fail held and new IO instead, short bounded stop, no resume
+ */
+int	 mps_kext_suspend(struct mps_kext *k, uint32_t drain_ms, int shutdown);
 /* reinit on the core's taskqueue; IO held until the rediscovery is done */
 int	 mps_kext_resume(struct mps_kext *k);
 

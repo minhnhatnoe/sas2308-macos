@@ -224,7 +224,8 @@ mps_message_unit_reset(struct mps_softc *sc, int sleep_flag)
 	    MPI2_FUNCTION_IOC_MESSAGE_UNIT_RESET <<
 	    MPI2_DOORBELL_FUNCTION_SHIFT);
 
-	if (mps_wait_db_ack(sc, 5, sleep_flag) != 0) {
+	/* XNU: shutdown waits 1 s, not 5 (the halt watchdog is 30 s) */
+	if (mps_wait_db_ack(sc, sc->xnu.stop_fast ? 1 : 5, sleep_flag) != 0) {
 		mps_dprint(sc, MPS_INIT|MPS_FAULT,
 		    "Doorbell handshake failed\n");
 		error = ETIMEDOUT;
@@ -255,6 +256,14 @@ mps_transition_ready(struct mps_softc *sc)
 			error = ENXIO;
 			break;
 		}
+		/* XNU: a stop for sleep / shutdown / detach is time-bounded */
+		if (sc->xnu.stop_deadline_us != 0 &&
+		    mps_os_uptime_us() > sc->xnu.stop_deadline_us) {
+			mps_dprint(sc, MPS_INIT|MPS_FAULT, "IOC not READY in "
+			    "time, giving up\n");
+			error = ETIMEDOUT;
+			break;
+		}
 		reg = mps_regread(sc, MPI2_DOORBELL_OFFSET);
 		mps_dprint(sc, MPS_INIT, "  Doorbell= 0x%x\n", reg);
 
@@ -262,6 +271,10 @@ mps_transition_ready(struct mps_softc *sc)
 		 * Ensure the IOC is ready to talk.  If it's not, try
 		 * resetting it.
 		 */
+		if ((reg & MPI2_DOORBELL_USED) && sc->xnu.stop_fast) {
+			error = ETIMEDOUT;	/* XNU: no diag reset at shutdown */
+			break;
+		}
 		if (reg & MPI2_DOORBELL_USED) {
 			mps_dprint(sc, MPS_INIT, "  Not ready, sending diag "
 			    "reset\n");
@@ -289,10 +302,18 @@ mps_transition_ready(struct mps_softc *sc)
 			mps_dprint(sc, MPS_INIT|MPS_FAULT, "IOC in fault "
 			    "state 0x%x, resetting\n",
 			    state & MPI2_DOORBELL_FAULT_CODE_MASK);
+			if (sc->xnu.stop_fast) {	/* XNU: shutdown */
+				error = ETIMEDOUT;
+				break;
+			}
 			mps_diag_reset(sc, sleep_flags);
 		} else if (state == MPI2_IOC_STATE_OPERATIONAL) {
 			/* Need to take ownership */
-			mps_message_unit_reset(sc, sleep_flags);
+			if (mps_message_unit_reset(sc, sleep_flags) != 0 &&
+			    sc->xnu.stop_fast) {
+				error = ETIMEDOUT;	/* XNU: MUR once */
+				break;
+			}
 		} else if (state == MPI2_IOC_STATE_RESET) {
 			/* Wait a bit, IOC might be in transition */
 			mps_dprint(sc, MPS_INIT|MPS_FAULT,
@@ -944,7 +965,7 @@ mps_xnu_suspend_busy(struct mps_softc *sc)
 }
 
 int
-mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms)
+mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms, int shutdown)
 {
 	struct mpssas_softc *sassc = sc->sassc;
 	int error = 0, start;
@@ -953,10 +974,21 @@ mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms)
 	if (sc->xnu.suspending || (sc->mps_flags & MPS_FLAGS_SHUTDOWN))
 		return (0);
 	sc->xnu.suspending = 1;
+	/*
+	 * Shutdown is not sleep: the 30 s halt watchdog runs, nothing will
+	 * resume, so new IO fails at once (mpssas_action_scsiio) instead of
+	 * being held, the drain is short, the IOC gets one message unit reset
+	 * with a short wait and no diag reset.
+	 */
+	if (shutdown) {
+		sc->xnu.shutdown = 1;
+		if (drain_ms > MPS_XNU_SHUTDOWN_DRAIN_MS)
+			drain_ms = MPS_XNU_SHUTDOWN_DRAIN_MS;
+	}
 	sc->xnu.stats.suspends++;
-	mps_dprint(sc, MPS_INIT|MPS_INFO, "suspending: %d commands "
-	    "outstanding\n", sc->io_cmds_active);
-	if (sassc != NULL && sassc->sim != NULL &&
+	mps_dprint(sc, MPS_INIT|MPS_INFO, "%s: %d commands outstanding\n",
+	    shutdown ? "shutting down" : "suspending", sc->io_cmds_active);
+	if (!shutdown && sassc != NULL && sassc->sim != NULL &&
 	    (sassc->flags & MPSSAS_QUEUE_FROZEN) == 0) {
 		xpt_freeze_simq(sassc->sim, 1);
 		sassc->flags |= MPSSAS_QUEUE_FROZEN;
@@ -983,11 +1015,28 @@ mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms)
 	sc->mps_flags |= MPS_FLAGS_DIAGRESET;
 	if ((sc->mps_flags & MPS_FLAGS_XNU_GONE) == 0) {
 		mps_mask_intr(sc);
-		if ((error = mps_transition_ready(sc)) != 0)
+		sc->xnu.stop_fast = shutdown;
+		sc->xnu.stop_deadline_us = mps_os_uptime_us() + (uint64_t)1000 *
+		    (shutdown ? MPS_XNU_SHUTDOWN_STOP_MS : MPS_XNU_SLEEP_STOP_MS);
+		error = mps_transition_ready(sc);
+		sc->xnu.stop_fast = 0;
+		sc->xnu.stop_deadline_us = 0;
+		if (error != 0 && (sc->mps_flags & MPS_FLAGS_XNU_GONE) == 0) {
+			/*
+			 * The IOC did not stop and may still DMA into the
+			 * buffers about to be returned: bus mastering off
+			 * before anything completes.
+			 */
 			mps_dprint(sc, MPS_INIT|MPS_FAULT, "suspend: the IOC "
-			    "did not stop (error %d)\n", error);
+			    "did not stop (error %d): bus mastering off\n",
+			    error);
+			mps_os_controller_dead(sc->mps_dev);
+		}
 	}
-	mpssas_xnu_suspend(sc);
+	if (shutdown)
+		mpssas_xnu_fail_all(sc);	/* held IO too: nothing resumes */
+	else
+		mpssas_xnu_suspend(sc);
 	sc->mps_flags |= MPS_FLAGS_XNU_SUSPENDED;
 	sc->xnu.suspended_logged = 0;
 	mps_dprint(sc, MPS_INIT|MPS_INFO, "suspended: IOC stopped\n");
@@ -1005,8 +1054,8 @@ mps_xnu_resume(struct mps_softc *sc)
 {
 
 	mtx_assert(&sc->mps_mtx, MA_OWNED);
-	if (!sc->xnu.suspending)
-		return (0);
+	if (!sc->xnu.suspending || sc->xnu.shutdown)
+		return (sc->xnu.shutdown ? ENXIO : 0);
 	sc->mps_flags &= ~(MPS_FLAGS_XNU_SUSPENDED | MPS_FLAGS_DIAGRESET);
 	sc->xnu.suspending = 0;
 	sc->xnu.stats.resumes++;
@@ -1951,7 +2000,7 @@ mps_detach_log(struct mps_softc *sc)
 int
 mps_free(struct mps_softc *sc)
 {
-	int error;
+	int error, dead = 0;
 
 	mps_dprint(sc, MPS_INIT, "%s entered\n", __func__);
 	/* Turn off the watchdog */
@@ -1976,8 +2025,19 @@ mps_free(struct mps_softc *sc)
 	 */
 	mps_lock(sc);
 	if ((sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) == 0 &&
-	    sc->mps_flags & MPS_FLAGS_ATTACH_DONE)
-		mps_transition_ready(sc);
+	    sc->mps_flags & MPS_FLAGS_ATTACH_DONE) {
+		sc->xnu.stop_deadline_us = mps_os_uptime_us() +
+		    (uint64_t)1000 * MPS_XNU_SLEEP_STOP_MS;
+		if (mps_transition_ready(sc) != 0 &&
+		    (sc->mps_flags & MPS_FLAGS_XNU_GONE) == 0) {
+			/* the IOC may still DMA: no buffer back before this */
+			mps_dprint(sc, MPS_INIT|MPS_FAULT, "the IOC did not "
+			    "stop: bus mastering off\n");
+			mps_os_controller_dead(sc->mps_dev);
+			dead = 1;
+		}
+		sc->xnu.stop_deadline_us = 0;
+	}
 	mpssas_xnu_fail_all(sc);
 	mps_unlock(sc);
 
@@ -1990,11 +2050,15 @@ mps_free(struct mps_softc *sc)
 
 	/* Put the IOC back in the READY state. */
 	mps_lock(sc);
-	if ((error = mps_transition_ready(sc)) != 0 &&	/* XNU: free anyway */
+	sc->xnu.stop_deadline_us = mps_os_uptime_us() +
+	    (uint64_t)1000 * MPS_XNU_SLEEP_STOP_MS;
+	if (!dead && (error = mps_transition_ready(sc)) != 0 &&	/* XNU: free anyway */
 	    (sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) == 0) {
+		sc->xnu.stop_deadline_us = 0;
 		mps_unlock(sc);
 		return (error);
 	}
+	sc->xnu.stop_deadline_us = 0;
 	mps_unlock(sc);
 
 	if (sc->facts != NULL)

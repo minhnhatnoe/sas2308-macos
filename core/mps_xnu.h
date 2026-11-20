@@ -36,6 +36,9 @@ struct mps_softc;
 #define MPS_XNU_TEMP_PERIOD_S	30	/* IOC temperature poll */
 #define MPS_XNU_TEMP_WARN_C	85	/* warning above, */
 #define MPS_XNU_TEMP_REARM_C	80	/* re-armed below */
+#define MPS_XNU_SHUTDOWN_DRAIN_MS 1000	/* shutdown: drain at most, */
+#define MPS_XNU_SHUTDOWN_STOP_MS 2000	/* then stop the IOC within (no diag reset) */
+#define MPS_XNU_SLEEP_STOP_MS	10000	/* sleep / detach: stop the IOC within */
 
 /* ---- log levels: presets of the mps_dprint class mask ------------------ */
 
@@ -116,6 +119,9 @@ struct mps_xnu {
 	/* system sleep / shutdown: new IO held, OS TMs refused (mps.c) */
 	int			 suspending;
 	int			 suspended_logged;
+	int			 shutdown;		/* system shutdown: fail IO, never hold it */
+	int			 stop_fast;		/* short MUR ack wait, no diag reset */
+	uint64_t		 stop_deadline_us;	/* mps_transition_ready gives up after */
 	/* SAS Device Page 0 retries: in-line backoff, then later re-adds */
 	int			 cfg_retry;		/* msleep channel */
 	struct mps_xnu_readd {

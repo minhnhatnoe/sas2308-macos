@@ -104,7 +104,7 @@ SAS2308HBA::setPowerState(unsigned long powerStateOrdinal, IOService *whatDevice
 
     Klog(MPSK_INIT | MPSK_INFO, "power state %lu -> %lu", fPowerState, powerStateOrdinal);
     if (powerStateOrdinal == kPowerStateOff)
-        QuiesceController(kSleepDrainMs, "system sleep");
+        QuiesceController(kSleepDrainMs, "system sleep", false);
     else if (!fShutdown)
         ResumeController();
     fPowerState = powerStateOrdinal;
@@ -122,8 +122,13 @@ SAS2308HBA::systemWillShutdown(IOOptionBits specifier)
 {
     if (specifier == kIOMessageSystemWillPowerOff || specifier == kIOMessageSystemWillRestart) {
         fShutdown = true;
+        /*
+         * Not sleep: nothing resumes, so IO is failed (DeviceNotPresent)
+         * from here on instead of held, and the stop is bounded (~3 s)
+         * well inside the 30 s halt watchdog: no diag reset, one MUR.
+         */
         QuiesceController(kShutdownDrainMs,
-                          specifier == kIOMessageSystemWillRestart ? "restart" : "power off");
+                          specifier == kIOMessageSystemWillRestart ? "restart" : "power off", true);
     }
     super::systemWillShutdown(specifier);
 }
@@ -134,7 +139,7 @@ SAS2308HBA::systemWillShutdown(IOOptionBits specifier)
 //-----------------------------------------------------------------------------
 
 bool
-SAS2308HBA::QuiesceController(uint32_t drainMs, const char *why)
+SAS2308HBA::QuiesceController(uint32_t drainMs, const char *why, bool shutdown)
 {
     if (fSuspended)
         return true;
@@ -143,7 +148,7 @@ SAS2308HBA::QuiesceController(uint32_t drainMs, const char *why)
         return false;
     }
     Klog(MPSK_INIT | MPSK_INFO, "%s: quiescing the controller (drain up to %u ms)", why, drainMs);
-    const int rc = mps_kext_suspend(fMps, drainMs);
+    const int rc = mps_kext_suspend(fMps, drainMs, shutdown ? 1 : 0);
     Leave();
     DeliverCompletions();                           /* what the IOC owned: reset, retried, then held */
     IOLockLock(fLock);

@@ -46,7 +46,7 @@ public:
     static constexpr uint32_t kMaxLun = 255;                    /* peripheral LUN addressing */
     static constexpr uint32_t kStatsPublishMs = 1000;           /* statistics timer */
     static constexpr uint32_t kSleepDrainMs = 10000;            /* system sleep: IO drain bound */
-    static constexpr uint32_t kShutdownDrainMs = 2000;          /* restart / power off */
+    static constexpr uint32_t kShutdownDrainMs = 1000;          /* restart / power off (core caps it at 1 s) */
 
     /* Registry keys (personality default, boot-args, setProperties). */
     static constexpr const char *kLogLevelKey   = "SAS2308LogLevel";    /* 0..4 or error/warn/info/debug/trace */
@@ -146,7 +146,7 @@ private:
     /* ---- SAS2308HBA_PM.cpp */
     void InitializePowerManagement(IOService *provider);
     void StopPowerManagement(void);
-    bool QuiesceController(uint32_t drainMs, const char *why);   /* sleep / shutdown */
+    bool QuiesceController(uint32_t drainMs, const char *why, bool shutdown);   /* sleep / shutdown */
     void ResumeController(void);                                  /* wake */
 
     /* ---- SAS2308HBA_Hotplug.cpp */

@@ -1075,7 +1075,7 @@ int mps_kext_check_present(struct mps_kext *k)
     return present;
 }
 
-int mps_kext_suspend(struct mps_kext *k, uint32_t drain_ms)
+int mps_kext_suspend(struct mps_kext *k, uint32_t drain_ms, int shutdown)
 {
     struct mps_softc *sc = &k->sc;
     int error;
@@ -1083,7 +1083,7 @@ int mps_kext_suspend(struct mps_kext *k, uint32_t drain_ms)
     if (!k->attached)
         return ENXIO;
     mps_lock(sc);
-    error = mps_xnu_suspend(sc, drain_ms);
+    error = mps_xnu_suspend(sc, drain_ms, shutdown);
     mps_unlock(sc);
     return error;
 }

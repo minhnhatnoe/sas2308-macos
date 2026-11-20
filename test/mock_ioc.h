@@ -86,6 +86,7 @@ struct MockIocModel {
     uint16_t configFailHandle = 0;             /* page reads for this handle: CONFIG_INVALID_PAGE */
     uint16_t lastConfigHandle = 0;
     bool dropConfigOnce = false;               /* lose the next config reply (wait timeout)*/
+    bool murIgnored = false;                   /* MUR never stops the IOC (wedged) */
     /*
      * Hot-plug of several drives (SAS2308 IT, direct attach: one topology
      * list per PHY): the next list is posted when a config page read
@@ -340,7 +341,9 @@ struct MockIocModel {
     void DoorbellWrite(uint32_t v) {
         if (hs == Idle) {
             uint8_t fn = v >> MPI2_DOORBELL_FUNCTION_SHIFT;
-            if (fn == MPI2_FUNCTION_IOC_MESSAGE_UNIT_RESET) {
+            if (fn == MPI2_FUNCTION_IOC_MESSAGE_UNIT_RESET && murIgnored) {
+                murCount++;                            /* wedged: keeps running, keeps its requests */
+            } else if (fn == MPI2_FUNCTION_IOC_MESSAGE_UNIT_RESET) {
                 state = MPI2_IOC_STATE_READY; murCount++;
                 pending.clear(); deferredTm.clear();   /* the message unit forgets its requests */
             } else if (fn == MPI2_FUNCTION_HANDSHAKE &&
