@@ -49,7 +49,8 @@ void MpsHostOs::DumpTail(size_t n) const
 
 /*
  * May nest: a task that sleeps (the reinit) lets the other "threads" run;
- * a queue never runs inside itself and nothing runs while a lock is held.
+ * a queue kicked while it runs gets a second invocation (xnu thread_call,
+ * threadCallQueues) and nothing runs while a lock is held.
  */
 void HostRunPending()
 {
@@ -74,12 +75,19 @@ void HostRunPending()
             }
         }
         for (struct taskqueue *tq : std::vector<struct taskqueue *>(gHost.kicked.begin(), gHost.kicked.end())) {
-            if (gHost.running.count(tq) || !gHost.queues.count(tq))
+            if (!gHost.queues.count(tq))
+                continue;
+            const bool nested = gHost.running.count(tq) != 0;
+            if (nested && !gHost.threadCallQueues)
                 continue;
             gHost.kicked.erase(tq);
-            gHost.running.insert(tq);
+            if (nested)
+                gHost.queueReentries++;
+            else
+                gHost.running.insert(tq);
             mps_compat_taskqueue_run(tq);
-            gHost.running.erase(tq);
+            if (!nested)
+                gHost.running.erase(tq);
             progress = true;
         }
         if (gHost.onOtherThreads)

@@ -86,6 +86,13 @@ struct MockIocModel {
     uint16_t configFailHandle = 0;             /* page reads for this handle: CONFIG_INVALID_PAGE */
     uint16_t lastConfigHandle = 0;
     bool dropConfigOnce = false;               /* lose the next config reply (wait timeout)*/
+    /*
+     * Hot-plug of several drives (SAS2308 IT, direct attach: one topology
+     * list per PHY): the next list is posted when a config page read
+     * arrives, i.e. while the host's event task sleeps in it (page buffer lent).
+     */
+    std::vector<std::vector<uint16_t>> topologyOnConfig;
+    std::vector<uint16_t> portEnableList;      /* non-empty: port enable announces only these */
 
     /* ---- IOC-side view of the queues (from IOCInit) ---- */
     uint64_t reqBase = 0, postBase = 0, freeBase = 0;
@@ -464,6 +471,11 @@ struct MockIocModel {
     /* MPI2_FUNCTION_CONFIG: header, then READ_CURRENT of SAS Device Page 0 (FreeBSD mps_config.c). */
     void AnswerConfig(uint8_t *f, uint16_t smid, uint8_t descType) {
         auto *q = (MPI2_CONFIG_REQUEST *)f;
+        if (!topologyOnConfig.empty() && q->Action == MPI2_CONFIG_ACTION_PAGE_READ_CURRENT) {
+            std::vector<uint16_t> next = topologyOnConfig.front();
+            topologyOnConfig.erase(topologyOnConfig.begin());
+            PostTopologyEvent(next);
+        }
         if (dropConfigOnce) { dropConfigOnce = false; return; }
         CHECK(descType == MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE);
         CHECK(q->Header.PageType == MPI2_CONFIG_PAGETYPE_EXTENDED);
@@ -549,7 +561,7 @@ struct MockIocModel {
             AddressReply(smid, &r, sizeof(r));
         } else if (fn == MPI2_FUNCTION_PORT_ENABLE) {
             portEnables++;
-            PostTopologyEvent(devices);             /* discovery happens before the reply */
+            PostTopologyEvent(portEnableList.empty() ? devices : portEnableList);   /* discovery happens before the reply */
             AddressReply(smid, &r, sizeof(r));
         } else if (fn == MPI2_FUNCTION_EVENT_ACK) {
             auto *a = (MPI2_EVENT_ACK_REQUEST *)f;

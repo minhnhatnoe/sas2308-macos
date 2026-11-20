@@ -41,6 +41,12 @@ struct MpsHostOs {
     std::set<struct mtx *> calloutMtx;      /* mutexes with an armed deadline */
     std::vector<std::pair<struct mtx *, uint64_t>> armed;
     std::set<struct taskqueue *> queues, kicked, running;
+    /*
+     * xnu thread_call semantics: a queue kicked while it runs starts another
+     * invocation ("another thread") at once; compat must serialize the tasks.
+     */
+    bool threadCallQueues = true;
+    int queueReentries = 0;                 /* invocations started while one ran */
 
     /* DMA */
     int dmaAllocs = 0, dmaMultiSeg = 0, maxSegs = 0;

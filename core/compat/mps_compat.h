@@ -426,6 +426,7 @@ struct taskqueue {
 	TAILQ_HEAD(, task)	 tq_queue;
 	void			*tq_lock;	/* mps_os_lock_alloc() */
 	struct task		*tq_running;
+	int			 tq_active;	/* a thread runs the queue */
 	const char		*tq_name;
 	void			*tq_os;		/* platform: thread call */
 	int			 tq_flags;

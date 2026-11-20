@@ -458,6 +458,7 @@ static uint64_t Fast(uint16_t smid)
 static void AsyncTests();
 static void LoggingTests();
 static void ConfigTests();
+static void HotplugTests();
 static void SleepTests();
 
 int main()
@@ -998,6 +999,7 @@ int main()
     AsyncTests();
     LoggingTests();
     ConfigTests();
+    HotplugTests();
     SleepTests();
     printf("PASS (%llu SGLs walked, %zu log lines checked)\n", (unsigned long long)ioc.sglChecked, gHost.log.size());
     return 0;
@@ -1550,6 +1552,101 @@ static void ConfigTests()
         CHECK(g.Stats().reinits == reinits + 1);
         CHECK(g.Present(g.Tid(0x0009), 0x0009) && g.Present(g.Tid(0x000B), 0x000B));
         CHECK(!g.sc->xnu.cfg_busy && g.ChainsFree() == g.ChainsTotal());
+    }
+}
+
+/* ---- hot-plug of several drives at once (hardware, 2026-11-20 02:36) -------- */
+
+/* `n' READ(10)s to each of `handles', held by the IOC (in flight). */
+static std::vector<Io *> HoldIo(Rig &g, const std::vector<uint16_t> &handles, int n)
+{
+    std::vector<Io *> v;
+    g.ioc.holdIo = true;
+    for (uint16_t h : handles)
+        for (int i = 0; i < n; i++) {
+            Io *io = g.Read(h, 0, (uint8_t)(v.size() + 1));
+            CHECK(g.Go(io) == kPosted);
+            v.push_back(io);
+        }
+    return v;
+}
+
+static void ReleaseIo(Rig &g, const std::vector<Io *> &v)
+{
+    g.ioc.holdIo = false;
+    g.ioc.ReleasePending();
+    g.Pump();
+    for (Io *io : v)
+        CHECK(io->done == 1 && io->status == CAM_REQ_CMP);
+}
+
+static void HotplugTests()
+{
+    /*
+     * The SFF-8087 breakout on port 0 (PHYs 0, 2, 3) is replugged while the
+     * drives on port 1 are busy.  The IT firmware posts one topology change
+     * list per PHY; the next one arrives while the event task sleeps in the
+     * previous device's page 0 read.  On xnu the event taskqueue's thread
+     * call then ran a second (third) mpssas_firmware_event_work concurrently:
+     * the single config page buffer was busy, page0 failed with no firmware
+     * reply (iocstatus 0) and the drive was never added.
+     */
+    printf("hotplug: 3 drives on one port, one topology list per PHY, IO in flight to the others\n");
+    {
+        size_t mark = LogMark();
+        const std::vector<uint16_t> port1 = {0x000A, 0x000D, 0x000E, 0x000F};
+        Rig g(port1);
+        MockIocModel &m = g.ioc;
+        for (uint16_t h : port1) CHECK(g.Targ(h) != nullptr);
+        std::vector<Io *> busy = HoldIo(g, port1, 4);
+        const int reentries = gHost.queueReentries;
+        const uint32_t reads = g.Stats().config_reads;
+        for (uint16_t h : {0x0009, 0x000B, 0x000C}) m.devices.push_back(h);
+        m.topologyOnConfig = {{0x000B}, {0x000C}};
+        m.PostTopologyEvent({0x0009});
+        HostRunPending();
+        CHECK(m.topologyOnConfig.empty());
+        CHECK(gHost.queueReentries > reentries);            /* the thread call did re-enter */
+        for (uint16_t h : {0x0009, 0x000B, 0x000C}) {
+            CHECK(g.Targ(h) != nullptr && g.Present(g.Tid(h), h));
+            CHECK(g.Targ(h)->sasaddr == MockIocModel::SasAddrOf(h));
+        }
+        CHECK(g.Stats().config_failures == 0 && g.Stats().config_reads == reads + 6);
+        CHECK(!HasLog(mark, "Error reading SAS device"));
+        CHECK(!g.sc->xnu.cfg_busy);
+        ReleaseIo(g, busy);
+
+        printf("hotplug: the same port unplugged and replugged as one 3-entry list while port 1 changes\n");
+        mark = LogMark();
+        busy = HoldIo(g, port1, 2);
+        m.PostTopologyEvent({0x0009, 0x000B, 0x000C}, MPI2_EVENT_SAS_TOPO_RC_TARG_NOT_RESPONDING);
+        HostRunPending();
+        g.Pump();
+        HostRunPending();
+        for (uint16_t h : {0x0009, 0x000B, 0x000C}) CHECK(g.Targ(h) == nullptr);
+        for (uint16_t h : {0x0009, 0x000B, 0x000C, 0x0010}) m.devices.push_back(h);
+        m.topologyOnConfig = {{0x0010}};
+        m.PostTopologyEvent({0x0009, 0x000B, 0x000C});
+        HostRunPending();
+        for (uint16_t h : {0x0009, 0x000B, 0x000C, 0x0010})
+            CHECK(g.Targ(h) != nullptr && g.Present(g.Tid(h), h));
+        CHECK(g.Stats().config_failures == 0);
+        CHECK(!HasLog(mark, "Error reading SAS device"));
+        ReleaseIo(g, busy);
+        CHECK(g.ChainsFree() == g.ChainsTotal() && !g.sc->xnu.cfg_busy);
+    }
+
+    printf("hotplug: 7 drives arrive together at port enable (one list per PHY)\n");
+    {
+        const std::vector<uint16_t> all = {0x0009, 0x000B, 0x000C, 0x000A, 0x000D, 0x000E, 0x000F};
+        Rig g(all, [](Rig &r) {
+            /* port enable posts the first list; the rest come one per page read */
+            r.ioc.portEnableList = {0x0009};
+            r.ioc.topologyOnConfig = {{0x000B}, {0x000C}, {0x000A}, {0x000D}, {0x000E}, {0x000F}};
+        });
+        CHECK(g.ioc.topologyOnConfig.empty());
+        for (uint16_t h : all) CHECK(g.Targ(h) != nullptr && g.Present(g.Tid(h), h));
+        CHECK(g.Stats().config_failures == 0 && g.Stats().config_reads == 14);
     }
 }
 

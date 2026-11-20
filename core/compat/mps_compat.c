@@ -738,6 +738,19 @@ mps_compat_taskqueue_run(struct taskqueue *tq)
 	int pending;
 
 	mps_os_lock(tq->tq_lock);
+	/*
+	 * FreeBSD runs every mps queue on one thread (taskqueue_start_threads(
+	 * ..., 1, ...)), so its tasks never overlap: mpssas_firmware_event_work
+	 * handles one firmware event at a time even while it sleeps in a config
+	 * page read.  A platform thread call kicked while it runs starts a
+	 * second invocation on another thread (xnu thread_call): that one
+	 * leaves the queue to the running one, whose loop picks up the task.
+	 */
+	if (tq->tq_active) {
+		mps_os_unlock(tq->tq_lock);
+		return;
+	}
+	tq->tq_active = 1;
 	while ((task = TAILQ_FIRST(&tq->tq_queue)) != NULL) {
 		TAILQ_REMOVE(&tq->tq_queue, task, ta_link);
 		pending = task->ta_pending;
@@ -748,6 +761,7 @@ mps_compat_taskqueue_run(struct taskqueue *tq)
 		mps_os_lock(tq->tq_lock);
 		tq->tq_running = NULL;
 	}
+	tq->tq_active = 0;
 	mps_os_unlock(tq->tq_lock);
 }
 
