@@ -33,7 +33,7 @@
 
 
 /*
- * XNU: subset of FreeBSD sys/sys/queue.h (commit in ref/FREEBSD_REF.txt):
+ * XNU: subset of FreeBSD sys/sys/queue.h (commit in core/VENDOR.txt):
  * the SLIST and TAILQ macros used by the mps driver core, without the
  * QUEUE_MACRO_DEBUG variants.  Renamed include guard so that it does not
  * collide with a platform <sys/queue.h>.

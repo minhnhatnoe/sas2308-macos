@@ -1,33 +1,43 @@
 #!/bin/sh
-# Compare the ported core with FreeBSD sys/dev/mps (ref/FREEBSD_REF.txt has the commit).
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Noe
 #
-#   tools/diff-vs-freebsd.sh            diff -u of every ported file, then a summary
+# Compare the ported core with pristine FreeBSD sys/dev/mps.
+#
+#   tools/diff-vs-freebsd.sh            diff -u of every modified upstream file, then a summary
 #   tools/diff-vs-freebsd.sh -s         summary only
 #   tools/diff-vs-freebsd.sh mps_sas.c  one file
 #
-# Mechanical differences are stripped from both sides before diffing: #include
-# lines and __FBSDID. Everything else (including /* XNU: ... */ deviations)
-# shows up. REF overrides the FreeBSD tree (default ref/freebsd-src/sys/dev/mps).
-# Without that tree the pristine files come from the vendor branch
-# (git show vendor/freebsd-mps:core/<file>; VENDOR overrides the branch).
+# Baseline: the vendor branch (git show vendor/freebsd-mps:core/<file>; VENDOR
+# overrides the branch). REF=<freebsd-src>/sys/dev/mps diffs against a FreeBSD
+# tree instead, and warns when that tree is not at the commit core/VENDOR.txt
+# on the vendor branch names.
+#
+# This is a filtered view of `git diff vendor/freebsd-mps -- core/`: only the
+# modified upstream files of the path map in core/VENDOR.txt (not core/mpi/,
+# not our new files), with #include and __FBSDID lines stripped from both
+# sides. Everything else (including /* XNU: ... */ deviations) shows up.
 set -eu
 top=$(cd "$(dirname "$0")/.." && pwd)
-ref=${REF:-$top/ref/freebsd-src/sys/dev/mps}
-files="mpsvar.h mps_sas.h mps_table.h mps.c mps_config.c mps_sas.c mps_sas_lsi.c mps_table.c"
+vendor=${VENDOR:-vendor/freebsd-mps}
 summary_only=0
 if [ "${1:-}" = "-s" ]; then summary_only=1; shift; fi
+git -C "$top" rev-parse -q --verify "$vendor^{commit}" >/dev/null ||
+	{ echo "no branch $vendor (see core/VENDOR.txt)" >&2; exit 1; }
+vcommit=$(git -C "$top" show "$vendor:core/VENDOR.txt" | sed -n 's/^Commit: *\([0-9a-f]\{40\}\).*/\1/p')
+files=$(git -C "$top" show "$vendor:core/VENDOR.txt" |
+	sed -n 's|^sys/dev/mps/\([^/ ]*\) *-> *core/\([^ ]*\).*|\2|p')
 [ $# -gt 0 ] && files="$*"
-vendor=${VENDOR:-vendor/freebsd-mps}
-if [ -d "$ref" ]; then
+if [ -n "${REF:-}" ]; then
+	ref=$REF
+	[ -d "$ref" ] || { echo "no FreeBSD tree at $ref" >&2; exit 1; }
+	rcommit=$(git -C "$ref" rev-parse HEAD 2>/dev/null || echo unknown)
+	[ "$rcommit" = "$vcommit" ] || echo "warning: $ref is at $rcommit, $vendor at $vcommit" >&2
 	upstream() { cat "$ref/$1"; }
-elif [ -z "${REF:-}" ] && git -C "$top" rev-parse -q --verify "$vendor^{commit}" >/dev/null; then
-	upstream() { git -C "$top" show "$vendor:core/$1"; }
-elif [ -n "${REF:-}" ]; then
-	echo "no FreeBSD tree at $ref" >&2
-	exit 1
+	label="FreeBSD tree $ref at $(echo "$rcommit" | cut -c1-12)"
 else
-	echo "no FreeBSD tree at $ref and no $vendor branch (see core/VENDOR.txt)" >&2
-	exit 1
+	upstream() { git -C "$top" show "$vendor:core/$1"; }
+	label="$vendor ($(echo "$vcommit" | cut -c1-12))"
 fi
 
 tmp=$(mktemp -d)
@@ -56,6 +66,6 @@ for f in $files; do
 done
 printf '%-14s %7d %7d %7d %7d %7d %5d\n' total "$tf" "$to" "$tc" "$ta" "$tr" "$tx" >> "$tmp/sum"
 [ $summary_only -eq 0 ] && echo
-echo "== vs FreeBSD $(sed -n 's/.*commit \([0-9a-f]\{12\}\).*/\1/p' "$top/ref/FREEBSD_REF.txt" 2>/dev/null | head -1)" \
+echo "== vs $label" \
      "(common = lines unchanged; added/removed = diff -u +/- lines; xnu = lines mentioning XNU)"
 cat "$tmp/sum"

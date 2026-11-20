@@ -3,37 +3,94 @@ FreeBSD sys/dev/mps, vendor import
 
 Upstream:  https://github.com/freebsd/freebsd-src
 Commit:    8c9ce319fef765890ce518cab85d3a470b669849
-           (2025-06-06, "Update in preparation for 14.3-RELEASE",
-           tag release/14.3.0)
+Date:      2025-06-06
+Release:   release/14.3.0
+Tag:       vendor/freebsd-mps/14.3.0
 License:   BSD-2-Clause (mps driver, LSI/Avago MPI2 headers)
 
-The branch vendor/freebsd-mps (tag vendor/freebsd-mps-8c9ce319) holds the
-upstream files below, unmodified, at our paths. Every change made for xnu
-is a later commit on master, so `git diff vendor/freebsd-mps master -- core/`
-is the whole port delta (tools/diff-vs-freebsd.sh shows it per file).
+This file is the only record of the upstream commit the port follows
+(tools/diff-vs-freebsd.sh and tools/import-freebsd.sh read the lines above
+and the map below).
+
+The branch vendor/freebsd-mps holds the upstream files below, unmodified,
+at our paths; each import is one commit there with an annotated tag
+vendor/freebsd-mps/<release>. Every change made for xnu is a commit on
+master, so `git diff vendor/freebsd-mps master -- core/` is the whole port
+delta. tools/diff-vs-freebsd.sh is a filtered per-file view of it: only the
+8 modified upstream files, with #include and __FBSDID lines left out.
+
+Why our paths and not sys/dev/mps/...: with upstream paths git would have to
+detect our files as renames on every merge, and it does not for the files we
+cut most (checked 2026-11-20: mps.c 78 %, mps_sas.c 62 % similar, but
+mps_config.c and mps_sas_lsi.c not detected at all, which would make each
+upstream change to them a modify/delete conflict).
 
 Path map (upstream -> ours)
 ---------------------------
-sys/dev/mps/mps.c                 -> core/mps.c
-sys/dev/mps/mps_config.c          -> core/mps_config.c
-sys/dev/mps/mps_sas.c             -> core/mps_sas.c
-sys/dev/mps/mps_sas.h             -> core/mps_sas.h
-sys/dev/mps/mps_sas_lsi.c         -> core/mps_sas_lsi.c
-sys/dev/mps/mps_table.c           -> core/mps_table.c
-sys/dev/mps/mps_table.h           -> core/mps_table.h
-sys/dev/mps/mpsvar.h              -> core/mpsvar.h
-sys/dev/mps/mpi/mpi2*.h           -> core/mpi/mpi2*.h  (12 files incl.
-sys/dev/mps/mpi/mpi2_history.txt  -> core/mpi/mpi2_history.txt  history)
+sys/dev/mps/mps.c          -> core/mps.c
+sys/dev/mps/mps_config.c   -> core/mps_config.c
+sys/dev/mps/mps_sas.c      -> core/mps_sas.c
+sys/dev/mps/mps_sas.h      -> core/mps_sas.h
+sys/dev/mps/mps_sas_lsi.c  -> core/mps_sas_lsi.c
+sys/dev/mps/mps_table.c    -> core/mps_table.c
+sys/dev/mps/mps_table.h    -> core/mps_table.h
+sys/dev/mps/mpsvar.h       -> core/mpsvar.h
+sys/dev/mps/mpi/           -> core/mpi/     (every file: 11 mpi2*.h + mpi2_history.txt)
 
 Upstream files not ported
 -------------------------
 sys/dev/mps/mps_pci.c       PCI attach, interrupts, BAR mapping: done by the
-                            kext (kext/SAS2308HBA*.cpp, kext/mps_xnu_os.cpp)
+                            kext (kext/SAS2308HBA*.cpp, kext/mps_xnu_os.cpp);
+                            review its upstream changes at every import
 sys/dev/mps/mps_user.c      /dev/mpsN ioctl and uio interface: not offered
 sys/dev/mps/mps_ioctl.h     its ioctl definitions
 sys/dev/mps/mps_mapping.c   persistent target-id mapping tables: replaced by
 sys/dev/mps/mps_mapping.h   the simple mapping in core/mps_xnu.c
 
-Updating: commit the new pristine files on vendor/freebsd-mps, then merge
-that branch into master; git applies upstream's changes 3-way to our
-modified copies.
+Derived, not vendored
+---------------------
+core/compat/queue.h   FreeBSD sys/sys/queue.h at the commit above, trimmed to
+                      the SLIST and TAILQ macros the core uses, renamed
+                      include guard (BSD-3-Clause, Regents notice kept).
+                      Not on the vendor branch: the trim is mostly deletion.
+core/mps_xnu.c        CDB, sense-key and ASC/ASCQ tables (a 41-entry subset)
+                      follow sys/cam/scsi/scsi_all.c in content, not code
+                      (BSD-2-Clause; its copyright lines are in the file).
+core/compat/cam_compat.h  constants, ccb layout and field names from
+                      sys/cam/cam.h, cam_ccb.h, scsi/scsi_all.h, so the
+                      driver code stays verbatim.
+
+Which upstream to follow
+------------------------
+Import FreeBSD release tags (release/X.Y.0). The merge is file based, so
+branch ancestry does not matter: our pin 8c9ce319 is release/14.3.0 on
+releng/14.3 and not an ancestor of stable/14. Follow the 14.x release line
+while 14 is supported: import each new 14.x release after the host tests, a
+Mac kext build and a short hardware smoke test. Move to 15.x only when 14
+reaches end of life or a needed fix exists only there; record the decision
+here. A fix needed from main is imported on the vendor branch as its own
+commit naming the upstream hash. (2026-11-20: release/14.4.0 and 14.5.0
+exist; 14.5.0 is the next import.)
+
+Updating
+--------
+1. tools/import-freebsd.sh <release tag or commit>: fetches the commit into
+   ref/freebsd-src (with enough history for the log below), commits the new
+   pristine files on vendor/freebsd-mps with this file's header updated,
+   tags it, and lists the upstream commits that touched the unported files;
+   record a decision for each in that commit's message.
+2. On a branch from master: `git merge vendor/freebsd-mps`. Conflict rules:
+   - #include blocks: take ours, then check whether upstream added an
+     include for an API the core now uses (compat must provide it).
+   - code we changed (/* XNU: */): keep the deviation, carry upstream's fix
+     into it.
+   - an upstream change entirely inside a region we removed merges silently
+     as "still removed"; read `git diff <old tag> <new tag>` for those.
+3. `make -C test test`, `tools/diff-vs-freebsd.sh -s`, and on the Mac
+   `make -C kext && make -C kext check`. core/mpi/ is not modified by the
+   port, but a header change can change structures test/mock_ioc.h models.
+
+Tried 2026-11-20 with real upstream commits: stable/14 head (typo and
+style(9) fixes in mps.c, mps_sas.c) merged without conflict; main head
+(hostboot support, probe on completion, sys/cdefs.h removal, style(9))
+gave 6 conflicting files, 12 hunks, 6 of them in #include blocks.

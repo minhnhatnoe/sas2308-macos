@@ -12,7 +12,7 @@ DriverKit SDK / iig). Built with Command Line Tools only (`kext/Makefile`, arm64
   (`mps_compat.{c,h}`: FreeBSD kernel API subset, `cam_compat.{c,h}`: thin CAM, `queue.h`).
   The M1–M4 C++ core (`MpsCore`, `MpsDecode`) was removed in M5a-2; the M1–M4 sections below
   describe the behaviour the port keeps (old → new names in "What is implemented").
-- `core/mpi/` — MPI2 headers from FreeBSD (`ref/FREEBSD_REF.txt` has the commit).
+- `core/mpi/` — MPI2 headers from FreeBSD (`core/VENDOR.txt` has the commit).
 - `kext/SAS2308HBA*.{h,cpp}` — the `IOSCSIParallelInterfaceController` subclass, one file per
   concern since M5b (IntelMausi / itlwm layout): `SAS2308HBA.cpp` life cycle and family callbacks
   (capabilities, interrupts, IO, TMs), `SAS2308HBA_PM.cpp` power management and shutdown,
@@ -1181,33 +1181,14 @@ second of the window closing.
 
 ## Updating from FreeBSD
 
-The port is kept as a vendor branch. `vendor/freebsd-mps` (root commit, tag
-`vendor/freebsd-mps-8c9ce319`) holds the pristine upstream files at our paths; `core/VENDOR.txt`
-has the path map and the upstream files that are not ported. master descends from it, so
-`git diff vendor/freebsd-mps master -- core/` is the whole port delta and an upstream update is
-an ordinary 3-way merge: git carries upstream's changes into our modified copies and stops only
-where upstream changed lines we changed too. (Checked on 2026-11-20 with a fake upstream change
-to `core/mps.c` and `core/mpi/mpi2.h`: merged into the modified `core/mps.c` without conflict.)
-
-1. Get the new upstream commit into the partial clone:
-   `git -C ref/freebsd-src fetch origin <commit> && git -C ref/freebsd-src checkout <commit>`.
-2. Commit the new pristine files on the vendor branch, in a separate worktree:
-   ```
-   git worktree add ../sas2308-vendor vendor/freebsd-mps
-   cd ../sas2308-vendor
-   src=../sas2308-dext/ref/freebsd-src/sys/dev/mps
-   for f in mps.c mps_config.c mps_sas.c mps_sas.h mps_sas_lsi.c mps_table.c mps_table.h mpsvar.h
-   do cp "$src/$f" "core/$f"; done
-   cp "$src"/mpi/* core/mpi/
-   ```
-   Check `ls $src $src/mpi` for upstream files that are new or gone and update the map in
-   `core/VENDOR.txt`, with the new commit and date. Commit as "Import FreeBSD sys/dev/mps at
-   <short> (<release>)" and tag `vendor/freebsd-mps-<short>`. Nothing else goes on this branch.
-3. On a branch from master: `git merge vendor/freebsd-mps`. Resolve conflicts keeping the
-   `/* XNU: ... */` deviations; upstream changes inside code we removed (not ported) show up as
-   conflicts against the removal and stay removed unless the port now needs them.
-4. Update `ref/FREEBSD_REF.txt`, compare `tools/diff-vs-freebsd.sh -s` with its output before
-   the merge (it diffs against `ref/freebsd-src` when present, else the vendor branch), run
-   `make -C test test`, and on the Mac `make -C kext && make -C kext check`. `core/mpi/` is not
-   modified by the port, but a header change can change structures that `test/mock_ioc.h`
-   models.
+`core/` is a vendor import: the branch `vendor/freebsd-mps` holds the pristine upstream files at
+our paths, master descends from it, and `git diff vendor/freebsd-mps master -- core/` is the whole
+port delta. `core/VENDOR.txt` is the only record of the upstream commit and has the path map, the
+files not ported, the files derived from FreeBSD without being vendored, which upstream line to
+follow (FreeBSD 14.x release tags), and the update procedure: `tools/import-freebsd.sh
+release/X.Y.0` commits the new pristine files on the vendor branch and tags them, then a branch
+from master merges `vendor/freebsd-mps` and resolves conflicts by the rules there (#include
+blocks: take ours and check for a newly needed include; `/* XNU: */` code: keep the deviation,
+carry the fix). Tried with real upstream commits on 2026-11-20: stable/14 merged cleanly, main
+gave 12 conflict hunks in 6 files, half of them #include blocks. The review of this setup is
+`docs/reviews/2026-11-vendor.md`.

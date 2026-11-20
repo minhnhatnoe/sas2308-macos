@@ -6,10 +6,10 @@
  * mps_mpi.h - single include point for the MPI2 message headers.
  *
  * The headers in mpi/ are unmodified copies from FreeBSD sys/dev/mps/mpi
- * (BSD-2-Clause, LSI/Avago; see ref/SOURCES.md for the commit).
+ * (BSD-2-Clause, LSI/Avago; core/VENDOR.txt has the upstream commit).
  *
  * mpi2_type.h picks "unsigned long" for U32 unless it recognises the
- * platform, which is 64-bit on DriverKit/arm64. We therefore define the
+ * platform, which is 64-bit on arm64 (and x86_64) Darwin. We therefore define the
  * basic types ourselves and tell mpi2_type.h they already exist
  * (that is what the MPI_TYPE_H guard is for).
  */

@@ -1,3 +1,0 @@
-FreeBSD source (sys/dev/mps, MPI2 headers) used as porting reference:
-https://github.com/freebsd/freebsd-src commit 8c9ce319fef765890ce518cab85d3a470b669849 (2025-06-06)
-Vendored on the branch vendor/freebsd-mps (pristine files at our paths, see core/VENDOR.txt).
