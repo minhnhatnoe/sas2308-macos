@@ -777,15 +777,18 @@ static void	mps_xnu_queue_due(struct mps_softc *sc);
 void
 mps_xnu_periodic(struct mps_softc *sc)
 {
+	struct mpssas_target *targ;
+	uint64_t now_ms = mps_os_uptime_us() / 1000;
 	uint32_t sup;
-	int i;
+	u_int i;
 
-	for (i = 0; i < MPS_XNU_RL_SLOTS; i++) {
-		if (mps_xnu_ratelimit_flush(&sc->xnu.ioerr_rl[i],
-		    mps_os_uptime_us() / 1000, MPS_XNU_RL_WINDOW_MS, &sup))
+	for (i = 0; sc->sassc != NULL && i < sc->sassc->maxtargets; i++) {
+		targ = &sc->sassc->targets[i];
+		if (mps_xnu_ratelimit_flush(&targ->xnu_ioerr_rl, now_ms,
+		    MPS_XNU_RL_WINDOW_MS, &sup))
 			mps_dprint(sc, MPS_ERROR, "target %u (handle 0x%04x): "
 			    "%u similar IO error lines suppressed\n",
-			    sc->xnu.ioerr_tid[i], sc->xnu.ioerr_handle[i], sup);
+			    targ->tid, targ->handle, sup);
 	}
 	mps_xnu_queue_due(sc);
 	mps_xnu_stats_update(sc);
@@ -842,7 +845,7 @@ mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm, union ccb *ccb,
 	uint32_t status = ccb->ccb_h.status & CAM_STATUS_MASK;
 	uint16_t ioc = 0;
 	uint64_t now = mps_os_uptime_us(), lat;
-	uint32_t xfer = 0, sup, slot;
+	uint32_t xfer = 0, sup;
 	uint8_t key = 0, asc = 0, ascq = 0;
 	uint64_t lba = 0;
 	uint32_t blocks = 0;
@@ -960,14 +963,10 @@ mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm, union ccb *ccb,
 	    (sc->mps_debug & cls) == 0)
 		return;
 	sup = 0;
-	if (cls == MPS_ERROR) {
-		slot = targ->handle % MPS_XNU_RL_SLOTS;
-		sc->xnu.ioerr_handle[slot] = targ->handle;
-		sc->xnu.ioerr_tid[slot] = targ->tid;
-		if (!mps_xnu_ratelimit_allow(&sc->xnu.ioerr_rl[slot],
-		    now / 1000, MPS_XNU_RL_BURST, MPS_XNU_RL_WINDOW_MS, &sup))
-			return;
-	}
+	if (cls == MPS_ERROR &&
+	    !mps_xnu_ratelimit_allow(&targ->xnu_ioerr_rl, now / 1000,
+	    MPS_XNU_RL_BURST, MPS_XNU_RL_WINDOW_MS, &sup))
+		return;
 	if (sup != 0)
 		mps_dprint(sc, MPS_ERROR, "target %u (handle 0x%04x): %u "
 		    "similar IO error lines suppressed\n", targ->tid,

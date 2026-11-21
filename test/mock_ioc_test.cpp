@@ -3416,4 +3416,34 @@ static void DeviationTests()
                 CHECK(mps_xnu_log_type(gHost.log[i].cls) != MPS_XNU_LOG_FAULT);
         }
     }
+
+    if (Want("D26")) {
+        /* the failed-IO limiter is per target: handles 0x09 and 0x11 (equal mod 8) do not share it */
+        Rig g({0x0009, 0x0011});
+        MockIocModel &m = g.ioc;
+        m.nowUs += 11000000;
+        size_t mark = LogMark();
+        auto fail = [&](uint16_t h, int n) {
+            m.failDev = h;
+            for (int i = 0; i < n; i++) {
+                Io *io = g.Read(h, 0, 7);
+                CHECK(g.Go(io) == kPosted);
+                g.Pump();
+                CHECK(io->status == CAM_REQ_CMP_ERR);
+            }
+            m.failDev = 0;
+        };
+        fail(0x0009, 8);
+        fail(0x0011, 7);
+        char a[64], b[64];
+        snprintf(a, sizeof(a), "target %u (handle 0x0009) lun 0 SMID", g.Tid(0x0009));
+        snprintf(b, sizeof(b), "target %u (handle 0x0011) lun 0 SMID", g.Tid(0x0011));
+        CHECK(CountLog(mark, a) == 5 && CountLog(mark, b) == 5);
+        m.nowUs += 11000000;
+        g.Callouts();                               /* mps_periodic: one exact summary per target */
+        snprintf(a, sizeof(a), "target %u (handle 0x0009): 3 similar IO error lines suppressed", g.Tid(0x0009));
+        snprintf(b, sizeof(b), "target %u (handle 0x0011): 2 similar IO error lines suppressed", g.Tid(0x0011));
+        CHECK(HasLog(mark, a) && HasLog(mark, b));
+        CHECK(CountLog(mark, "similar IO error lines suppressed") == 2);
+    }
 }

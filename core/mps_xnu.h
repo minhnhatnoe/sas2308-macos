@@ -84,7 +84,7 @@ int		 mps_xnu_cdb_lba(const uint8_t *cdb, uint8_t cdblen,
 
 /* ---- failed-IO rate limiter --------------------------------------------- */
 
-#define MPS_XNU_RL_SLOTS	8	/* per target: handle % 8 */
+/* per target (struct mpssas_target xnu_ioerr_rl, D26) */
 #define MPS_XNU_RL_BURST	5	/* lines per window */
 #define MPS_XNU_RL_WINDOW_MS	10000
 
@@ -128,9 +128,6 @@ struct mps_xnu_tid {
 
 struct mps_xnu {
 	struct mps_xnu_stats	 stats;
-	struct mps_xnu_ratelimit ioerr_rl[MPS_XNU_RL_SLOTS];
-	uint16_t		 ioerr_handle[MPS_XNU_RL_SLOTS];
-	uint16_t		 ioerr_tid[MPS_XNU_RL_SLOTS];
 	int			 reinit_pending;	/* mps_reinit_task queued */
 	int			 disabled;		/* mps_xnu_disable() ran */
 	struct callout		 gone_callout;		/* confirms an all-ones read (D11) */

@@ -78,6 +78,7 @@ struct mpssas_target {
 	unsigned int    target_resets;
 	uint8_t		stop_at_shutdown;
 	uint8_t		supports_SSU;
+	struct mps_xnu_ratelimit xnu_ioerr_rl;	/* XNU: failed-IO lines (D26) */
 };
 
 struct mpssas_softc {
