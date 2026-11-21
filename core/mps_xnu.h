@@ -165,6 +165,7 @@ struct mps_xnu {
 	int			 shutdown;		/* system shutdown: fail IO, never hold it */
 	int			 halting;		/* the halt began: timeouts capped, a reinit stops (F) */
 	int			 stop_fast;		/* short MUR ack wait, no diag reset */
+	int			 resuming;		/* mps_transition_ready on wake: RESET expected */
 	uint64_t		 stop_deadline_us;	/* mps_transition_ready gives up after */
 	uint64_t		 resume_us;		/* all-ones tolerated briefly after resume */
 	/* SAS Device Page 0 retries: in-line backoff, then later re-adds */

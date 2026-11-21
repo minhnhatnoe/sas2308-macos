@@ -173,6 +173,7 @@ struct MockIocModel {
     /* ---- time: virtual, advanced by sleeps and by the test ---- */
     uint64_t nowUs = 1000000;
     uint64_t doorbellReads = 0;         /* reads of the doorbell register (D30) */
+    int resetReadsLeft = 0;             /* a READY IOC reads as RESET this many more times (reset in sleep) */
     uint64_t sleptMs = 0;                      /* total SleepMs() time */
     int sleeps = 0;
     bool abandon = false;                      /* SleepMs() returns false (owner detaching) */
@@ -194,6 +195,10 @@ struct MockIocModel {
         switch (off) {
         case MPI2_DOORBELL_OFFSET:
             doorbellReads++;
+            if (resetReadsLeft > 0 && state == MPI2_IOC_STATE_READY) {   /* still coming out of a reset */
+                resetReadsLeft--;
+                return MPI2_IOC_STATE_RESET;
+            }
             return state | (used ? MPI2_DOORBELL_USED : 0) | dbData;
         case MPI2_HOST_INTERRUPT_STATUS_OFFSET:   /* RDI: descriptors the host has not consumed */
             return his | (!hisRdiOff && pq && iocPost != hostPost ? MPI2_HIS_REPLY_DESCRIPTOR_INTERRUPT : 0);

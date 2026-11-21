@@ -2920,6 +2920,33 @@ static void DeviationTests()
         CHECK(r2->done && r2->status == CAM_REQ_CMP);
     }
 
+    if (Want("G2-wake")) {
+        /*
+         * An IOC still in RESET when the wake reads it (reset during sleep,
+         * coming out of it): expected on resume, so FreeBSD's "IOC in
+         * unexpected reset state" is an init line there, not a fault; the
+         * same state elsewhere (a reinit) keeps FreeBSD's INIT|FAULT.
+         */
+        Rig g({0x0009});
+        MockIocModel &m = g.ioc;
+        size_t mark = LogMark();
+        CHECK(Suspend(g, 1000) == 0 && m.state == MPI2_IOC_STATE_READY);
+        m.resetReadsLeft = 4;
+        CHECK(Resume(g) == 0);
+        HostAdvance(3000);
+        printf("  RESET reads left %d, lines %d\n", m.resetReadsLeft, CountLog(mark, "IOC in unexpected reset state"));
+        CHECK(m.resetReadsLeft == 0 && CountLog(mark, "IOC in unexpected reset state") >= 1);
+        for (size_t i = mark; i < gHost.log.size(); i++)
+            if (gHost.log[i].line.find("unexpected reset state") != std::string::npos)
+                CHECK(gHost.log[i].cls == MPS_INIT);
+        CHECK(g.Stats().resume_ready == 1 && !g.Gone());
+        /* the same state at attach (another caller): FreeBSD's INIT|FAULT */
+        mark = LogMark();
+        Rig g2({0x0009}, [&](Rig &r) { r.ioc.resetReadsLeft = 1; });
+        CHECK(g2.attachRc == 0 && CountLog(mark, "IOC in unexpected reset state") == 1 &&
+              LogClass(mark, "IOC in unexpected reset state") == (MPS_INIT | MPS_FAULT));
+    }
+
     if (Want("D37")) {
         /* cam_compat.h: CAM's own values (cam_ccb.h, cam.h), as its header claims */
         CHECK(XPT_SCSI_IO == 0x901 && XPT_RESET_DEV == 0x912 && XPT_ABORT == 0x10);

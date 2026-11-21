@@ -316,7 +316,9 @@ mps_transition_ready(struct mps_softc *sc)
 			}
 		} else if (state == MPI2_IOC_STATE_RESET) {
 			/* Wait a bit, IOC might be in transition */
-			mps_dprint(sc, MPS_INIT|MPS_FAULT,
+			/* XNU: expected on resume (reset in sleep): not a fault there */
+			mps_dprint(sc, sc->xnu.resuming ? MPS_INIT :
+			    MPS_INIT|MPS_FAULT,
 			    "IOC in unexpected reset state\n");
 		} else {
 			mps_dprint(sc, MPS_INIT|MPS_FAULT,
@@ -908,9 +910,11 @@ int
 	 * MPS_FLAGS_DIAGRESET meanwhile).
 	 */
 	diag_resets = sc->xnu.stats.diag_resets;
-	if (resume)
+	if (resume) {
+		sc->xnu.resuming = 1;
 		error = mps_transition_ready(sc);
-	else
+		sc->xnu.resuming = 0;
+	} else
 		error = mps_diag_reset(sc, CAN_SLEEP);
 	if (error != 0) {
 		/* XXXSL No need to panic here */
