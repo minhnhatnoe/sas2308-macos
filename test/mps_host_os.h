@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -57,6 +58,7 @@ struct MpsHostOs {
     int sleeps = 0, delays = 0;
     std::function<void()> onOtherThreads;   /* test hook, runs inside HostRunPending */
     std::function<void(uint64_t)> onDelay;  /* test hook, runs at the start of every DELAY/pause */
+    std::map<std::string, std::string> tunables;    /* mps_os_getenv: boot-args / personality */
 
     /* callouts, taskqueues */
     std::set<struct mtx *> calloutMtx;      /* mutexes with an armed deadline */

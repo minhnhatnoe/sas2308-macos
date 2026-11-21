@@ -586,6 +586,46 @@ mps_compat_malloc_count(void)
 	return (__atomic_load_n(&mps_compat_mallocs, __ATOMIC_RELAXED));
 }
 
+/* ---- kenv(9) ------------------------------------------------------------------ */
+
+static int
+mps_compat_getenv(device_t dev, const char *path, char *buf, size_t len)
+{
+	if (strncmp(path, "hw.", 3) == 0)
+		path += 3;		/* hw.mps.<name> -> mps.<name> */
+	else if (strncmp(path, "dev.", 4) == 0)
+		path += 4;		/* dev.mps.<unit>.<name> -> mps.<unit>.<name> */
+	if (len == 0)
+		return (0);
+	buf[0] = '\0';
+	if (!mps_os_getenv(dev, path, buf, len))
+		return (0);
+	buf[len - 1] = '\0';
+	return (1);
+}
+
+/* FreeBSD getenv_int: 1 if set and a number (any base strtol accepts) */
+int
+mps_compat_tunable_int(device_t dev, const char *path, void *var)
+{
+	char buf[32], *end;
+	long v;
+
+	if (!mps_compat_getenv(dev, path, buf, sizeof(buf)) || buf[0] == '\0')
+		return (0);
+	v = mps_compat_strtol(buf, &end, 0);
+	if (*end != '\0')
+		return (0);
+	*(int *)var = (int)v;		/* int or u_int softc fields */
+	return (1);
+}
+
+int
+mps_compat_tunable_str(device_t dev, const char *path, char *buf, int len)
+{
+	return (len > 0 && mps_compat_getenv(dev, path, buf, (size_t)len));
+}
+
 /* ---- time ------------------------------------------------------------------- */
 
 uint64_t

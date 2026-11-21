@@ -2953,6 +2953,25 @@ static void DeviationTests()
         taskqueue_free(tq);                             /* the thread has left: no wait */
     }
 
+    if (Want("D33")) {
+        /* FreeBSD's loader tunables, as mps.<name> / mps.<unit>.<name> (boot-args, personality) */
+        const int unit = Rig::units;
+        gHost.tunables["mps.spinup_wait_time"] = "7";
+        gHost.tunables["mps.max_evtframes"] = "0x20";
+        gHost.tunables["mps." + std::to_string(unit) + ".max_chains"] = "300";
+        gHost.tunables["mps." + std::to_string(unit + 1) + ".spinup_wait_time"] = "9";   /* another HBA's */
+        gHost.tunables["mps.use_phy_num"] = "x";                                       /* not a number */
+        Rig g;
+        gHost.tunables.clear();
+        CHECK(g.sc->spinup_wait_time == 7 && g.sc->max_evtframes == 32);
+        CHECK(g.sc->max_chains == 300 && g.sc->num_chains <= 300);
+        CHECK(g.sc->use_phynum == 1);
+        Io *r = g.Read(0x0009, 0, 2);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
     if (Want("D18")) {
         /*
          * An "impossible" SGL state (no room left for a chain element):

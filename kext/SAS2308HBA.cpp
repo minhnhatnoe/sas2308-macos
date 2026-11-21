@@ -140,6 +140,36 @@ SAS2308HBA::HostPciPresent(void *hba)
 }
 
 //-----------------------------------------------------------------------------
+//	HostGetenv - D33: a FreeBSD loader tunable (hw.mps.X / dev.mps.N.X, asked
+//	for as mps.X / mps.N.X): the boot-arg of that name, else the property of
+//	that name (the personality's, Info.plist), as a string.		[PRIVATE]
+//-----------------------------------------------------------------------------
+
+int
+SAS2308HBA::HostGetenv(void *hba, const char *name, char *buf, size_t len)
+{
+    SAS2308HBA *self = (SAS2308HBA *)hba;
+    if (len == 0)
+        return 0;
+    if (PE_parse_boot_arg_str(name, buf, (int)len))
+        return 1;
+    OSObject *o = self->getProperty(name);
+    if (OSNumber *n = OSDynamicCast(OSNumber, o)) {
+        snprintf(buf, len, "%llu", n->unsigned64BitValue());
+        return 1;
+    }
+    if (OSString *s = OSDynamicCast(OSString, o)) {
+        strlcpy(buf, s->getCStringNoCopy(), len);
+        return 1;
+    }
+    if (OSBoolean *b = OSDynamicCast(OSBoolean, o)) {
+        strlcpy(buf, b->isTrue() ? "1" : "0", len);
+        return 1;
+    }
+    return 0;
+}
+
+//-----------------------------------------------------------------------------
 //	HostControllerDead - mps_xnu_disable(): the controller is gone (surprise
 //	removal) or disabled (reinit failed); the core fails everything it held.
 //	Cut bus mastering so a wedged IOC cannot DMA any more.			[PRIVATE]
@@ -345,6 +375,7 @@ SAS2308HBA::InitializeController(void)
     fHost.pci_restore = &SAS2308HBA::HostPciRestore;
     fHost.controller_dead = &SAS2308HBA::HostControllerDead;
     fHost.pci_present = &SAS2308HBA::HostPciPresent;
+    fHost.getenv = &SAS2308HBA::HostGetenv;
     fHost.io_done_kick = &SAS2308HBA::HostDoneKick;
     fHost.async = &SAS2308HBA::HostAsync;
     ApplyLogSettings();

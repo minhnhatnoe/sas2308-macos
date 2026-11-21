@@ -57,6 +57,8 @@ struct mps_kext_host {
 	int	(*pci_restore)(void *hba);
 	void	(*controller_dead)(void *hba);
 	int	(*pci_present)(void *hba);	/* vendor id reads back (D11) */
+	/* a tunable (mps_os_getenv, D33): boot-arg, else personality property */
+	int	(*getenv)(void *hba, const char *name, char *buf, size_t len);
 	/* completions were queued by a callout or the reinit task (mps_mtx held) */
 	void	(*io_done_kick)(void *hba);
 	/*

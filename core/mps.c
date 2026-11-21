@@ -1859,12 +1859,10 @@ mps_init_queues(struct mps_softc *sc)
 void
 mps_get_tunables(struct mps_softc *sc)
 {
+	char tmpstr[80], mps_debug[80];
 
-	/*
-	 * XNU: defaults for this port.  No TUNABLE_*_FETCH: the kext applies
-	 * its Info.plist properties and boot-args after this.
-	 */
-	sc->mps_debug = mps_xnu_level_mask(MPS_LEVEL_INFO);
+	/* XXX default to some debugging for now */
+	sc->mps_debug = mps_xnu_level_mask(MPS_LEVEL_INFO);	/* XNU: M4 */
 	sc->disable_msix = 0;
 	sc->disable_msi = 0;
 	sc->max_msix = MPS_MSIX_MAX;
@@ -1878,6 +1876,86 @@ mps_get_tunables(struct mps_softc *sc)
 	sc->max_replyframes = MPS_REPLY_FRAMES;
 	sc->max_evtframes = MPS_EVT_REPLY_FRAMES;
 	sc->msi_msgs = 1;	/* XNU: one MSI vector (mps_pci.c sets it) */
+
+	/*
+	 * Grab the global variables.
+	 */
+	bzero(mps_debug, 80);
+	if (TUNABLE_STR_FETCH("hw.mps.debug_level", mps_debug, 80) != 0)
+		mps_parse_debug(sc, mps_debug);
+	TUNABLE_INT_FETCH("hw.mps.disable_msix", &sc->disable_msix);
+	TUNABLE_INT_FETCH("hw.mps.disable_msi", &sc->disable_msi);
+	TUNABLE_INT_FETCH("hw.mps.max_msix", &sc->max_msix);
+	TUNABLE_INT_FETCH("hw.mps.max_chains", &sc->max_chains);
+	TUNABLE_INT_FETCH("hw.mps.max_io_pages", &sc->max_io_pages);
+	TUNABLE_INT_FETCH("hw.mps.enable_ssu", &sc->enable_ssu);
+	TUNABLE_INT_FETCH("hw.mps.spinup_wait_time", &sc->spinup_wait_time);
+	TUNABLE_INT_FETCH("hw.mps.use_phy_num", &sc->use_phynum);
+	TUNABLE_INT_FETCH("hw.mps.max_reqframes", &sc->max_reqframes);
+	TUNABLE_INT_FETCH("hw.mps.max_prireqframes", &sc->max_prireqframes);
+	TUNABLE_INT_FETCH("hw.mps.max_replyframes", &sc->max_replyframes);
+	TUNABLE_INT_FETCH("hw.mps.max_evtframes", &sc->max_evtframes);
+
+	/* Grab the unit-instance variables */
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.debug_level",
+	    device_get_unit(sc->mps_dev));
+	bzero(mps_debug, 80);
+	if (TUNABLE_STR_FETCH(tmpstr, mps_debug, 80) != 0)
+		mps_parse_debug(sc, mps_debug);
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.disable_msix",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->disable_msix);
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.disable_msi",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->disable_msi);
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_msix",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->max_msix);
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_chains",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->max_chains);
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_io_pages",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->max_io_pages);
+
+	bzero(sc->exclude_ids, sizeof(sc->exclude_ids));
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.exclude_ids",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_STR_FETCH(tmpstr, sc->exclude_ids, sizeof(sc->exclude_ids));
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.enable_ssu",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->enable_ssu);
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.spinup_wait_time",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->spinup_wait_time);
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.use_phy_num",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->use_phynum);
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_reqframes",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->max_reqframes);
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_prireqframes",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->max_prireqframes);
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_replyframes",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->max_replyframes);
+
+	snprintf(tmpstr, sizeof(tmpstr), "dev.mps.%d.max_evtframes",
+	    device_get_unit(sc->mps_dev));
+	TUNABLE_INT_FETCH(tmpstr, &sc->max_evtframes);
+
 }
 
 static struct mps_debug_string {

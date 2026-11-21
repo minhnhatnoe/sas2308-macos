@@ -388,6 +388,15 @@ void mps_os_controller_dead(device_t)
     gHost.dead++;
 }
 
+int mps_os_getenv(device_t, const char *name, char *buf, size_t len)
+{
+    auto it = gHost.tunables.find(name);
+    if (it == gHost.tunables.end())
+        return 0;
+    snprintf(buf, len, "%s", it->second.c_str());
+    return 1;
+}
+
 int mps_os_pci_present(device_t)
 {
     return gHost.ioc == nullptr || !gHost.ioc->dead;    /* config space: only an unplug */

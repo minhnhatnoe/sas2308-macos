@@ -572,6 +572,12 @@ void mps_os_controller_dead(device_t dev)
         h->controller_dead(h->hba);
 }
 
+int mps_os_getenv(device_t dev, const char *name, char *buf, size_t len)
+{
+    struct mps_kext_host *h = HostOf(dev);
+    return (h && h->getenv) ? h->getenv(h->hba, name, buf, len) : 0;
+}
+
 int mps_os_pci_present(device_t dev)
 {
     struct mps_kext_host *h = HostOf(dev);

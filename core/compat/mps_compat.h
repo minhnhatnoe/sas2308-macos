@@ -359,6 +359,25 @@ extern struct thread mps_compat_thread0;
 #define curthread	(&mps_compat_thread0)
 
 
+/* ---- kenv(9): loader tunables ------------------------------------------- */
+
+/*
+ * XNU: a loader tunable hw.mps.<name> / dev.mps.<unit>.<name> is read as
+ * mps.<name> / mps.<unit>.<name>: a boot-arg of that name first, else the
+ * property of that name in the driver's personality (mps_os_getenv).  The
+ * only caller, mps_get_tunables(), has the softc in `sc': the macros take
+ * the device from it, so FreeBSD's call sites stay verbatim.
+ */
+int	mps_compat_tunable_int(device_t dev, const char *path, void *var);
+int	mps_compat_tunable_str(device_t dev, const char *path, char *buf,
+	    int len);
+#define TUNABLE_INT_FETCH(path, var)					\
+	mps_compat_tunable_int((sc)->mps_dev, (path), (var))
+#define TUNABLE_STR_FETCH(path, var, size)				\
+	mps_compat_tunable_str((sc)->mps_dev, (path), (var), (size))
+/* platform: the value of tunable `name' as a string; 1 if it is set */
+int	mps_os_getenv(device_t dev, const char *name, char *buf, size_t len);
+
 /* ---- mutex(9), sleep(9), DELAY(9) ---------------------------------------- */
 
 struct callout;
