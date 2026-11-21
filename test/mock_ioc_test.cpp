@@ -1882,21 +1882,21 @@ static void TemperatureTests()
     }
 
     printf("sizing: FreeBSD defaults (%d + %d frames) bounded by IOCFacts; OS commands = normal frames - %d\n",
-           MPS_REQ_FRAMES, MPS_PRI_REQ_FRAMES, 8);   /* the kext keeps 8 (MPSK_INTERNAL_CMDS, D21) */
+           MPS_REQ_FRAMES, MPS_PRI_REQ_FRAMES, 2);   /* SMID 0 + the kext's 1 (MPSK_INTERNAL_CMDS, D21) */
     {
         struct Case { uint16_t credit, hpc, depth; int replyTune; int prireq, reqcr, io; const char *what; } cases[] = {
-            {100, 8, 128, 0, 8, 100, 92, "the model's default"},
-            {10240, 8, 65520, 0, 8, 2048, 2040, "credit above 2048: min() = MPS_REQ_FRAMES"},
-            {2049, 8, 65520, 0, 8, 2048, 2040, "credit 2049"},
-            {2047, 8, 65520, 0, 8, 2047, 2039, "credit 2047: min() = RequestCredit"},
-            {1500, 8, 65520, 0, 8, 1500, 1492, "credit below 2048"},
-            {10240, 200, 65520, 0, 128, 2048, 2040, "HighPriorityCredit above 128: replies cover 2176 frames"},
-            {10240, 8, 65520, 64, 8, 2048, 2040, "max_replyframes tuned to 64: replies still cover every frame"},
-            {10240, 8, 1600, 0, 8, 1591, 1583, "post queue 1600: 1600 - 8 - 1 frames"},
-            {10240, 128, 2096, 0, 128, 1967, 1959, "post queue 2096, 128 TMs: 2096 - 128 - 1"},
-            {1024, 8, 208, 0, 8, 199, 191, "short post queue: 208 - 8 - 1"},
-            {200, 8, 1024, 0, 8, 200, 192, "credit 200"},
-            {12, 8, 128, 0, 8, 12, 4, "tiny credit"},
+            {100, 8, 128, 0, 8, 100, 98, "the model's default"},
+            {10240, 8, 65520, 0, 8, 2048, 2046, "credit above 2048: min() = MPS_REQ_FRAMES"},
+            {2049, 8, 65520, 0, 8, 2048, 2046, "credit 2049"},
+            {2047, 8, 65520, 0, 8, 2047, 2045, "credit 2047: min() = RequestCredit"},
+            {1500, 8, 65520, 0, 8, 1500, 1498, "credit below 2048"},
+            {10240, 200, 65520, 0, 128, 2048, 2046, "HighPriorityCredit above 128: replies cover 2176 frames"},
+            {10240, 8, 65520, 64, 8, 2048, 2046, "max_replyframes tuned to 64: replies still cover every frame"},
+            {10240, 8, 1600, 0, 8, 1591, 1589, "post queue 1600: 1600 - 8 - 1 frames"},
+            {10240, 128, 2096, 0, 128, 1967, 1965, "post queue 2096, 128 TMs: 2096 - 128 - 1"},
+            {1024, 8, 208, 0, 8, 199, 197, "short post queue: 208 - 8 - 1"},
+            {200, 8, 1024, 0, 8, 200, 198, "credit 200"},
+            {12, 8, 128, 0, 8, 12, 10, "tiny credit"},
         };
         for (const Case &c : cases) {
             printf("  credit %u, high-priority %u, post queue %u: %s\n", c.credit, c.hpc, c.depth, c.what);
@@ -1908,7 +1908,7 @@ static void TemperatureTests()
             CHECK(g.attachRc == 0);
             CHECK(g.sc->num_prireqs == c.prireq);
             CHECK(g.sc->num_reqs == c.reqcr + c.prireq);
-            CHECK(std::max(1, g.sc->num_reqs - g.sc->num_prireqs - 8) == c.io);   /* the kext's share (D21) */
+            CHECK(std::max(1, g.sc->num_reqs - g.sc->num_prireqs - 1 - 1) == c.io);   /* the kext's share (D21) */
             CHECK(g.sc->num_reqs - g.sc->num_prireqs - 1 >= c.io);       /* normal SMIDs */
             const int replyFrames = c.replyTune ? c.replyTune : MPS_REPLY_FRAMES;
             CHECK(g.sc->num_replies ==

@@ -148,7 +148,9 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         CHECK(destroys[f->target] == f->destroysAtSubmit);   /* no completion after DestroyTargetForID */
         f->outstanding = false; f->armed = false;
         f->completions++; f->done = done; f->scsiStatus = scsiStatus;
+        if (onComplete) onComplete(f);
     }
+    std::function<void(FakeTask *)> onComplete;    /* the next IO from the completion (a client that refills) */
     bool CreateTarget(uint32_t id) override {
         CHECK(!nubs.count(id));
         nubs.insert(id); creates[id]++;
@@ -209,10 +211,10 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         gHost.sc = (struct mps_softc *)mps_kext_softc(k);
         CHECK(glue.Attached());
         CHECK(glue.fCoreAttached && glue.fMaxSegs == mps_kext_max_segs(k));
-        /* D21/D58: 8 frames fewer than the SIM's openings (FreeBSD's reqs = num_reqs - num_prireqs - 1) */
+        /* D21/D58: one frame fewer than the SIM's openings (FreeBSD's reqs = num_reqs - num_prireqs - 1) */
         CHECK(glue.fMaxTasks == mps_kext_max_tasks(k) &&
-              glue.fMaxTasks == (uint32_t)gHost.sc->sassc->sim->max_tagged_dev_openings - 8 &&
-              glue.fMaxTasks == (uint32_t)(gHost.sc->num_reqs - gHost.sc->num_prireqs - 1 - 8));
+              glue.fMaxTasks == (uint32_t)gHost.sc->sassc->sim->max_tagged_dev_openings - 1 &&
+              glue.fMaxTasks == (uint32_t)(gHost.sc->num_reqs - gHost.sc->num_prireqs - 1 - 1));
         glue.Start();
         CHECK(glue.Enter());
         mps_kext_start(k);
@@ -333,11 +335,11 @@ int main()
         m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         m.requestCredit = 10240; m.replyPostDepth = 65520;
         Family f; f.Attach(&m);
-        CHECK(f.glue.fMaxTasks == MPS_REQ_FRAMES - 1 - 8 && f.glue.fMaxTasks == 2039);   /* SMID 0 + 8 (D58) */
+        CHECK(f.glue.fMaxTasks == MPS_REQ_FRAMES - 1 - 1 && f.glue.fMaxTasks == 2046);   /* SMID 0 + 1 (D58, D21) */
         struct mps_kext_limits l;
         CHECK(mps_kext_limits(f.k, &l) == 0);
         CHECK(l.request_credit == 10240 && l.high_priority_credit == MockIocModel::kHighPriorityCredit &&
-              l.max_reply_post_depth == 65520 && l.req_frames == MPS_REQ_FRAMES && l.os_commands == 2039 &&
+              l.max_reply_post_depth == 65520 && l.req_frames == MPS_REQ_FRAMES && l.os_commands == 2046 &&
               l.pri_req_frames == MockIocModel::kHighPriorityCredit && l.reply_frames >= l.req_frames + l.pri_req_frames &&
               l.chain_frames == MPS_CHAIN_FRAMES && l.req_frame_bytes == 128 && l.max_segs == kMaxIoPages + 1);
         printf("  limits: %u request + %u high-priority frames, %u replies (post queue %u), %u chains, %u OS tasks; "
@@ -1292,6 +1294,64 @@ int main()
         CHECK(o.empty());
         CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_SEND_ORDERED, 1) == 0);
         f.Detach();                                 /* the callout is drained before the state goes (ASan) */
+    }
+
+    if (Want("D21")) {
+        /*
+         * The family keeps every OS task busy (each completion resubmitted
+         * at once, or the IOC keeps them all) while a disk is hot-added
+         * (SAS Device Page 0 and SATA IDENTIFY need a normal frame, one at
+         * a time on the event queue) and another is removed (target reset
+         * and REMOVE_DEVICE use a high-priority frame). With FreeBSD's
+         * sizing (CAM gets every normal frame) the add is given up after
+         * every retry; one frame kept from the OS is enough (8 were kept
+         * before, D58). The removal works either way.
+         */
+        auto run = [&](int reserve, bool stuck) {   /* reserve < 0: the kext's own sizing */
+            MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
+            m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+            Family f; f.Attach(&m);
+            struct mps_softc *sc = gHost.sc;
+            if (reserve >= 0)
+                f.glue.fMaxTasks = (uint32_t)(sc->num_reqs - sc->num_prireqs - 1 - reserve);
+            const uint32_t t9 = f.Tid(0x0009), tA = f.Tid(0x000A);
+            bool refill = true;
+            f.onComplete = [&](FakeTask *t) {      /* the same task again (the family's pool) */
+                if (!refill || t->target != t9) return;
+                t->completions = 0;
+                CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+            };
+            m.holdIo = true;
+            for (uint32_t i = 0; i < f.glue.fMaxTasks; i++)
+                CHECK(f.Submit(f.NewRead(t9, 600000)) == SAS2308Glue::kInProcess);
+            m.devices = {0x0009, 0x000B};
+            m.PostTopologyEvent({0x000B});
+            m.PostTopologyEvent({0x000A}, MPI2_EVENT_SAS_TOPO_RC_TARG_NOT_RESPONDING);
+            for (int ms = 0; ms < 45000; ms += 10) {    /* longer than the page retries and 8 re-adds */
+                HostAdvance(10);
+                if (!stuck) m.ReleasePending();     /* every IO answered within 10 ms, then refilled */
+                HostRunPending();
+            }
+            refill = false;
+            m.holdIo = false;
+            m.ReleasePending();
+            f.Run(30000);
+            uint32_t tB = ~0u;
+            for (u_int i = 0; i < sc->sassc->maxtargets; i++)
+                if (sc->sassc->targets[i].handle == 0x000B) tB = i;
+            const bool added = tB != ~0u && f.nubs.count(tB), removed = !f.nubs.count(tA) && m.removeDevices == 1;
+            printf("  %d OS tasks of %d normal frames, %s: add %s (page retries %u, re-adds %u, given up %u), "
+                   "removal %s\n", (int)f.glue.fMaxTasks, sc->num_reqs - sc->num_prireqs - 1,
+                   stuck ? "IOC keeps all" : "refilled at completion", added ? "ok" : "LOST",
+                   sc->xnu.stats.config_retries, sc->xnu.stats.readd_scheduled, sc->xnu.stats.readd_given_up,
+                   removed ? "ok" : "LOST");
+            CHECK(removed);
+            f.Detach();
+            return added;
+        };
+        CHECK(run(-1, false));                      /* the kext's sizing: the add works */
+        CHECK(run(-1, true));
+        CHECK(!run(0, true));                       /* FreeBSD's: lost (the evidence for the one frame) */
     }
 
     if (Want("debug")) {

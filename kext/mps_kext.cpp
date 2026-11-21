@@ -53,7 +53,7 @@ static inline void memset_zero(void *p, size_t n) { memset(p, 0, n); }
  * ==================================================================== */
 
 #define MPSK_SEG_BYTES		0xFFFFFFull			/* MPI2 simple SGE length */
-#define MPSK_INTERNAL_CMDS	8	/* normal frames kept from the OS (mps_kext_max_tasks) */
+#define MPSK_INTERNAL_CMDS	1	/* normal frames kept from the OS (mps_kext_max_tasks, D21) */
 
 /*
  * CAM da's periodic ORDERED tag (scsi_da.c: da_send_ordered,
@@ -599,13 +599,14 @@ uint32_t mps_kext_max_segs(struct mps_kext *k)
 /*
  * XNU: the family's ReportMaximumTaskCount: FreeBSD's CAM openings (mps_sas.c:
  * reqs = num_reqs - num_prireqs - 1, every normal frame; SMID 0 is never
- * used) less MPSK_INTERNAL_CMDS. In FreeBSD config and IDENTIFY requests
- * compete with IO for a command: under a full IO load a hot-add's page 0 read
- * finds none (EBUSY), while an IO that misses a frame is only requeued. The 8
- * cover a config page read or SATA IDENTIFY (one at a time, on the event
- * queue), the port enable (1) and REMOVE_DEVICE (one per pending removal).
- * 8 of 2047 frames: no throughput change (D21). Until D58 the expression
- * lacked FreeBSD's "- 1", which kept 7.
+ * used) less MPSK_INTERNAL_CMDS (1). Config page and SATA IDENTIFY requests
+ * compete with IO for a normal frame, one at a time on the event taskqueue;
+ * an IO that misses a frame is only requeued, but a hot-add whose page 0 read
+ * keeps finding none is given up. Host test D21 (kext_glue_test): with every
+ * normal frame given to the OS and the family refilling each completion, or
+ * the IOC keeping them all, the add is lost after its 3 in-line tries and 8
+ * re-adds; with one frame kept it works, as with the 8 kept before (D58);
+ * removals use high-priority frames and work either way.
  */
 uint32_t mps_kext_max_tasks(struct mps_kext *k)
 {
