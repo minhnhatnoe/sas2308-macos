@@ -3,6 +3,7 @@
 #                   FreeBSD-shaped core (core/mps*.c, core/compat) and the IOC model
 #   mps_port_test   attach/discovery/thin CAM/reinit smoke test of the same core
 #   kext_targets_test  the kext's target table (kext/SAS2308HBA_Targets.h, no IOKit)
+#   plist_test.sh   the personality matches the SAS2308 device ids (D52)
 #   freestanding    compile the ported C core like the kext does (-nostdinc,
 #                   only stdint/stddef/stdarg/string/libkern; test/kernhdr stands in
 #                   for Kernel.framework's string.h and libkern.h)
@@ -55,6 +56,7 @@ freestanding: $(PORT_SRCS) $(PORT_HDRS)
 	done
 
 test: mock_ioc_test mps_port_test kext_targets_test kext_glue_test freestanding
+	sh ./plist_test.sh
 	./mock_ioc_test
 	./mps_port_test
 	./kext_targets_test

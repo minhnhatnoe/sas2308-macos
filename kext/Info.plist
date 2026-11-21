@@ -34,9 +34,12 @@
 			<string>SAS2308HBA</string>
 			<key>IOProviderClass</key>
 			<string>IOPCIDevice</string>
-			<!-- device 0x0087, vendor 0x1000: SAS2308_2 (SAS 9207-8i) -->
+			<!-- vendor 0x1000, the SAS2308 ids of FreeBSD's mps_pci.c (D52): 0x0087 SAS2308_2
+			     (SAS 9207-8i/-8e, the tested card), 0x0086 SAS2308_1, 0x006E SAS2308_3; same chip
+			     and firmware interface. The other MPI2 chips (SAS2004/2008/2108/2116/2208) are
+			     left out until tested -->
 			<key>IOPCIMatch</key>
-			<string>0x00871000</string>
+			<string>0x00871000 0x00861000 0x006e1000</string>
 			<!-- required for a device behind a Thunderbolt PCIe tunnel -->
 			<key>IOPCITunnelCompatible</key>
 			<true/>
