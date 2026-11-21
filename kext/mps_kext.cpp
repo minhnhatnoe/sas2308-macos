@@ -717,6 +717,14 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
     return rc;
 }
 
+bool mps_kext_done_waiting(struct mps_kext *k)
+{
+    mps_os_lock(k->done_lock);
+    const bool waiting = k->done_head != nullptr;
+    mps_os_unlock(k->done_lock);
+    return waiting;
+}
+
 void *mps_kext_next_done(struct mps_kext *k, struct mps_kext_io_result *res)
 {
     mps_os_lock(k->done_lock);
@@ -805,7 +813,15 @@ int mps_kext_timeout(struct mps_kext *k, void *td, void *os_task, uint32_t timeo
  * synchronously holds the gate the interrupt needs. Bounded by the recovery
  * (TM timeouts, then a reinit) and by mps_kext_stop_waiters().
  */
-static int mps_kext_tm_wait(struct mps_kext *k, const volatile int *done, struct mps_kext_task *t, uint64_t seq)
+/*
+ * As FreeBSD's mps_wait_command: a waiter that can rely on the interrupt
+ * sleeps (CAN_SLEEP); one that cannot polls the reply queue (NO_SLEEP).
+ * Here that is a caller holding the work-loop gate, where the interrupt's
+ * action cannot run (D43). The 10 ms timeout re-checks the state: an ABORT's
+ * completion has no tm_chan wakeup.
+ */
+static int mps_kext_tm_wait(struct mps_kext *k, const volatile int *done, struct mps_kext_task *t, uint64_t seq,
+                            int in_gate)
 {
     struct mps_softc *sc = &k->sc;
 
@@ -815,13 +831,14 @@ static int mps_kext_tm_wait(struct mps_kext *k, const volatile int *done, struct
         if (k->stopping)
             return 0;
         (void)msleep(&k->tm_chan, &sc->mps_mtx, 0, "mpstm", 10);
-        if ((sc->mps_flags & (MPS_FLAGS_DIAGRESET | MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) == 0)
+        if (in_gate &&
+            (sc->mps_flags & (MPS_FLAGS_DIAGRESET | MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) == 0)
             mps_intr_locked(sc);
     }
 }
 
 int mps_kext_tm(struct mps_kext *k, uint8_t type, uint32_t tid, uint64_t lun, void *abort_td,
-                void *abort_task, uint64_t abort_tag, char *why, size_t whylen)
+                void *abort_task, uint64_t abort_tag, char *why, size_t whylen, int in_gate)
 {
     struct mps_softc *sc = &k->sc;
     struct mps_kext_tmreq *w = nullptr;
@@ -867,7 +884,7 @@ int mps_kext_tm(struct mps_kext *k, uint8_t type, uint32_t tid, uint64_t lun, vo
         } else {
             const uint64_t seq = t->ccb.ccb_h.xnu_seq;
             (void)mps_xnu_ccb_timeout(sc, &t->ccb);
-            if (mps_kext_tm_wait(k, nullptr, t, seq)) {
+            if (mps_kext_tm_wait(k, nullptr, t, seq, in_gate)) {
                 snprintf(why, whylen, "returned by the target's recovery");
                 result = MPSK_TM_COMPLETE;
             } else {
@@ -885,7 +902,7 @@ int mps_kext_tm(struct mps_kext *k, uint8_t type, uint32_t tid, uint64_t lun, vo
         w->ccb.ccb_h.cbfcnp = mps_kext_tm_done;
         w->ccb.ccb_h.ppriv_ptr0 = w;
         xpt_action(&w->ccb);
-        if (mps_kext_tm_wait(k, &w->done, nullptr, 0)) {
+        if (mps_kext_tm_wait(k, &w->done, nullptr, 0, in_gate)) {
             const uint32_t st = w->ccb.ccb_h.status & CAM_STATUS_MASK;
             if (st == CAM_REQ_CMP)
                 result = MPSK_TM_COMPLETE;
@@ -1110,14 +1127,12 @@ int mps_kext_target_drain(struct mps_kext *k, uint32_t tid, uint32_t reinit_ms)
                            reinit_ms);
                 mps_xnu_request_reinit(sc, "removed target's IO not returned");
             }
-            (void)msleep(&k->drain_chan, &sc->mps_mtx, 0, "mpsdrain", 10);
             /*
-             * Pump the reply queue (FreeBSD's NO_SLEEP waits poll it too);
-             * completions still go to the done queue and are delivered
-             * from the thread call (D43).
+             * The replies come through the interrupt: the drain runs on the
+             * hotplug thread or in willTerminate, never in the work-loop
+             * gate, so it does not pump the reply queue (D43).
              */
-            if ((sc->mps_flags & (MPS_FLAGS_DIAGRESET | MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) == 0)
-                mps_intr_locked(sc);
+            (void)msleep(&k->drain_chan, &sc->mps_mtx, 0, "mpsdrain", 10);
         }
         left = (int)sc->sassc->targets[tid].outstanding;
     }

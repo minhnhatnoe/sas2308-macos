@@ -492,6 +492,7 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Reinit max ms", st.reinit_max_ms);
     SetNumber(d, "Controller dead", ks.deadEvents);
     SetNumber(d, "Lost completion kicks", ks.lostKicks);
+    SetNumber(d, "TM waits in gate", ks.tmInGate);     /* D43: does the family call TMs in our gate? */
     SetNumber(d, "Tasks waiting for a mapping", ks.mapWaits);  /* IOVA shortage: mapped again later (D47) */
     SetNumber(d, "Transient all-ones reads", st.transient_allones);
     {

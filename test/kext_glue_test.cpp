@@ -536,7 +536,7 @@ int main()
         /* a target reset (recovery, or the OS): that target's LUNs */
         char why[128];
         CHECK(mps_kext_tm(f.k, MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET, t9, 0, nullptr, nullptr, 0, why,
-                          sizeof(why)) == MPSK_TM_COMPLETE);
+                          sizeof(why), 0) == MPSK_TM_COMPLETE);
         HostRunPending();
         CHECK(sync(t9) == 0x00 && sync(t9, 2) == 0x00 && m.uaSent == 5);
         CHECK(sync(ta) == 0x00 && m.uaSent == 5);
@@ -924,7 +924,7 @@ int main()
             }
         };
         CHECK(mps_kext_tm(f.k, MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK, t9, 0, b->td.data(), b, b->tag, why,
-                          sizeof(why)) == MPSK_TM_COMPLETE);
+                          sizeof(why), 0) == MPSK_TM_COMPLETE);
         HostRunPending();
         CHECK(maxDeferred == 1);                    /* one TM at a time on the target */
         CHECK(a->completions == 1 && b->completions == 1);
@@ -937,13 +937,13 @@ int main()
         maxDeferred = 0;
         const size_t tms1 = m.tms.size();
         CHECK(mps_kext_tm(f.k, MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET, t9, 0, nullptr, nullptr, 0, why,
-                          sizeof(why)) == MPSK_TM_COMPLETE);
+                          sizeof(why), 0) == MPSK_TM_COMPLETE);
         CHECK(maxDeferred == 1 && m.tms.size() == tms1 + 1);
         CHECK(m.tms.back().type == MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET);
         CHECK(m.tms.back().msgFlags == MPI2_SCSITASKMGMT_MSGFLAGS_LINK_RESET);
         /* a LUN reset is FreeBSD's XPT_RESET_DEV too: a target reset */
         CHECK(mps_kext_tm(f.k, MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET, ta, 0, nullptr, nullptr, 0, why,
-                          sizeof(why)) == MPSK_TM_COMPLETE);
+                          sizeof(why), 0) == MPSK_TM_COMPLETE);
         CHECK(m.tms.back().type == MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET && m.tms.back().dev == 0x000A);
         gHost.onOtherThreads = nullptr;
         HostRunPending();
@@ -952,7 +952,7 @@ int main()
         const size_t tms2 = m.tms.size();
         for (uint8_t type : {MPI2_SCSITASKMGMT_TASKTYPE_ABRT_TASK_SET, MPI2_SCSITASKMGMT_TASKTYPE_CLEAR_TASK_SET,
                              MPI2_SCSITASKMGMT_TASKTYPE_CLR_ACA})
-            CHECK(mps_kext_tm(f.k, type, ta, 0, nullptr, nullptr, 0, why, sizeof(why)) == MPSK_TM_REJECTED);
+            CHECK(mps_kext_tm(f.k, type, ta, 0, nullptr, nullptr, 0, why, sizeof(why), 0) == MPSK_TM_REJECTED);
         CHECK(m.tms.size() == tms2);
         /* an abort of a held task completes it without the IOC */
         m.holdDev = 0; m.tmDeferMask = 0;
@@ -960,7 +960,7 @@ int main()
         FakeTask *h = f.NewRead(ta);
         CHECK(f.Submit(h) == SAS2308Glue::kInProcess);
         CHECK(mps_kext_tm(f.k, MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK, ta, 0, h->td.data(), h, h->tag, why,
-                          sizeof(why)) == MPSK_TM_COMPLETE);
+                          sizeof(why), 0) == MPSK_TM_COMPLETE);
         HostRunPending();
         CHECK(h->completions == 1 && h->done == SAS2308GluePort::kDoneRetry && m.tms.size() == tms2);
         CHECK(mps_kext_resume(f.k) == 0);
@@ -1013,36 +1013,70 @@ int main()
 
     if (Want("D43")) {
         /*
-         * The 1 s statistics timer still delivers completions nobody
-         * kicked, but counts them (and logs once): a lost kick shows up
-         * instead of being hidden. A completion whose kick is on its way
-         * is left to the done call.
+         * FreeBSD drains replies only from the interrupt, and polls only when
+         * the waiter cannot rely on it (mps_wait_command: NO_SLEEP). The TM
+         * waiter pumps only when its caller holds the work-loop gate (the
+         * interrupt's action could not run); otherwise it sleeps and the
+         * interrupt completes the TM. The 1 s timer delivers nothing: a
+         * completion left with no kick for two ticks is counted and logged
+         * once, and goes out with the next delivery (interrupt, family timeout).
          */
         MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
         m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009);
+        char why[128];
+        /* in the gate, interrupts not delivered: the waiter's pump completes it */
+        m.him |= MPI2_HIM_RIM;
+        CHECK(mps_kext_tm(f.k, MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET, t9, 0, nullptr, nullptr, 0, why,
+                          sizeof(why), 1) == MPSK_TM_COMPLETE);
+        /* not in the gate: no pump; the TM completes once the interrupt is delivered again */
+        const uint64_t t0 = m.nowUs;
+        uint64_t unmaskAt = 0;
+        bool early = false;
+        const uint32_t post0 = m.hostPost;
+        gHost.onOtherThreads = [&] {
+            if (unmaskAt == 0 && m.nowUs >= t0 + 200000) {
+                early = m.hostPost != post0;       /* nothing consumed while masked */
+                unmaskAt = m.nowUs;
+                m.him &= ~MPI2_HIM_RIM;
+            }
+        };
+        CHECK(mps_kext_tm(f.k, MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET, t9, 0, nullptr, nullptr, 0, why,
+                          sizeof(why), 0) == MPSK_TM_COMPLETE);
+        gHost.onOtherThreads = nullptr;
+        CHECK(unmaskAt != 0 && !early && m.hostPost != post0);
+        HostRunPending();
+        /* the 1 s timer: detects, counts and logs, does not deliver */
         const size_t mark = gHost.log.size();
         f.glue.TimerDeliver();                      /* nothing waiting: nothing counted */
         CHECK(f.glue.fKStats.lostKicks == 0);
         f.loseKicks = true;
-        FakeTask *a = f.NewRead(f.Tid(0x0009)), *b = f.NewRead(f.Tid(0x0009));
+        FakeTask *a = f.NewRead(t9), *b = f.NewRead(t9);
         CHECK(f.Submit(a) == SAS2308Glue::kInProcess && f.Submit(b) == SAS2308Glue::kInProcess);
         mps_intr_msi(gHost.sc);                     /* completed off the interrupt path: kicks the done call */
         HostRunPending();
         CHECK(a->completions == 0 && b->completions == 0);   /* the kick was lost */
+        f.glue.TimerDeliver();                      /* first tick: maybe a kick on its way */
+        CHECK(f.glue.fKStats.lostKicks == 0 && a->completions == 0);
+        f.glue.TimerDeliver();                      /* second tick: lost */
         f.glue.TimerDeliver();
-        CHECK(a->completions == 1 && b->completions == 1 && f.glue.fKStats.lostKicks == 2);
+        CHECK(f.glue.fKStats.lostKicks == 1 && a->completions == 0 && b->completions == 0);
+        f.glue.DeliverCompletions();                /* the next interrupt or family timeout */
+        CHECK(a->completions == 1 && b->completions == 1);
+        f.glue.TimerDeliver();
         f.loseKicks = false;
-        FakeTask *c = f.NewRead(f.Tid(0x0009));
+        FakeTask *c = f.NewRead(t9);
         CHECK(f.Submit(c) == SAS2308Glue::kInProcess);
         mps_intr_msi(gHost.sc);                     /* kicked: the done call is queued, not run yet */
         f.glue.TimerDeliver();
-        CHECK(c->completions == 0 && f.glue.fKStats.lostKicks == 2);
+        f.glue.TimerDeliver();
+        CHECK(c->completions == 0 && f.glue.fKStats.lostKicks == 1);
         HostRunPending();
         CHECK(c->completions == 1);
         size_t lines = 0;
         for (size_t i = mark; i < gHost.log.size(); i++)
-            lines += gHost.log[i].line.find("not kicked") != std::string::npos;
+            lines += gHost.log[i].line.find("no completion kick") != std::string::npos;
         CHECK(lines == 1);
         f.Detach();
     }

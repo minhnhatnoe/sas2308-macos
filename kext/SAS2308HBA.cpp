@@ -893,8 +893,9 @@ SAS2308HBA::HandleTimeout(SCSIParallelTaskIdentifier task)
 //	FreeBSD does (D10, mps_kext_tm): target/LUN reset -> XPT_RESET_DEV,
 //	abort -> the task's timeout recovery, the rest rejected. The family API
 //	is synchronous, the core is not: mps_kext_tm() waits with mps_mtx
-//	dropped and pumps the reply queue every 10 ms itself, so completion
-//	does not depend on the work loop (the caller may hold its gate).
+//	dropped. Like FreeBSD's mps_wait_command it polls the reply queue only
+//	when it cannot rely on the interrupt: when the caller holds the work-loop
+//	gate, where HandleInterruptRequest cannot run (D43, "TM waits in gate").
 //	Bounded by the recovery (TM timeouts, reinit) and by StopController.
 //																	[PRIVATE]
 //-----------------------------------------------------------------------------
@@ -934,13 +935,17 @@ SAS2308HBA::SendTaskMgmt(uint8_t taskType, SCSITargetIdentifier theT,
              (unsigned)theT, lun, tag);
         return kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
     }
+    IOWorkLoop *wl = GetWorkLoop();                 /* the family's: HandleInterruptRequest runs on it */
+    const bool inGate = wl != nullptr && wl->inGate();
     fGlue.Lock();
     fGlue.fKStats.tmRequests++;
+    if (inGate)
+        fGlue.fKStats.tmInGate++;
     fGlue.Unlock();
 
     char why[192];
     const int r = mps_kext_tm(fGlue.fMps, taskType, (uint32_t)theT, theL, victim ? GetHBADataPointer(victim) : nullptr,
-                              victim, theQ, why, sizeof(why));
+                              victim, theQ, why, sizeof(why), inGate ? 1 : 0);
     Leave();
 
     SCSIServiceResponse response = r == MPSK_TM_COMPLETE ? kSCSIServiceResponse_FUNCTION_COMPLETE :

@@ -696,21 +696,29 @@ SAS2308Glue::TimerDeliver(void)
     if (!fMps || !fLock)
         return;
     RetryMapWait();                     /* tasks waiting for a mapping (D47) */
+    /*
+     * FreeBSD delivers completions only from CAM's done threads, no timer.
+     * A completion queued with no kick (the done call) for two ticks is a
+     * lost kick: counted once per stall and logged once, not delivered, so
+     * it shows as a stalled IO; the next interrupt or the family's timeout
+     * (HandleTimeout) delivers it (D43).
+     */
     Lock();
     const bool kicked = fDonePending != 0;
     Unlock();
-    if (kicked)
-        return;                                     /* the done call delivers them */
-    const uint32_t n = DeliverCompletions();
-    if (n == 0)
+    if (kicked || !mps_kext_done_waiting(fMps)) {
+        fLostTicks = 0;
+        return;
+    }
+    if (++fLostTicks != 2)
         return;
     Lock();
     const bool first = fKStats.lostKicks == 0;
-    fKStats.lostKicks += n;
+    fKStats.lostKicks++;
     Unlock();
     if (first)
-        Klog(MPSK_ERROR, "%u completions were not kicked: delivered by the 1 s timer (counted as "
-             "\"Lost completion kicks\", logged once)", n);
+        Klog(MPSK_ERROR | MPSK_INFO, "completions queued with no completion kick for 2 s: left for the next "
+             "interrupt or the family's timeout (counted as \"Lost completion kicks\", logged once)");
 }
 
 //-----------------------------------------------------------------------------

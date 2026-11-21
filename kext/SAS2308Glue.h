@@ -96,7 +96,8 @@ public:
         uint32_t familyTimeouts;        /* HandleTimeout calls */
         uint32_t tmRequests, tmRequestsFailed;
         uint32_t deadEvents;            /* controller declared dead */
-        uint32_t lostKicks;             /* completions only the 1 s timer delivered (D43) */
+        uint32_t lostKicks;             /* done queue left with no kick for two 1 s ticks (D43) */
+        uint32_t tmInGate;              /* OS TMs whose caller held the work-loop gate (D43) */
         uint32_t mapWaits;              /* tasks that waited for a DMA mapping (D47) */
     };
 
@@ -127,7 +128,7 @@ public:
     void FlushMapWait(uint32_t target, int done);   /* no lock held; may sleep */
     void HandleTimeout(void *task);
     uint32_t DeliverCompletions(void);  /* no lock held; returns how many */
-    void TimerDeliver(void);            /* the 1 s statistics timer: lost kicks (D43) */
+    void TimerDeliver(void);            /* the 1 s statistics timer: detects lost kicks, delivers nothing (D43) */
 
     void ScheduleDone(void);            /* fLock held */
     void DoneCallBody(void);            /* the done thread call */
@@ -161,6 +162,7 @@ public:
     bool               fHotplugAgain = false;   /* ... and must scan again before it leaves */
     uint32_t           fHotplugPending = 0;     /* thread call invocations queued or running */
     uint32_t           fDonePending = 0;
+    uint32_t           fLostTicks = 0;      /* 1 s ticks with completions and no kick (TimerDeliver, D43) */
     uint32_t           fBusy = 0;               /* threads inside Enter()/Leave() */
     KStats             fKStats = {};
     SAS2308TargetTable fTargets;

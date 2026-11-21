@@ -205,6 +205,7 @@ int	 mps_kext_submit(struct mps_kext *k, void *td, void *os_task,
 #define	MPSK_UNTIMED_BACKSTOP_MS 600000	/* core timeout of a task with none (D15) */
 /* pop one completed task (NULL: none); usable until mps_kext_destroy */
 void	*mps_kext_next_done(struct mps_kext *k, struct mps_kext_io_result *res);
+bool	 mps_kext_done_waiting(struct mps_kext *k);	/* the done queue is not empty */
 /*
  * The OS timer of a task fired. D4: FreeBSD times a ccb from its post to
  * the IOC (callout_reset_sbt in mpssas_action_scsiio); the family timer was
@@ -230,7 +231,7 @@ enum { MPSK_TM_COMPLETE, MPSK_TM_REJECTED, MPSK_TM_FAILED };
  */
 int	 mps_kext_tm(struct mps_kext *k, uint8_t type, uint32_t tid,
 	    uint64_t lun, void *abort_td, void *abort_task, uint64_t abort_tag,
-	    char *why, size_t whylen);
+	    char *why, size_t whylen, int in_gate);
 
 /*
  * Termination: read the doorbell now, so a surprise removal (all-ones) is
