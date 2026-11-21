@@ -184,6 +184,7 @@ struct mps_kext_io_result {
 	const uint8_t	*sense;		/* in td, valid until the task completes */
 	uint32_t	 sense_len;
 	uint8_t		 by_core;	/* refused by mpssas_action_scsiio, which logs as FreeBSD (D23) */
+	uint8_t		 local;		/* SAM's idle stop, completed here with GOOD (S1) */
 };
 
 enum { MPSK_SUBMIT_POSTED, MPSK_SUBMIT_HELD, MPSK_SUBMIT_DONE };
@@ -227,8 +228,10 @@ int	 mps_kext_timeout(struct mps_kext *k, void *td, void *os_task,
  * FAMILY_TIMER: 1 = the family's timer per IO (SetTimeoutForTask) with
  * the core callout as a backstop, the scheme before batch G2; 0 = the
  * core callout is the IO timer (FreeBSD mps). For A/B measurements.
+ * IDLE_SPINDOWN: 0 = SAM's idle START STOP UNIT (START 0) is completed here
+ * with GOOD status, the disk keeps spinning; 1 = it is sent (S1), 0/1.
  */
-enum { MPSK_KNOB_SEND_ORDERED = 1, MPSK_KNOB_FAMILY_TIMER };
+enum { MPSK_KNOB_SEND_ORDERED = 1, MPSK_KNOB_FAMILY_TIMER, MPSK_KNOB_IDLE_SPINDOWN };
 int	 mps_kext_set_knob(struct mps_kext *k, int knob, uint32_t value);
 uint32_t mps_kext_knob(struct mps_kext *k, int knob);
 
@@ -278,6 +281,13 @@ int	 mps_kext_resume(struct mps_kext *k);
  * command's time left is capped (mps_xnu_halt_begin). Idempotent.
  */
 void	 mps_kext_halt_begin(struct mps_kext *k);
+/*
+ * The system's power state as the class hears it from the priority power
+ * interest (S1): UNKNOWN until it is registered (every stop is sent),
+ * AWAKE, SLEEP from kIOMessageSystemWillSleep until the wake.
+ */
+enum { MPSK_SYS_UNKNOWN, MPSK_SYS_AWAKE, MPSK_SYS_SLEEP };
+void	 mps_kext_system_power(struct mps_kext *k, int state);
 
 /* ---- locks and time for the IOKit-free glue (SAS2308Glue) -------------- */
 

@@ -94,8 +94,10 @@ SAS2308HBA::InitializePowerManagement(IOService *provider)
     fPowerState = kPowerStateOn;
     fPMInitialized = true;
     fHaltNotifier = registerPrioritySleepWakeInterest(&SAS2308HBA::HaltMessage, this, nullptr);
-    if (!fHaltNotifier)     /* systemWillShutdown still caps, later in the halt */
+    if (!fHaltNotifier)     /* systemWillShutdown still caps, later in the halt; every stop is sent (S1) */
         Klog(MPSK_ERROR | MPSK_INIT, "no priority power interest: the halt's timeout caps start late");
+    else
+        SystemPower(MPSK_SYS_AWAKE);
     changePowerStateTo(kPowerStateOn);
     Klog(MPSK_INIT | MPSK_INFO, "power management: %u states, joined under %s", (unsigned)kPowerStateCount,
          provider->getName());
@@ -149,7 +151,10 @@ SAS2308HBA::setPowerState(unsigned long powerStateOrdinal, IOService *whatDevice
 //-----------------------------------------------------------------------------
 //	HaltMessage - priority power interest (registerPrioritySleepWakeInterest):
 //	restart / power off begins, the 30 s halt watchdog runs. Sleep messages
-//	need no answer here (SAM's handler is the same kind).			[PRIVATE]
+//	need no answer here (SAM's handler is the same kind). The root domain
+//	tells its priority clients before the power tree goes down, so
+//	WillSleep arrives before SAM's system-sleep stop: from there until the
+//	wake every START STOP UNIT is sent (sas2308_idle_spindown, S1).	[PRIVATE]
 //-----------------------------------------------------------------------------
 
 IOReturn
@@ -157,9 +162,27 @@ SAS2308HBA::HaltMessage(void *target, void *refCon, UInt32 messageType, IOServic
                         void *messageArgument, vm_size_t argSize)
 {
     (void)refCon; (void)provider; (void)messageArgument; (void)argSize;
+    SAS2308HBA *me = (SAS2308HBA *)target;
     if (messageType == kIOMessageSystemWillRestart || messageType == kIOMessageSystemWillPowerOff)
-        ((SAS2308HBA *)target)->BeginHalt(messageType == kIOMessageSystemWillRestart ? "restart" : "power off");
+        me->BeginHalt(messageType == kIOMessageSystemWillRestart ? "restart" : "power off");
+    else if (messageType == kIOMessageSystemWillSleep)
+        me->SystemPower(MPSK_SYS_SLEEP);
+    else if (messageType == kIOMessageSystemWillPowerOn || messageType == kIOMessageSystemHasPoweredOn)
+        me->SystemPower(MPSK_SYS_AWAKE);
     return kIOReturnSuccess;
+}
+
+//-----------------------------------------------------------------------------
+//	SystemPower - the system's power state for SAM's idle stop (S1).	[PRIVATE]
+//-----------------------------------------------------------------------------
+
+void
+SAS2308HBA::SystemPower(int state)
+{
+    if (!Enter())
+        return;
+    mps_kext_system_power(fGlue.fMps, state);
+    Leave();
 }
 
 //-----------------------------------------------------------------------------

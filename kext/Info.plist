@@ -62,10 +62,14 @@
 			<integer>1</integer>
 			<!-- port tunables, boot-arg first, else these keys; sas2308ctl set <key> <n> at runtime:
 			     sas2308_send_ordered = FreeBSD's kern.cam.da.send_ordered (D46);
-			     sas2308_shutdown_stop 1 = MUR the IOC at restart / power off (FreeBSD: no stop, D50) -->
+			     sas2308_shutdown_stop 1 = MUR the IOC at restart / power off (FreeBSD: no stop, D50);
+			     sas2308_idle_spindown 0 = macOS's idle spin-down (pmset disksleep) is not sent to the
+			     disks behind the HBA, 1 = it is (S1; FreeBSD never stops a disk for idleness) -->
 			<key>sas2308_send_ordered</key>
 			<integer>1</integer>
 			<key>sas2308_shutdown_stop</key>
+			<integer>0</integer>
+			<key>sas2308_idle_spindown</key>
 			<integer>0</integer>
 			<!-- as Apple's AppleLSIFusionMPT (AppleLSIFusionSAS personality): the family copies
 			     Physical Interconnect / Location into the HBA's Protocol Characteristics; the

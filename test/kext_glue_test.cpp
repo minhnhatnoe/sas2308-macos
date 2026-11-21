@@ -1361,6 +1361,65 @@ int main()
         f.Detach();                                 /* the callout is drained before the state goes (ASan) */
     }
 
+    if (Want("S1-spindown")) {
+        /*
+         * sas2308_idle_spindown 0: SAM's idle stop (START STOP UNIT, IMMED 1,
+         * START 0) completes with GOOD without reaching the IOC; START 1,
+         * LOEJ, a POWER CONDITION, the knob at 1, the system going to sleep,
+         * an unknown system state and the halt all send it.
+         */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009);
+        /* true: the command reached the IOC; the task completed GOOD either way */
+        auto ssu = [&](uint8_t b1, uint8_t b4) {
+            FakeTask *t = f.NewRead(t9, 0);
+            memset(t->cdb, 0, sizeof(t->cdb));
+            t->cdb[0] = 0x1B; t->cdb[1] = b1; t->cdb[4] = b4; t->cdbLen = 6; t->dir = MPSK_DIR_NONE; t->len = 0;
+            const size_t ops = m.scsiOps.size();
+            CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+            HostRunPending();
+            CHECK(t->completions == 1 && t->done == SAS2308GluePort::kDoneStatus && t->scsiStatus == 0);
+            return m.scsiOps.size() != ops;
+        };
+        const uint32_t before = gHost.sc->xnu.stats.idle_stops;
+        CHECK(mps_kext_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN) == 0);       /* the default */
+        CHECK(ssu(0x01, 0x00));                     /* system state unknown (no priority interest): sent */
+        mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
+        CHECK(!ssu(0x01, 0x00));                    /* SAM's Standby / Sleep stop: completed here */
+        CHECK(!ssu(0x00, 0x00));                    /* IMMED 0 */
+        CHECK(!ssu(0x01, 0x04));                    /* NO_FLUSH: still a stop */
+        CHECK(gHost.sc->xnu.stats.idle_stops == before + 3);
+        CHECK(ssu(0x00, 0x01));                     /* START 1 (SAM's Active) */
+        CHECK(ssu(0x01, 0x02));                     /* LOEJ (eject) */
+        CHECK(ssu(0x01, 0x50));                     /* POWER CONDITION 5 (SAM's system sleep) */
+        CHECK(ssu(0x01, 0x30));                     /* POWER CONDITION 3 (STANDBY) */
+        CHECK(gHost.sc->xnu.stats.idle_stops == before + 3);
+        /* the read path is untouched */
+        FakeTask *rd = f.NewRead(t9);
+        CHECK(f.Submit(rd) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        CHECK(rd->completions == 1 && rd->done == SAS2308GluePort::kDoneStatus);
+        /* the knob: 1 sends it, 2 is refused */
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 1) == 0 && mps_kext_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN) == 1);
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 2) != 0);
+        CHECK(ssu(0x01, 0x00));
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 0) == 0);
+        CHECK(!ssu(0x01, 0x00));
+        /* going to sleep (kIOMessageSystemWillSleep) until the wake: sent */
+        mps_kext_system_power(f.k, MPSK_SYS_SLEEP);
+        CHECK(ssu(0x01, 0x00));
+        mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
+        CHECK(!ssu(0x01, 0x00));
+        CHECK(gHost.sc->xnu.stats.idle_stops == before + 5);
+        /* the halt (restart / power off, batch F): sent */
+        mps_kext_halt_begin(f.k);
+        CHECK(ssu(0x01, 0x00));
+        CHECK(gHost.sc->xnu.stats.idle_stops == before + 5);
+        f.Detach();
+    }
+
     if (Want("D21")) {
         /*
          * The family keeps every OS task busy (each completion resubmitted

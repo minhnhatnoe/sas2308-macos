@@ -89,6 +89,8 @@ struct mps_xnu_stats {
 	uint32_t	kassert_hits;		/* KASSERT failures and panic() calls survived, all controllers (D55) */
 	/* batch G2 */
 	uint32_t	ordered_tags;		/* SIMPLE tasks sent ORDERED: da's periodic tag (D46) */
+	/* S1 */
+	uint32_t	idle_stops;		/* idle START STOP UNIT (START 0) completed here, not sent */
 };
 
 #endif /* !_MPS_XNU_STATS_H_ */

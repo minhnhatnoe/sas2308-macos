@@ -298,7 +298,8 @@ SAS2308Glue::Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs
                                    d.length, d.timeoutMs, osTimed ? 1 : 0, gen, &res);
     Lock();
     if (rc == MPSK_SUBMIT_DONE) {
-        fKStats.tasksRejected++;
+        if (!res.local)                 /* SAM's idle stop completed here is not a refusal (S1) */
+            fKStats.tasksRejected++;
         ScheduleDone();                 /* delivered from the done call: no family re-entry from here */
     } else {
         fKStats.tasks++;
@@ -312,7 +313,7 @@ SAS2308Glue::Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs
      * FreeBSD (NULL handle, shutting down, cannot map), or not at all (a
      * target being removed): no second line (D23).
      */
-    if (rc == MPSK_SUBMIT_DONE && !res.by_core)
+    if (rc == MPSK_SUBMIT_DONE && !res.by_core && !res.local)
         Klog(res.kind == MPSK_IO_REJECT ? (MPSK_ERROR | MPSK_INFO) : MPSK_XINFO,
              "IO for target %u refused (CAM status 0x%x)", d.target, res.cam_status);
 }

@@ -169,6 +169,7 @@ private:
     static IOReturn HaltMessage(void *target, void *refCon, UInt32 messageType, IOService *provider,
                                 void *messageArgument, vm_size_t argSize);   /* priority interest */
     void BeginHalt(const char *why);                              /* restart / power off began (F) */
+    void SystemPower(int state);                                  /* MPSK_SYS_*: sleep / wake (S1) */
 
     /* ---- SAS2308HBA_Hotplug.cpp */
     static void HostAsync(void *hba, int event, uint32_t tid, const uint8_t *present, const uint32_t *gens,

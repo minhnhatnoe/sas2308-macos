@@ -986,7 +986,8 @@ G2 hardware results".
 | IO timer | the core's per-command callout is the IO timer (task timeout, armed at the post), no `SetTimeoutForTask` per IO; tunable `sas2308_family_timer` 1 = the old scheme for A/B | F1 4K point on one boot: 7 drives QD2 171.5k IOPS mean (core callout) vs 160.0k (family timer per IO), +7.2 %; 7 drives QD1 +14.5 %; p50 82 → 74 us | glue `C1` (no family timer, abort at the timeout), `C1-family`, `C1-backstop`, `D4` both schemes, `D43` kick |
 | wake log | `mps_transition_ready` on resume: "IOC in unexpected reset state" is `MPS_INIT`, not `INIT|FAULT` (`sc->xnu.resuming`); every other caller keeps FreeBSD's class | G1: 4 FAULT lines per wake | mock `G2-wake` |
 
-Port tunables: `sas2308_send_ordered`, `sas2308_shutdown_stop`, `sas2308_family_timer` are read at
+Port tunables: `sas2308_send_ordered`, `sas2308_shutdown_stop`, `sas2308_family_timer` (and S1's
+`sas2308_idle_spindown`) are read at
 attach from the boot-arg, else the personality key of the same name (Info.plist), like
 `sas2308_posted_write`, and can be changed at runtime with `sas2308ctl set <key> <n>` (FreeBSD's
 CTLFLAG_RWTUN sysctls); the current values are published as properties of the same names.
@@ -1030,6 +1031,30 @@ callout 10 s later as a backstop. G2 makes the callout the timer, as in FreeBSD 
 - **Cost removed.** One contended gate acquisition per submit (`SetTimeout`) and one
   `RemoveTask` + `Rearm` per completion inside the gate (perf profile: 0.89 timer reprogrammings
   per IO); the callout costs what it cost before (it was armed as the backstop already).
+
+## S1: no idle spin-down (branch spindown-tunable, 2026-11-21)
+
+Goal: drives that never spin down when idle, as a tunable. FreeBSD never stops a disk
+for idleness (da/CAM send START STOP UNIT only on request: `camcontrol stop`, the shutdown SSU of
+SATA SSDs). macOS does: SAM's block driver (`IOSCSIBlockCommandsDevicePM.cpp`, HandlePowerChange;
+power states 4 Active, 3 Idle, 2 Standby, 1 Sleep, 0 SystemSleep) drops a disk to Standby / Sleep
+after `pmset disksleep` minutes and sends START STOP UNIT IMMED 1, POWER CONDITION 0, START 0; the
+first IO after that brings it back to Active with START 1 (10.5 s spin-up, D15b).
+
+| Case | `sas2308_idle_spindown` 0 (default) | 1 |
+|---|---|---|
+| START STOP UNIT START 0, LOEJ 0, POWER CONDITION 0 (SAM's Standby / Sleep stop; IMMED and NO_FLUSH ignored), system awake | completed in `mps_kext_submit` with GOOD, not sent; `Idle stops completed here` + 1 | sent |
+| START 1 (SAM's Active), LOEJ 1, any POWER CONDITION (SAM's system sleep sends 5) | sent | sent |
+| any stop from kIOMessageSystemWillSleep until kIOMessageSystemWillPowerOn / HasPoweredOn (priority power interest; the root domain tells its priority clients before the power tree goes down) | sent | sent |
+| any stop once the halt began (restart / power off, batch F), the IOC is stopped / suspended / gone, or before the priority interest is registered (system state unknown) | sent | sent |
+
+SAM's power state still drops (it believes the disk stopped); its next IO sends START 1, which the
+spinning disk answers at once. D9's shutdown SSU is an internal command of the core and does not pass
+here. The HBA cannot see mounts, so this applies to every disk behind it, mounted or not, and to a
+stop sent from user space through SAM (a SCSI pass-through): set the tunable to 1 for that. The
+tunable is read at attach from the boot-arg, else the Info.plist key (default 0), changeable with
+`sas2308ctl set sas2308_idle_spindown <0|1>`; the debug level logs each stop completed here or sent.
+Host test: glue `S1-spindown` (failed before: the stop reached the IOC).
 
 ## What is implemented (M1 – M4)
 > **Names after M5.** The tables and sections below are the M1–M4 history and use the names of
