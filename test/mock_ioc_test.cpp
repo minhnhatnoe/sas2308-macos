@@ -2871,6 +2871,24 @@ static void DeviationTests()
         CHECK(ranA == 1 && ranB == 1);
     }
 
+    if (Want("D42")) {
+        /* bus_dmamap_load errors as busdma: to the callback, returned only if ENOMEM */
+        Rig g;
+        struct mps_softc *sc = g.sc;
+        static int calls, cbError, cbSegs;
+        calls = 0; cbError = -1; cbSegs = -1;
+        auto cb = [](void *, bus_dma_segment_t *, int nsegs, int error) {
+            calls++; cbError = error; cbSegs = nsegs;
+        };
+        bus_dmamap_t map;
+        CHECK(bus_dmamap_create(sc->buffer_dmat, 0, &map) == 0);
+        static char buf[64];
+        const int rc = bus_dmamap_load(sc->buffer_dmat, map, buf,
+                                       sc->buffer_dmat->dt_maxsize + 1, cb, nullptr, 0);
+        CHECK(rc == 0 && calls == 1 && cbError == EINVAL && cbSegs == 0);
+        bus_dmamap_destroy(sc->buffer_dmat, map);
+    }
+
     if (Want("D18")) {
         /*
          * An "impossible" SGL state (no room left for a chain element):

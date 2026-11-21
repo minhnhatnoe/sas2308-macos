@@ -565,6 +565,8 @@ int	bus_dmamap_destroy(bus_dma_tag_t dmat, bus_dmamap_t map);
  * Loads a bus_dmamem_alloc() buffer (any number of segments, as the platform
  * maps it within the tag's constraints).  Arbitrary kernel virtual addresses
  * are not supported (XNU: the core never maps such buffers): EINVAL.
+ * Errors as busdma: the callback gets (segs, 0, error) and the call returns
+ * 0, except ENOMEM, which is also returned.
  */
 int	bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 	    bus_size_t buflen, bus_dmamap_callback_t *callback,

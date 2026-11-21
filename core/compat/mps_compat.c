@@ -1251,8 +1251,11 @@ bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 	} else {
 		segs = mps_compat_malloc(sizeof(*segs) * maxsegs, NULL,
 		    M_NOWAIT | M_ZERO);
-		if (segs == NULL)
+		if (segs == NULL) {
+			bzero(few, sizeof(few));
+			callback(callback_arg, few, 0, ENOMEM);
 			return (ENOMEM);
+		}
 	}
 	mem = (map->dm_lent != NULL) ? map->dm_lent : map;
 	if (mem->dm_cookie == NULL || buf != mem->dm_vaddr ||
@@ -1275,7 +1278,11 @@ bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 	callback(callback_arg, segs, nsegs, error);
 	if (segs != few)
 		mps_compat_free(segs, NULL);
-	return (error);
+	/*
+	 * busdma's contract: the callback has the error; only ENOMEM is also
+	 * returned (bus_dmamap_load_mem), so a caller never handles it twice.
+	 */
+	return (error == ENOMEM ? ENOMEM : 0);
 }
 
 /*
