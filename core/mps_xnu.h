@@ -163,6 +163,7 @@ struct mps_xnu {
 	int			 temp_queued;
 	int			 temp_absent;		/* units NOT_PRESENT: stop */
 	int			 temp_stopped;		/* a read timed out: stop until a reinit (D31) */
+	uint64_t		 event_ack_logged;	/* event codes < 64 whose ack was logged (D29) */
 	int			 temp_warned;		/* above the warning, not re-armed */
 	int			 temp_logged;		/* first reading logged */
 	uint64_t		 temp_last_us;

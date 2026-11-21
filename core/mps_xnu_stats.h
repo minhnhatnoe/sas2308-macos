@@ -48,6 +48,7 @@ struct mps_xnu_stats {
 	uint32_t	stale_replies;	/* reply for an idle SMID */
 	uint32_t	bad_replies;	/* malformed descriptor dropped */
 	uint32_t	events;
+	uint32_t	event_acks;		/* EVENT_ACKs sent for AckRequired events (D29) */
 	uint32_t	event_ack_dropped;
 	/* chain pool (from sc->chain_alloc_fail / chain_free_lowwater) */
 	uint32_t	chain_alloc_fail;

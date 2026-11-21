@@ -447,6 +447,7 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Stale replies", st.stale_replies);
     SetNumber(d, "Bad replies", st.bad_replies);
     SetNumber(d, "Events", st.events);
+    SetNumber(d, "Event acks sent", st.event_acks);     /* decides D29 (FreeBSD never acks) */
     SetNumber(d, "Event acks dropped", st.event_ack_dropped);
     SetNumber(d, "Chain alloc failures", st.chain_alloc_fail);
     SetNumber(d, "Chain free low", st.chain_free_low);

@@ -634,6 +634,7 @@ mps_xnu_event_ack(struct mps_softc *sc, void *event_reply)
 	MPI2_EVENT_NOTIFICATION_REPLY *event = event_reply;
 	MPI2_EVENT_ACK_REQUEST *req;
 	struct mps_command *cm;
+	u_int code;
 
 	if (event->AckRequired != MPI2_EVENT_NOTIFICATION_ACK_REQUIRED)
 		return;
@@ -658,6 +659,20 @@ mps_xnu_event_ack(struct mps_softc *sc, void *event_reply)
 	mps_dprint(sc, MPS_XINFO, "ack event %s (context 0x%x)\n",
 	    mps_describe_table(mps_event_names, le16toh(event->Event)),
 	    le32toh(event->EventContext));
+	/*
+	 * D29: whether this IT firmware asks for acks at all decides if this
+	 * code stays (FreeBSD never acks): counted, each event code logged
+	 * once.
+	 */
+	sc->xnu.stats.event_acks++;
+	code = le16toh(event->Event);
+	if (code >= 64 || (sc->xnu.event_ack_logged & (1ull << code)) == 0) {
+		if (code < 64)
+			sc->xnu.event_ack_logged |= 1ull << code;
+		mps_dprint(sc, MPS_INFO, "event %s (0x%x) asks for an ack: acked "
+		    "(\"Event acks sent\"; logged once per event)\n",
+		    mps_describe_table(mps_event_names, code), code);
+	}
 	mps_map_command(sc, cm);
 }
 

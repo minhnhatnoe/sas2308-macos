@@ -2653,6 +2653,22 @@ static void DeviationTests()
         CHECK(r->done && r->status == CAM_REQ_CMP);
     }
 
+    if (Want("D29")) {
+        /* every AckRequired event is acked and counted; each event code logged once at info */
+        const size_t mark = LogMark();
+        Rig g({0x0009});
+        MockIocModel &m = g.ioc;
+        CHECK(m.ackCount >= 1 && g.Stats().event_acks == (uint32_t)m.ackCount);
+        m.devices.push_back(0x000B);
+        m.PostTopologyEvent({0x000B});                  /* a hot-add */
+        HostRunPending();
+        g.Pump();
+        CHECK(g.Present(g.Tid(0x000B), 0x000B));
+        CHECK(m.ackCount >= 2 && g.Stats().event_acks == (uint32_t)m.ackCount && g.Stats().event_ack_dropped == 0);
+        CHECK(CountLog(mark, "event SasTopologyChangeList (0x1c) asks for an ack: acked") == 1);
+        CHECK(LogClass(mark, "event SasTopologyChangeList (0x1c) asks for an ack") & MPS_INFO);
+    }
+
     if (Want("D30")) {
         /* an interrupt that finds an empty queue reads no register; a fault is found by mps_periodic (1 s) */
         Rig g({0x0009});
