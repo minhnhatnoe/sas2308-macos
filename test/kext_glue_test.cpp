@@ -1239,6 +1239,61 @@ int main()
         f.Detach();
     }
 
+    if (Want("D46-otag")) {
+        /*
+         * da's periodic ORDERED tag: under continuous IO with SIMPLE tags
+         * only, one READ goes ORDERED per two 15 s intervals; none when
+         * idle, none with send_ordered 0; an ORDERED task from the OS
+         * counts as the interval's (DA_FLAG_WAS_OTAG).
+         */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009);
+        /* one READ a second for `secs' s, all kept by the firmware (pending throughout); ORDERED ones' times */
+        auto load = [&](int secs, int firstAttr) {
+            std::vector<uint64_t> ordered;
+            m.holdIo = true;
+            for (int i = 0; i < secs; i++) {
+                FakeTask *t = f.NewRead(t9, 600000);
+                t->attr = i == 0 ? firstAttr : MPSK_ATTR_SIMPLE;
+                CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+                if ((m.lastControl & MPI2_SCSIIO_CONTROL_TASKATTRIBUTE_MASK) == MPI2_SCSIIO_CONTROL_ORDEREDQ && i > 0)
+                    ordered.push_back(m.nowUs / 1000000);
+                f.Run(1000);
+            }
+            m.holdIo = false;
+            m.ReleasePending();
+            HostRunPending();
+            return ordered;
+        };
+        const uint32_t before = gHost.sc->xnu.stats.ordered_tags;
+        std::vector<uint64_t> o = load(62, MPSK_ATTR_SIMPLE);
+        printf("  ORDERED at %s s\n", [&] { std::string r; for (uint64_t x : o) r += std::to_string(x) + " "; return r; }().c_str());
+        CHECK(o.size() == 2);                       /* intervals 1 and 3 of 4: one per two intervals */
+        CHECK(o.size() == 2 && o[1] - o[0] >= 29 && o[1] - o[0] <= 31);
+        CHECK(gHost.sc->xnu.stats.ordered_tags == before + 2);
+        /* idle (nothing pending at the ticks), then one READ: SIMPLE */
+        f.Run(40000);
+        FakeTask *one = f.NewRead(t9);
+        CHECK(f.Submit(one) == SAS2308Glue::kInProcess);
+        CHECK((m.lastControl & MPI2_SCSIIO_CONTROL_TASKATTRIBUTE_MASK) == MPI2_SCSIIO_CONTROL_SIMPLEQ);
+        HostRunPending();
+        CHECK(one->completions == 1);
+        /* an OS ORDERED task first: the next interval needs none, the one after does */
+        f.Run(15000);
+        o = load(32, MPSK_ATTR_ORDERED);
+        CHECK(o.size() == 1);
+        /* kern.cam.da.send_ordered 0 */
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_SEND_ORDERED, 0) == 0 && mps_kext_knob(f.k, MPSK_KNOB_SEND_ORDERED) == 0);
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_SEND_ORDERED, 2) != 0);
+        f.Run(15000);                               /* a NEED set before the change is spent first, as da */
+        o = load(62, MPSK_ATTR_SIMPLE);
+        CHECK(o.empty());
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_SEND_ORDERED, 1) == 0);
+        f.Detach();                                 /* the callout is drained before the state goes (ASan) */
+    }
+
     if (Want("debug")) {
         /* the hardware-test triggers: a hold longer than the timeout (re-armed, D4) and a lost command */
         MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;

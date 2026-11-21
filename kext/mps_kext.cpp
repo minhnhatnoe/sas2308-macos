@@ -55,6 +55,25 @@ static inline void memset_zero(void *p, size_t n) { memset(p, 0, n); }
 #define MPSK_SEG_BYTES		0xFFFFFFull			/* MPI2 simple SGE length */
 #define MPSK_INTERNAL_CMDS	8	/* normal frames kept from the OS (mps_kext_max_tasks) */
 
+/*
+ * CAM da's periodic ORDERED tag (scsi_da.c: da_send_ordered,
+ * dasendorderedtag, dastart, dadone; D46). da is the periph, so the kext
+ * keeps its per-periph state: the READ/WRITE/SYNCHRONIZE CACHE commands
+ * pending (da's pending_ccbs) and DA_FLAG_NEED_OTAG / DA_FLAG_WAS_OTAG.
+ * XNU: one slot for LUN 0 and one shared by the other LUNs of a target id,
+ * no allocation per LUN (the disks behind this HBA are LUN 0; a shared slot
+ * can send another LUN's ORDERED tag early, never later); one callout for
+ * the controller instead of one per periph.
+ */
+#define MPSK_OTAG_INTERVAL_MS	15000	/* DA_DEFAULT_TIMEOUT 60 s / DA_ORDEREDTAG_INTERVAL 4 */
+#define MPSK_OTAG_NEED		0x1	/* DA_FLAG_NEED_OTAG */
+#define MPSK_OTAG_WAS		0x2	/* DA_FLAG_WAS_OTAG */
+#define MPSK_OTAG_SLOTS		2	/* per target id: LUN 0, other LUNs */
+struct mps_kext_otag {
+    uint32_t                pending;
+    uint32_t                flags;
+};
+
 /* The HBA data of one SCSIParallelTask. */
 struct mps_kext_task {
     union ccb               ccb;
@@ -70,6 +89,7 @@ struct mps_kext_task {
 #define MPSK_T_SYNC_DONE    3   /* completed inside xpt_action() */
 #define MPSK_T_QUEUED       4   /* on the done queue */
     int                     ua_retried; /* re-sent once for a UNIT ATTENTION after our reset (D3) */
+    uint32_t                otag;       /* da's pending_ccbs: 1 + the LUN slot it counts in, 0 none (D46) */
     struct mps_kext_task_glue glue;     /* the glue's (D45) */
     /* then mps_kext_max_segs() bus_dma_segment_t (mps_kext_task_size) */
 };
@@ -110,6 +130,10 @@ struct mps_kext {
     uint32_t               *async_gens;
     struct callout          hold_callout;   /* debug: SIM queue frozen for a while */
     int                     hold_active;
+    /* CAM da's periodic ORDERED tag (D46): per target, LUN 0 and the other LUNs */
+    struct mps_kext_otag   *otag;
+    struct callout          otag_callout;
+    int                     send_ordered;   /* kern.cam.da.send_ordered (sas2308_send_ordered) */
 };
 
 static volatile int gKexts = 0;
@@ -238,6 +262,75 @@ static int mps_kext_retry_ua(struct mps_kext *k, struct mps_kext_task *t)
     return 1;
 }
 
+/* da's bio commands: READ/WRITE (6/10/12/16), SYNCHRONIZE CACHE (10/16) */
+static int mps_kext_otag_cmd(uint8_t op)
+{
+    switch (op) {
+    case 0x08: case 0x0A: case 0x28: case 0x2A: case 0xA8: case 0xAA: case 0x88: case 0x8A:
+    case 0x35: case 0x91:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/*
+ * dastart: a bio command goes ORDERED if the OS asked for it (BIO_ORDERED)
+ * or the interval found SIMPLE tags only (NEED_OTAG); either way the
+ * interval has had its ORDERED tag (WAS_OTAG). Then it is pending
+ * (LIST_INSERT_HEAD(&softc->pending_ccbs)). mps_mtx held.
+ */
+static void mps_kext_otag_start(struct mps_kext *k, struct mps_kext_task *t, uint32_t tid, uint64_t lun,
+                                uint8_t op)
+{
+    struct ccb_scsiio *csio = &t->ccb.csio;
+
+    t->otag = 0;
+    if (k->otag == nullptr || tid >= k->ntargets || !mps_kext_otag_cmd(op))
+        return;
+    const uint32_t slot = tid * MPSK_OTAG_SLOTS + (lun != 0);
+    struct mps_kext_otag *o = &k->otag[slot];
+    if (csio->tag_action == MSG_ORDERED_Q_TAG ||
+        ((o->flags & MPSK_OTAG_NEED) && csio->tag_action == MSG_SIMPLE_Q_TAG)) {
+        if (csio->tag_action == MSG_SIMPLE_Q_TAG) {
+            csio->tag_action = MSG_ORDERED_Q_TAG;
+            k->sc.xnu.stats.ordered_tags++;
+        }
+        o->flags = (o->flags & ~MPSK_OTAG_NEED) | MPSK_OTAG_WAS;
+    }
+    o->pending++;
+    t->otag = slot + 1;
+}
+
+/* dadone: the last pending command done counts as the interval's ORDERED tag. mps_mtx held. */
+static void mps_kext_otag_done(struct mps_kext *k, struct mps_kext_task *t)
+{
+    if (t->otag == 0 || k->otag == nullptr)
+        return;
+    struct mps_kext_otag *o = &k->otag[t->otag - 1];
+    t->otag = 0;
+    if (o->pending > 0 && --o->pending == 0)
+        o->flags |= MPSK_OTAG_WAS;
+}
+
+/* dasendorderedtag, for every slot; mps_mtx held (callout_init_mtx) */
+static void mps_kext_otag_tick(void *arg)
+{
+    struct mps_kext *k = (struct mps_kext *)arg;
+
+    if (k->send_ordered && k->otag != nullptr) {
+        for (uint32_t i = 0; i < k->ntargets * MPSK_OTAG_SLOTS; i++) {
+            struct mps_kext_otag *o = &k->otag[i];
+            if (o->pending == 0)
+                continue;
+            if ((o->flags & MPSK_OTAG_WAS) == 0)
+                o->flags |= MPSK_OTAG_NEED;
+            o->flags &= ~MPSK_OTAG_WAS;
+        }
+    }
+    callout_reset_sbt(&k->otag_callout, SBT_1MS * MPSK_OTAG_INTERVAL_MS, 0, mps_kext_otag_tick, k, 0);
+}
+
 /*
  * ccb_h.cbfcnp of a SCSI IO: mps_mtx held, so only queue it.  There is no
  * periph: the thin CAM's xpt_done has already released the ccb's
@@ -252,11 +345,13 @@ static void mps_kext_io_done(struct cam_periph *periph, union ccb *ccb)
     struct mps_kext *k = t->k;
 
     if (t->state == MPSK_T_SUBMIT) {
+        mps_kext_otag_done(k, t);
         t->state = MPSK_T_SYNC_DONE;            /* mps_kext_submit() answers for it */
         return;
     }
     if (mps_kext_retry_ua(k, t))
         return;
+    mps_kext_otag_done(k, t);
     t->state = MPSK_T_QUEUED;
     t->done_next = nullptr;
     mps_os_lock(k->done_lock);
@@ -292,7 +387,9 @@ static void mps_kext_free_targets(struct mps_kext *k)
     if (k->ua_gen) mps_os_free(k->ua_gen, sizeof(*k->ua_gen) * n);
     if (k->async_present) mps_os_free(k->async_present, sizeof(*k->async_present) * n);
     if (k->async_gens) mps_os_free(k->async_gens, sizeof(*k->async_gens) * n);
+    if (k->otag) mps_os_free(k->otag, sizeof(*k->otag) * n * MPSK_OTAG_SLOTS);
     k->ua_luns = nullptr; k->ua_gen = nullptr; k->async_present = nullptr; k->async_gens = nullptr;
+    k->otag = nullptr;
     k->ntargets = 0;
 }
 
@@ -338,6 +435,14 @@ static void mps_kext_async(void *arg, uint32_t code, struct cam_path *path, void
     }
     if (k->host->async)
         k->host->async(k->host->hba, event, scope, k->async_present, k->async_gens, k->ntargets);
+}
+
+/* a port tunable: boot-arg, else personality property (mps_os_getenv, as D33's); `def' if unset */
+static uint32_t mps_kext_tunable(struct mps_kext *k, const char *name, uint32_t def)
+{
+    int v = (int)def;
+    (void)mps_compat_tunable_int(&k->dev, name, &v);    /* unset or not a number: def */
+    return (uint32_t)v;
 }
 
 extern "C" {
@@ -395,7 +500,8 @@ int mps_kext_attach(struct mps_kext *k, uint32_t debug_mask)
     k->ua_gen = (uint32_t *)mps_os_malloc(sizeof(*k->ua_gen) * k->ntargets, 1);
     k->async_present = (uint8_t *)mps_os_malloc(sizeof(*k->async_present) * k->ntargets, 1);
     k->async_gens = (uint32_t *)mps_os_malloc(sizeof(*k->async_gens) * k->ntargets, 1);
-    if (!k->ua_luns || !k->ua_gen || !k->async_present || !k->async_gens) {
+    k->otag = (struct mps_kext_otag *)mps_os_malloc(sizeof(*k->otag) * k->ntargets * MPSK_OTAG_SLOTS, 1);
+    if (!k->ua_luns || !k->ua_gen || !k->async_present || !k->async_gens || !k->otag) {
         mps_kext_free_targets(k);
         (void)mps_free(sc);
         bus_dma_tag_destroy(sc->mps_parent_dmat);
@@ -404,8 +510,15 @@ int mps_kext_attach(struct mps_kext *k, uint32_t debug_mask)
     }
     memset_zero(k->ua_luns, sizeof(*k->ua_luns) * k->ntargets);
     memset_zero(k->ua_gen, sizeof(*k->ua_gen) * k->ntargets);
+    memset_zero(k->otag, sizeof(*k->otag) * k->ntargets * MPSK_OTAG_SLOTS);
+    k->send_ordered = (int)mps_kext_tunable(k, "sas2308_send_ordered", 1);
     k->attached = 1;
     callout_init_mtx(&k->hold_callout, &sc->mps_mtx, 0);
+    /* daregister: the ORDERED tag callout runs whether or not send_ordered is set */
+    callout_init_mtx(&k->otag_callout, &sc->mps_mtx, 0);
+    mps_lock(sc);
+    callout_reset_sbt(&k->otag_callout, SBT_1MS * MPSK_OTAG_INTERVAL_MS, 0, mps_kext_otag_tick, k, 0);
+    mps_unlock(sc);
     if (xpt_create_path(&path, NULL, cam_sim_path(sc->sassc->sim), CAM_TARGET_WILDCARD,
                         CAM_LUN_WILDCARD) == CAM_REQ_CMP) {
         if (xpt_register_async(AC_XNU_SCAN | AC_BUS_RESET | AC_SENT_BDR,
@@ -443,6 +556,7 @@ void mps_kext_detach(struct mps_kext *k)
         return;
     k->attached = 0;
     callout_drain(&k->hold_callout);    /* a hold still running: mps_free drops the freeze */
+    callout_drain(&k->otag_callout);    /* dacleanup: before the periph state goes */
     error = mps_free(sc);
     if (error != 0) {
         /* the IOC may still own DMA memory: keep everything */
@@ -675,9 +789,7 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
     /*
      * The task's attribute, as da passes its tag_action (BIO_ORDERED ->
      * ORDERED); mpssas_action_scsiio turns it into the request's queue type.
-     * No periodic ORDERED tag (scsi_da.c's da_send_ordered): SATL has no
-     * ordered NCQ, and the worst latency measured under random load was
-     * 1.22 s against the 60 s timeout (D46, D15a).
+     * da's periodic ORDERED tag is added under mps_mtx below (D46).
      */
     ccb->csio.tag_action = attr == MPSK_ATTR_ORDERED ? MSG_ORDERED_Q_TAG :
                            attr == MPSK_ATTR_HEAD    ? MSG_HEAD_OF_Q_TAG :
@@ -701,6 +813,7 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
         mps_kext_queue_done(k, t);
         return MPSK_SUBMIT_DONE;
     }
+    mps_kext_otag_start(k, t, tid, lun, cdb[0]);
     t->state = MPSK_T_SUBMIT;
     xpt_action(ccb);
     if (t->state == MPSK_T_SYNC_DONE) {
@@ -973,6 +1086,34 @@ int mps_kext_debug(struct mps_kext *k, int what, uint32_t arg)
     }
     mps_unlock(sc);
     return error;
+}
+
+int mps_kext_set_knob(struct mps_kext *k, int knob, uint32_t value)
+{
+    struct mps_softc *sc = &k->sc;
+    int error = 0;
+
+    mps_lock(sc);
+    switch (knob) {
+    case MPSK_KNOB_SEND_ORDERED:
+        if (value > 1)
+            error = EINVAL;
+        else
+            k->send_ordered = (int)value;
+        break;
+    default:
+        error = EINVAL;
+    }
+    mps_unlock(sc);
+    return error;
+}
+
+uint32_t mps_kext_knob(struct mps_kext *k, int knob)
+{
+    switch (knob) {
+    case MPSK_KNOB_SEND_ORDERED: return (uint32_t)k->send_ordered;
+    default: return 0;
+    }
 }
 
 int mps_kext_check_present(struct mps_kext *k)

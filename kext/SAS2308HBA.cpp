@@ -486,6 +486,7 @@ SAS2308HBA::InitializeController(void)
     }
     PublishControllerCharacteristics();
     PublishLimits(true);
+    PublishKnobs();
     PublishStats(true);
     return true;
 

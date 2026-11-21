@@ -188,6 +188,12 @@ private:
     void Klog(uint32_t cls, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
     void KlogAlways(uint32_t cls, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
     void ApplyLogSettings(void);
+    struct Knob { const char *key; int knob; };     /* knob 0: the class's own */
+    static const Knob kKnobs[];
+    static const size_t kKnobCount;
+    int SetClassKnob(const char *key, uint32_t value);
+    uint32_t ClassKnob(const char *key);
+    void PublishKnobs(void);
     void PublishControllerCharacteristics(void);
     bool Snapshot(struct mps_kext_snapshot *snap);
     void PublishStats(bool force);

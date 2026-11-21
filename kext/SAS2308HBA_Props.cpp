@@ -119,6 +119,47 @@ SAS2308HBA::ApplyLogSettings(void)
          mps_kext_level_name(level), mask, names, fHost.use_iolog ? "IOLog" : "os_log subsystem " SAS2308_BUNDLE_ID);
 }
 
+/*
+ * Port tunables (mps_kext_set_knob): boot-arg, else personality key at
+ * attach; sas2308ctl set <key> <n> at runtime, as FreeBSD's CTLFLAG_RWTUN
+ * sysctls. The current values are published under the same keys.
+ */
+const SAS2308HBA::Knob SAS2308HBA::kKnobs[] = {
+    { "sas2308_send_ordered", MPSK_KNOB_SEND_ORDERED },     /* kern.cam.da.send_ordered (D46) */
+};
+const size_t SAS2308HBA::kKnobCount = sizeof(kKnobs) / sizeof(kKnobs[0]);
+
+int
+SAS2308HBA::SetClassKnob(const char *key, uint32_t value)
+{
+    (void)key; (void)value;
+    return EINVAL;
+}
+
+void
+SAS2308HBA::PublishKnobs(void)
+{
+    for (const auto &e : kKnobs) {
+        uint32_t v = 0;
+        if (e.knob == 0) {
+            v = ClassKnob(e.key);
+        } else {
+            if (!Enter())
+                continue;
+            v = mps_kext_knob(fGlue.fMps, e.knob);
+            Leave();
+        }
+        setProperty(e.key, (unsigned long long)v, 32);
+    }
+}
+
+uint32_t
+SAS2308HBA::ClassKnob(const char *key)
+{
+    (void)key;
+    return 0;
+}
+
 /* sas2308ctl / IORegistryEntrySetCFProperties(): change the level at runtime. Admin only. */
 IOReturn
 SAS2308HBA::setProperties(OSObject *properties)
@@ -164,6 +205,25 @@ SAS2308HBA::setProperties(OSObject *properties)
     if (OSBoolean *b = OSDynamicCast(OSBoolean, d->getObject(kIOLogKey))) {
         fHost.use_iolog = b->isTrue();
         setProperty(kIOLogKey, b->isTrue());
+        handled = true;
+    }
+    /* port tunables (sas2308ctl set): the same names as the boot-args / personality keys */
+    for (const auto &e : kKnobs) {
+        OSNumber *n = OSDynamicCast(OSNumber, d->getObject(e.key));
+        if (!n)
+            continue;
+        int rc = -1;
+        if (e.knob == 0) {                          /* the class's own (D50) */
+            rc = SetClassKnob(e.key, n->unsigned32BitValue());
+        } else if (Enter()) {
+            rc = mps_kext_set_knob(fGlue.fMps, e.knob, n->unsigned32BitValue());
+            Leave();
+        }
+        KlogAlways(MPSK_INFO, "tunable %s = %u from userland: %s", e.key, n->unsigned32BitValue(),
+                   rc == 0 ? "set" : "refused");
+        if (rc != 0)
+            return kIOReturnBadArgument;
+        PublishKnobs();
         handled = true;
     }
     static const struct { const char *key; int what; } dbg[] = {
@@ -536,6 +596,7 @@ SAS2308HBA::PublishStats(bool force)
         /* also a top-level property: ioreg -l -k "IOC Temperature (C)" */
         setProperty(kIocTemperatureKey, (unsigned long long)st.ioc_temp_c, 32);
     }
+    SetNumber(d, "Ordered tags sent", st.ordered_tags);     /* da's periodic ORDERED tag (D46) */
     SetNumber(d, "KASSERT hits", st.kassert_hits);   /* KASSERT / panic() survived, all controllers (D55) */
     SetNumber(d, "Debug mask", mask);
     OSString *state = OSString::withCString(gone ? "gone" : fSuspended ? "suspended" : resetting ? "resetting" : "operational");

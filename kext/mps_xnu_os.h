@@ -216,6 +216,16 @@ bool	 mps_kext_done_waiting(struct mps_kext *k);	/* the done queue is not empty 
 int	 mps_kext_timeout(struct mps_kext *k, void *td, void *os_task,
 	    uint32_t timeout_ms, uint32_t *rearm_ms);
 
+/*
+ * ---- port tunables also changeable at runtime (sas2308ctl set) ----------
+ * The start value is the boot-arg, else the personality property of the
+ * same name (sas2308_*), as FreeBSD's CTLFLAG_RWTUN sysctls.
+ * SEND_ORDERED: kern.cam.da.send_ordered (D46), 0/1.
+ */
+enum { MPSK_KNOB_SEND_ORDERED = 1 };
+int	 mps_kext_set_knob(struct mps_kext *k, int knob, uint32_t value);
+uint32_t mps_kext_knob(struct mps_kext *k, int knob);
+
 /* ---- debug triggers for hardware tests (sas2308ctl) --------------------- */
 enum { MPSK_DEBUG_REINIT = 1, MPSK_DEBUG_HOLD, MPSK_DEBUG_LOSE, MPSK_DEBUG_HALT };
 int	 mps_kext_debug(struct mps_kext *k, int what, uint32_t arg);

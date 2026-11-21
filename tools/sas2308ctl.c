@@ -29,7 +29,8 @@ static void Usage(void)
 {
     fprintf(stderr, "usage: sas2308ctl show | stats | level <0-4|name> | mask <list> | iolog on|off | reset-stats\n"
                     "       sas2308ctl reinit | hold <ms> | lose <n> | halt  (debug triggers for hardware tests;\n"
-                    "                  halt: restart's timeout caps, the controller stops at the next reinit)\n");
+                    "                  halt: restart's timeout caps, the controller stops at the next reinit)\n"
+                    "       sas2308ctl set <tunable> <n>  (sas2308_* port tunables, e.g. sas2308_send_ordered 0)\n");
     exit(2);
 }
 
@@ -129,6 +130,11 @@ int main(int argc, char **argv)
             int v = argc == 3 ? atoi(argv[2]) : 1;
             CFNumberRef num = CFNumberCreate(NULL, kCFNumberIntType, &v);
             rc |= Set(svc, key, num);
+            CFRelease(num);
+        } else if (!strcmp(cmd, "set") && argc == 4 && !strncmp(argv[2], "sas2308_", 8)) {
+            int v = atoi(argv[3]);
+            CFNumberRef num = CFNumberCreate(NULL, kCFNumberIntType, &v);
+            rc |= Set(svc, argv[2], num);
             CFRelease(num);
         } else if (!strcmp(cmd, "reset-stats")) {
             rc |= Set(svc, "SAS2308ResetStats", kCFBooleanTrue);
