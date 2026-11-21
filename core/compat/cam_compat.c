@@ -60,6 +60,8 @@ cam_sim_alloc(sim_action_func sim_action, sim_poll_func sim_poll,
 	sim->devq = queue;
 	TAILQ_INIT(&sim->held);
 	TAILQ_INIT(&sim->frozen);
+	sim->nomem.target_id = CAM_TARGET_WILDCARD;
+	sim->nomem.lun_id = CAM_LUN_WILDCARD;
 	TAILQ_INIT(&sim->async);
 	return (sim);
 }
@@ -74,7 +76,8 @@ cam_sim_free(struct cam_sim *sim, int free_devq)
 		cam_xnu_flush_held(sim, CAM_DEV_NOT_THERE);
 	while ((f = TAILQ_FIRST(&sim->frozen)) != NULL) {
 		TAILQ_REMOVE(&sim->frozen, f, link);
-		mps_compat_free(f, NULL);
+		if (f != &sim->nomem)
+			mps_compat_free(f, NULL);
 	}
 	while ((a = TAILQ_FIRST(&sim->async)) != NULL) {
 		TAILQ_REMOVE(&sim->async, a, link);
@@ -245,7 +248,8 @@ cam_xnu_find_frozen(struct cam_sim *sim, target_id_t target, lun_id_t lun)
 	struct cam_xnu_frozen *f;
 
 	TAILQ_FOREACH(f, &sim->frozen, link) {
-		if (f->target_id == target && f->lun_id == lun)
+		if (f->target_id == target && f->lun_id == lun &&
+		    f != &sim->nomem)
 			return (f);
 	}
 	return (NULL);
@@ -454,9 +458,15 @@ xpt_freeze_devq(struct cam_path *path, u_int count)
 	if (f == NULL) {
 		f = mps_compat_malloc(sizeof(*f), NULL, M_NOWAIT | M_ZERO);
 		if (f == NULL) {
-			/* Hold everything rather than lose the freeze. */
-			sim->freeze += (int)count;
-			return (count);
+			/*
+			 * Hold everything rather than lose the freeze; the
+			 * matching release undoes it (L4).
+			 */
+			if (sim->nomem.count == 0)
+				TAILQ_INSERT_TAIL(&sim->frozen, &sim->nomem,
+				    link);
+			sim->nomem.count += (int)count;
+			return ((uint32_t)sim->nomem.count);
 		}
 		f->target_id = path->target_id;
 		f->lun_id = lun;
@@ -473,6 +483,8 @@ cam_xnu_release_dev(struct cam_sim *sim, target_id_t target, lun_id_t lun,
 	struct cam_xnu_frozen *f;
 
 	f = cam_xnu_find_frozen(sim, target, lun);
+	if (f == NULL && sim->nomem.count > 0)
+		f = &sim->nomem;	/* a freeze that found no memory (L4) */
 	if (f == NULL) {
 		mps_compat_log(NULL, 0, "cam: %s%u: device queue %u:%ju not "
 		    "frozen", sim->sim_name, sim->unit_number, target,
@@ -482,7 +494,8 @@ cam_xnu_release_dev(struct cam_sim *sim, target_id_t target, lun_id_t lun,
 	f->count -= ((int)count < f->count) ? (int)count : f->count;
 	if (f->count == 0) {
 		TAILQ_REMOVE(&sim->frozen, f, link);
-		mps_compat_free(f, NULL);
+		if (f != &sim->nomem)
+			mps_compat_free(f, NULL);
 	}
 }
 

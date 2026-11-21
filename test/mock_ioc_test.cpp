@@ -2940,6 +2940,37 @@ static void DeviationTests()
         CHECK(r->done && r->status == CAM_REQ_CMP);
     }
 
+    if (Want("L4")) {
+        /* a devq freeze whose entry cannot be allocated holds everything (embedded fallback entry), and
+         * the matching device release finds and undoes it, as CAM's plain qfrozen_cnt; a SIM release
+         * does not consume it */
+        Rig g;
+        struct cam_sim *sim = g.sc->sassc->sim;
+        const target_id_t t9 = g.Tid(0x0009), tA = g.Tid(0x000A);
+        struct cam_path *p9;
+        CHECK(xpt_create_path(&p9, NULL, cam_sim_path(sim), t9, 0) == CAM_REQ_CMP);
+        mps_lock(g.sc);
+        gHost.failAllocAt = gHost.allocs + 1;               /* the freeze entry's malloc */
+        xpt_freeze_devq(p9, 1);
+        gHost.failAllocAt = 0;
+        mps_unlock(g.sc);
+        Io *r = g.Read(0x000A, 0, 2);                       /* another target: held too (wider hold) */
+        CHECK(tA != t9 && g.Go(r) == kHeld);
+        mps_lock(g.sc);
+        xpt_freeze_simq(sim, 1);
+        xpt_release_simq(sim, 1);                           /* not the devq's freeze */
+        mps_unlock(g.sc);
+        g.Pump();
+        CHECK(!r->done && sim->freeze == 0 && !TAILQ_EMPTY(&sim->frozen));
+        mps_lock(g.sc);
+        xpt_release_devq(p9, 1, TRUE);
+        mps_unlock(g.sc);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+        CHECK(TAILQ_EMPTY(&sim->frozen) && sim->freeze == 0 && g.HeldCount() == 0);
+        xpt_free_path(p9);
+    }
+
     if (Want("D27")) {
         /* the kernel printf's %b in compat: FreeBSD's call sites stay verbatim */
         char b[200];

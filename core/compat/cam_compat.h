@@ -290,6 +290,14 @@ struct cam_sim {
 	uint32_t		 held_total;		/* ccbs ever held */
 	TAILQ_HEAD(cam_xnu_ccbq, ccb_hdr) held;			/* by arrival order */
 	TAILQ_HEAD(, cam_xnu_frozen) frozen;
+	/*
+	 * XNU: CAM's devq freeze is a counter in the cam_ed, no allocation.
+	 * A freeze whose entry cannot be allocated counts here, on the frozen
+	 * list as (wildcard, wildcard) while non-zero: it holds every device,
+	 * and the device release that finds no entry of its own undoes it
+	 * (L4).  Never freed, never found by an exact lookup.
+	 */
+	struct cam_xnu_frozen	 nomem;
 	TAILQ_HEAD(, cam_xnu_async) async;
 };
 
