@@ -320,6 +320,7 @@ struct mps_kext_snapshot {
 	int		resetting;
 };
 void	 mps_kext_snapshot(struct mps_kext *k, struct mps_kext_snapshot *s);
+bool	 mps_kext_snapshot_detached(struct mps_kext *k, struct mps_kext_snapshot *s);
 void	 mps_kext_reset_stats(struct mps_kext *k);
 void	 mps_kext_set_debug(struct mps_kext *k, uint32_t mask);
 

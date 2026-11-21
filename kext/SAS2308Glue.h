@@ -101,8 +101,18 @@ public:
     };
 
     bool Init(SAS2308GluePort *port);   /* the lock; false: no memory */
-    void Fini(void);                    /* idempotent */
+    void Fini(void);                    /* idempotent; the lock stays (L7) */
+    /*
+     * The lock goes last, from free() (L7): by then no userland entry point
+     * (setProperties) can run, as FreeBSD's mps_free destroys mps_mtx after
+     * draining the ioctl and sysctl handlers. From Init to FreeLock
+     * HasLock() is constant, so its unlocked read is benign.
+     */
+    void FreeLock(void);
     bool HasLock(void) const { return fLock != nullptr; }
+    struct mps_kext *TakeCore(void);    /* fMps = nullptr under the lock; returns the old one */
+    bool Snapshot(struct mps_kext_snapshot *snap);  /* attached: gated; detached: under the lock */
+    void SetDebug(uint32_t mask);       /* the core's mask, under the lock */
     void Lock(void) { mps_kext_lock(fLock); }
     void Unlock(void) { mps_kext_unlock(fLock); }
 

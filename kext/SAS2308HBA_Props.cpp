@@ -152,8 +152,7 @@ SAS2308HBA::setProperties(OSObject *properties)
     if (handled) {
         const uint32_t old = fDebugMask;
         fDebugMask = mask;
-        if (fGlue.fMps)
-            mps_kext_set_debug(fGlue.fMps, mask);
+        fGlue.SetDebug(mask);                       /* under fLock: races no teardown (L7) */
         if (level >= 0)
             setProperty(kLogLevelKey, (unsigned long long)level, 32);
         setProperty(kDebugMaskKey, (unsigned long long)mask, 32);
@@ -400,24 +399,11 @@ static uint32_t TmSentTotal(const struct mps_xnu_stats &st)
     return n;
 }
 
-/* The core's counters: under mps_mtx while attached, as they were left after mps_free. */
+/* The core's counters: under mps_mtx while attached, as they were left after mps_free (L7). */
 bool
 SAS2308HBA::Snapshot(struct mps_kext_snapshot *snap)
 {
-    if (Enter()) {
-        mps_kext_snapshot(fGlue.fMps, snap);
-        Leave();
-        return true;
-    }
-    if (!fGlue.HasLock() || !fGlue.fMps)
-        return false;
-    fGlue.Lock();
-    const bool detached = !fGlue.fCoreAttached && !fGlue.fBusy;
-    fGlue.Unlock();
-    if (!detached)
-        return false;
-    mps_kext_snapshot(fGlue.fMps, snap);
-    return true;
+    return fGlue.Snapshot(snap);
 }
 
 /*

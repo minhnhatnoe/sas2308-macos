@@ -34,10 +34,63 @@ SAS2308Glue::Fini(void)
         mps_kext_zfree(e, sizeof(*e) * n);
     fMaxTasks = 0;
     fMaxTargets = 0;
+}
+
+void
+SAS2308Glue::FreeLock(void)
+{
     if (fLock != nullptr) {
         mps_kext_lock_free(fLock);
         fLock = nullptr;
     }
+}
+
+struct mps_kext *
+SAS2308Glue::TakeCore(void)
+{
+    if (!fLock) {
+        struct mps_kext *m = fMps;
+        fMps = nullptr;
+        return m;
+    }
+    Lock();
+    struct mps_kext *m = fMps;
+    fMps = nullptr;
+    Unlock();
+    return m;
+}
+
+/*
+ * The core's counters: under mps_mtx while attached (the gate); after
+ * mps_free a struct copy under fLock, so TakeCore/mps_kext_destroy cannot
+ * free the core under it (L7). The copy never takes mps_mtx (fLock is a
+ * leaf under it).
+ */
+bool
+SAS2308Glue::Snapshot(struct mps_kext_snapshot *snap)
+{
+    if (Enter()) {
+        mps_kext_snapshot(fMps, snap);
+        Leave();
+        return true;
+    }
+    if (!fLock)
+        return false;
+    Lock();
+    const bool ok = fMps != nullptr && !fCoreAttached && !fBusy && mps_kext_snapshot_detached(fMps, snap);
+    Unlock();
+    return ok;
+}
+
+void
+SAS2308Glue::SetDebug(uint32_t mask)
+{
+    if (!fLock)
+        return;
+    Lock();
+    if (fMps)
+        mps_kext_set_debug(fMps, mask);         /* a plain store: no mps_mtx */
+    Unlock();
 }
 
 void

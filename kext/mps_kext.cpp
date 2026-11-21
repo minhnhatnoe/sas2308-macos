@@ -1141,6 +1141,17 @@ int mps_kext_target_present(struct mps_kext *k, uint32_t tid)
     return present;
 }
 
+/* After mps_free only (false otherwise): a struct copy, no lock taken (L7) */
+bool mps_kext_snapshot_detached(struct mps_kext *k, struct mps_kext_snapshot *s)
+{
+    if (!k->detached)
+        return false;
+    memset_zero(s, sizeof(*s));
+    s->st = k->sc.xnu.stats;
+    s->gone = 1;
+    return true;
+}
+
 void mps_kext_snapshot(struct mps_kext *k, struct mps_kext_snapshot *s)
 {
     struct mps_softc *sc = &k->sc;

@@ -614,8 +614,8 @@ SAS2308HBA::ReleaseResources(void)
     }
     if (fGlue.fMps) {
         DeliverCompletions();
-        mps_kext_destroy(fGlue.fMps);               /* after mps_free or a failed mps_attach */
-        fGlue.fMps = nullptr;
+        /* fMps cleared under fLock first: a concurrent Snapshot/SetDebug sees it or nothing (L7) */
+        mps_kext_destroy(fGlue.TakeCore());         /* after mps_free or a failed mps_attach */
     }
     fHost.regs = nullptr;
     fHost.mapper = nullptr;
@@ -660,6 +660,7 @@ SAS2308HBA::free(void)
 {
     StopPowerManagement();
     ReleaseResources();
+    fGlue.FreeLock();                               /* no entry point left (retain count 0): L7 */
     super::free();
 }
 

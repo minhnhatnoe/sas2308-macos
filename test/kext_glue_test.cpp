@@ -84,6 +84,7 @@ struct FakeTask {
 };
 
 struct SAS2308_HIDDEN Family : SAS2308GluePort {
+    ~Family() { glue.FreeLock(); }                  /* SAS2308HBA::free (L7) */
     SAS2308Glue glue;
     MockIocModel *ioc = nullptr;
     struct mps_kext_host host{};
@@ -215,6 +216,7 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
             delete t;
         }
         tasks.clear();
+        CHECK(glue.TakeCore() == k);                /* ReleaseResources (L7) */
         mps_kext_destroy(k);
         glue.Fini();
         gHost.sc = nullptr; gHost.threadCalls.clear();
@@ -923,6 +925,27 @@ int main()
         CHECK(mps_kext_resume(f.k) == 0);
         f.Run(3000);
         f.Detach();
+    }
+
+    if (Want("L7")) {
+        /* the glue lock lives until free() (FreeBSD: entry points drained, then mtx_destroy) */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        FakeTask *a = f.NewRead(f.Tid(0x0009));
+        CHECK(f.Submit(a) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        struct mps_kext_snapshot s;
+        CHECK(f.glue.Snapshot(&s) && s.st.ios == 1 && !s.gone);   /* attached: through the gate */
+        f.glue.StopCore();                          /* mps_free */
+        CHECK(f.glue.Snapshot(&s) && s.st.ios == 1 && s.gone);    /* detached: the final counters */
+        f.glue.SetDebug(MPS_INFO | MPS_FAULT);
+        f.Detach();                                 /* TerminateController: TakeCore, destroy, Fini */
+        CHECK(f.glue.HasLock() && !f.glue.Enter());
+        CHECK(!f.glue.Snapshot(&s));                /* setProperties after the stop: nothing, no UAF */
+        f.glue.SetDebug(MPS_INFO);
+        f.glue.FreeLock();                          /* free() */
+        CHECK(!f.glue.HasLock() && !f.glue.Snapshot(&s));
     }
 
     if (Want("L17")) {
