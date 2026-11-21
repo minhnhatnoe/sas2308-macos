@@ -138,7 +138,7 @@ SAS2308HBA::SetClassKnob(const char *key, uint32_t value)
         fShutdownStop = value != 0;
         return 0;
     }
-    return EINVAL;
+    return -1;
 }
 
 void

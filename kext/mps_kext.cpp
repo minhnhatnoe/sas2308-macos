@@ -66,9 +66,9 @@ static inline void memset_zero(void *p, size_t n) { memset(p, 0, n); }
  * the controller instead of one per periph.
  */
 #define MPSK_OTAG_INTERVAL_MS	15000	/* DA_DEFAULT_TIMEOUT 60 s / DA_ORDEREDTAG_INTERVAL 4 */
-#define MPSK_OTAG_NEED		0x1	/* DA_FLAG_NEED_OTAG */
-#define MPSK_OTAG_WAS		0x2	/* DA_FLAG_WAS_OTAG */
-#define MPSK_OTAG_SLOTS		2	/* per target id: LUN 0, other LUNs */
+#define MPSK_OTAG_NEED		0x1u	/* DA_FLAG_NEED_OTAG */
+#define MPSK_OTAG_WAS		0x2u	/* DA_FLAG_WAS_OTAG */
+#define MPSK_OTAG_SLOTS		2u	/* per target id: LUN 0, other LUNs */
 struct mps_kext_otag {
     uint32_t                pending;
     uint32_t                flags;
@@ -289,7 +289,7 @@ static void mps_kext_otag_start(struct mps_kext *k, struct mps_kext_task *t, uin
     t->otag = 0;
     if (k->otag == nullptr || tid >= k->ntargets || !mps_kext_otag_cmd(op))
         return;
-    const uint32_t slot = tid * MPSK_OTAG_SLOTS + (lun != 0);
+    const uint32_t slot = tid * MPSK_OTAG_SLOTS + (lun != 0 ? 1u : 0u);
     struct mps_kext_otag *o = &k->otag[slot];
     if (csio->tag_action == MSG_ORDERED_Q_TAG ||
         ((o->flags & MPSK_OTAG_NEED) && csio->tag_action == MSG_SIMPLE_Q_TAG)) {
