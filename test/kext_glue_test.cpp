@@ -106,9 +106,13 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         d->attr = f->attr;
         return true;
     }
+    int mapShortage = 0;                    /* the next n TaskMapBegin fail: no IOVA space (D47) */
+    int mapCalls = 0;
     bool TaskMapBegin(void *t, uint64_t) override {
         FakeTask *f = (FakeTask *)t;
         CHECK(!f->mapped);
+        mapCalls++;
+        if (mapShortage > 0) { mapShortage--; return false; }
         f->mapped = true;
         return true;
     }
@@ -848,6 +852,54 @@ int main()
         HostRunPending();
         CHECK(a->completions == 1 && z->completions == 1 && !a->mapped);
         CHECK(!mps_kext_task_glue(a->td.data())->prepared && f.glue.fOutstanding == 0);
+        f.Detach();
+    }
+
+    if (Want("D47")) {
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009);
+        /* a data direction with length 0 is a command without data (FreeBSD: dxfer_len 0, cm_data NULL) */
+        for (int dir : {MPSK_DIR_IN, MPSK_DIR_OUT}) {
+            FakeTask *z = f.NewRead(t9);
+            z->dir = dir; z->len = 0; z->cdb[0] = 0x35; z->cdbLen = 10;     /* SYNCHRONIZE CACHE */
+            CHECK(f.Submit(z) == SAS2308Glue::kInProcess);
+            CHECK(m.lastDataLength == 0 &&
+                  (m.lastControl & (MPI2_SCSIIO_CONTROL_READ | MPI2_SCSIIO_CONTROL_WRITE)) == 0);
+            HostRunPending();
+            CHECK(z->completions == 1 && z->done == SAS2308GluePort::kDoneStatus && z->scsiStatus == 0);
+        }
+        /* no IOVA space: the task waits (in order) and is mapped again later, not failed */
+        f.mapShortage = 3;
+        FakeTask *a = f.NewRead(t9), *b = f.NewRead(t9);
+        CHECK(f.Submit(a) == SAS2308Glue::kInProcess && a->armed);
+        CHECK(f.Submit(b) == SAS2308Glue::kInProcess && b->armed);  /* behind a: not mapped before it */
+        HostRunPending();                                           /* the done call retries: short again */
+        CHECK(a->completions == 0 && b->completions == 0 && !a->mapped && !b->mapped);
+        CHECK(f.glue.fKStats.mapWaits == 2);
+        for (int i = 0; i < 3 && a->completions == 0; i++) {
+            f.glue.TimerDeliver();                                  /* the 1 s timer retries */
+            HostRunPending();
+        }
+        CHECK(a->completions == 1 && a->done == SAS2308GluePort::kDoneStatus && a->scsiStatus == 0);
+        CHECK(b->completions == 1 && b->done == SAS2308GluePort::kDoneStatus);
+        CHECK(f.mapShortage == 0 && f.glue.fOutstanding == 0);
+        /* a waiting task whose family timer fires completes timed out (FreeBSD's callout runs from submit) */
+        f.mapShortage = 1000;
+        FakeTask *c = f.NewRead(t9, 2000);
+        CHECK(f.Submit(c) == SAS2308Glue::kInProcess);
+        f.Run(2100);
+        CHECK(c->completions == 1 && c->done == SAS2308GluePort::kDoneTimeout && !c->mapped);
+        /* an abort of a waiting task completes it; a stop completes the rest (DeviceNotPresent) */
+        FakeTask *d = f.NewRead(t9), *e = f.NewRead(t9);
+        CHECK(f.Submit(d) == SAS2308Glue::kInProcess && f.Submit(e) == SAS2308Glue::kInProcess);
+        CHECK(f.glue.AbortWaiting(d) && d->completions == 1 && d->done == SAS2308GluePort::kDoneRetry);
+        CHECK(!f.glue.AbortWaiting(d));
+        f.mapShortage = 0;
+        f.ioc->holdIo = true;
+        f.glue.StopCore();
+        CHECK(e->completions == 1 && e->done == SAS2308GluePort::kDoneGone);
         f.Detach();
     }
 

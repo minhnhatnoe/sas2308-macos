@@ -874,6 +874,11 @@ SAS2308HBA::SendTaskMgmt(uint8_t taskType, SCSITargetIdentifier theT,
             Klog(MPSK_RECOVERY | MPSK_USER, "abort task on target %u: nothing left to abort", (unsigned)theT);
             return kSCSIServiceResponse_FUNCTION_COMPLETE;
         }
+        if (fGlue.AbortWaiting(victim)) {           /* still waiting for its DMA mapping (D47) */
+            Klog(MPSK_RECOVERY | MPSK_USER, "abort task on target %u: it waited for a DMA mapping, completed",
+                 (unsigned)theT);
+            return kSCSIServiceResponse_FUNCTION_COMPLETE;
+        }
     }
     if (!Enter()) {
         if (fGlue.HasLock()) {

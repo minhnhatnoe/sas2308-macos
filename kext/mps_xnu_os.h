@@ -148,9 +148,13 @@ struct mps_kext_seg *mps_kext_task_segs(void *td);
  * before mps_kext_submit, which does not touch it.
  */
 struct mps_kext_task_glue {
-	void		*next;		/* the glue's lists */
+	void		*next;		/* the mapping-wait list: the next task's HBA data */
+	void		*task;		/* the family's task */
+	uint32_t	 target;
 	uint8_t		 prepared;	/* TaskMapBegin() done: TaskUnmap() at completion */
 	uint8_t		 mapwait;	/* on the glue's mapping-wait list (D47) */
+	uint8_t		 retrying;	/* taken off it by the retrier, being mapped */
+	uint8_t		 cancel;	/* completion (done + 1) for the retrier instead of a post */
 };
 struct mps_kext_task_glue *mps_kext_task_glue(void *td);
 

@@ -430,6 +430,7 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Reinit max ms", st.reinit_max_ms);
     SetNumber(d, "Controller dead", ks.deadEvents);
     SetNumber(d, "Lost completion kicks", ks.lostKicks);
+    SetNumber(d, "Tasks waiting for a mapping", ks.mapWaits);  /* IOVA shortage: mapped again later (D47) */
     SetNumber(d, "Transient all-ones reads", st.transient_allones);
     {
         uint16_t cmd, ctl;
@@ -523,7 +524,7 @@ SAS2308HBA::StatsTimerFired(OSObject *owner, IOTimerEventSource *sender)
     self->fGlue.Unlock();
     if (!run)
         return;
-    self->fGlue.TimerDeliver();                     /* lost kicks: delivered, counted (D43) */
+    self->fGlue.TimerDeliver();                     /* lost kicks (D43), mapping retries (D47) */
     self->PublishStats(false);
     sender->setTimeoutMS(kStatsPublishMs);
 }

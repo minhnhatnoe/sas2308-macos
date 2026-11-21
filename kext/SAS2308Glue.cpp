@@ -140,6 +140,7 @@ SAS2308Glue::StopCore(void)
         mps_kext_sleep(fLock, &fBusy);
     fCoreAttached = false;
     Unlock();
+    FlushMapWait(kAllTargets, SAS2308GluePort::kDoneGone);     /* never reached the core (D47) */
     mps_kext_detach(fMps);
     DeliverCompletions();
 }
@@ -148,6 +149,93 @@ SAS2308Glue::StopCore(void)
 #pragma mark -
 #pragma mark IO
 #endif
+
+//-----------------------------------------------------------------------------
+//	MapTask - bus_dmamap_load_ccb() input (CAM_DATA_SG_PADDR): the family
+//	owns the IODMACommand and its memory descriptor; we prepare() the range
+//	and complete() it when the IO is done. kMapShort: prepare/gen failed
+//	(no IOVA space now): the task waits and is mapped again later, as
+//	busdma defers a load (EINPROGRESS) (D47). kMapBad: the transfer cannot
+//	be described (too many segments, a bad segment): never will.
+//-----------------------------------------------------------------------------
+
+SAS2308Glue::MapResult
+SAS2308Glue::MapTask(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t *nsegsOut)
+{
+    struct mps_kext_task_glue *tg = mps_kext_task_glue(d.td);
+    uint32_t nsegs = 0;
+
+    *nsegsOut = 0;
+    if (d.length == 0)
+        return kMapOk;
+    struct mps_kext_seg *segs = mps_kext_task_segs(d.td);
+    const uint64_t maxSegBytes = mps_kext_max_seg_bytes();
+    if (!fPort->TaskMapBegin(task, d.length))
+        return kMapShort;
+    tg->prepared = 1;
+
+    uint64_t offset = 0;
+    MapResult r = kMapOk;
+    while (r == kMapOk && offset < d.length && nsegs < fMaxSegs) {
+        struct mps_kext_seg chunk[16];
+        uint32_t n = fMaxSegs - nsegs;
+        if (n > 16)
+            n = 16;
+        if (!fPort->TaskMapNext(task, &offset, chunk, &n) || n == 0) {
+            r = kMapShort;
+            break;
+        }
+        for (uint32_t i = 0; i < n; i++) {
+            if (chunk[i].len == 0 || chunk[i].len > maxSegBytes) {
+                r = kMapBad;
+                break;
+            }
+            segs[nsegs++] = chunk[i];
+        }
+    }
+    if (r == kMapOk && (offset != d.length || nsegs == 0))
+        r = kMapBad;
+    if (r != kMapOk) {
+        if (r == kMapBad)
+            Klog(MPSK_ERROR | MPSK_INFO, "cannot map IO for target %u: %u segments for %llu of %llu bytes (cap %u)",
+                 d.target, nsegs, (unsigned long long)offset, (unsigned long long)d.length, fMaxSegs);
+        fPort->TaskUnmap(task);
+        tg->prepared = 0;
+        return r;
+    }
+    *nsegsOut = nsegs;
+    return kMapOk;
+}
+
+//-----------------------------------------------------------------------------
+//	Post - a mapped task to mpssas_action_scsiio (xpt_action). The caller
+//	holds the gate (fBusy).
+//-----------------------------------------------------------------------------
+
+void
+SAS2308Glue::Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs)
+{
+    Lock();
+    const uint32_t gen = fTargets.Gen(d.target);   /* the nub's device (mps_kext_submit checks it) */
+    Unlock();
+    struct mps_kext_io_result res;
+    const int rc = mps_kext_submit(fMps, d.td, task, d.tag, d.target, d.lun, d.cdb, d.cdbLen, d.dir, d.attr, nsegs,
+                                   d.length, d.timeoutMs, gen, &res);
+    Lock();
+    if (rc == MPSK_SUBMIT_DONE) {
+        fKStats.tasksRejected++;
+        ScheduleDone();                 /* delivered from the done call: no family re-entry from here */
+    } else {
+        fKStats.tasks++;
+        if (rc == MPSK_SUBMIT_HELD)
+            fKStats.tasksHeld++;
+    }
+    Unlock();
+    if (rc == MPSK_SUBMIT_DONE)
+        /* refused by mpssas_action_scsiio (unknown target, gone, invalid, too big) */
+        Klog(res.kind == MPSK_IO_REJECT ? MPSK_ERROR : (MPSK_ERROR | MPSK_XINFO),
+             "IO for target %u refused (CAM status 0x%x)", d.target, res.cam_status);
+}
 
 //-----------------------------------------------------------------------------
 //	ProcessTask - SCSIParallelTask -> XPT_SCSI_IO ccb (mpssas_action_scsiio
@@ -163,9 +251,12 @@ SAS2308Glue::ProcessTask(void *task)
         return kFailure;
     if (d.cdbLen == 0 || d.cdbLen > sizeof(d.cdb))
         return kRejected;
+    /* D47: a direction with no data is a command without data, as FreeBSD takes dxfer_len 0 */
+    if (d.length == 0)
+        d.dir = MPSK_DIR_NONE;
     if (d.dir == MPSK_DIR_NONE)
         d.length = 0;
-    else if (d.length == 0 || d.length > 0xFFFFFFFFull)
+    else if (d.length > 0xFFFFFFFFull)
         return kRejected;
 
     /*
@@ -175,57 +266,25 @@ SAS2308Glue::ProcessTask(void *task)
      */
     if (!d.td || d.tdSize < mps_kext_task_size(fMps) || fMaxSegs == 0)
         return kFailure;
-
-    /*
-     * bus_dmamap_load_ccb() input (CAM_DATA_SG_PADDR): the family owns the
-     * IODMACommand and its memory descriptor; we prepare() the range and
-     * complete() it when the IO is done.
-     */
     struct mps_kext_task_glue *tg = mps_kext_task_glue(d.td);
     memset(tg, 0, sizeof(*tg));
-    uint32_t nsegs = 0;
-    bool prepared = false;
-    if (d.length) {
-        struct mps_kext_seg *segs = mps_kext_task_segs(d.td);
-        const uint64_t maxSegBytes = mps_kext_max_seg_bytes();
-        if (!fPort->TaskMapBegin(task, d.length))
-            return kFailure;
-        prepared = true;
+    tg->task = task;
+    tg->target = d.target;
 
-        uint64_t offset = 0;
-        bool ok = true;
-        while (ok && offset < d.length && nsegs < fMaxSegs) {
-            struct mps_kext_seg chunk[16];
-            uint32_t n = fMaxSegs - nsegs;
-            if (n > 16)
-                n = 16;
-            if (!fPort->TaskMapNext(task, &offset, chunk, &n) || n == 0) {
-                ok = false;
-                break;
-            }
-            for (uint32_t i = 0; i < n; i++) {
-                if (chunk[i].len == 0 || chunk[i].len > maxSegBytes) {
-                    ok = false;
-                    break;
-                }
-                segs[nsegs++] = chunk[i];
-            }
-        }
-        if (!ok || offset != d.length || nsegs == 0) {
-            Klog(MPSK_ERROR | MPSK_INFO, "cannot map IO for target %u: %u segments for %llu of %llu bytes (cap %u)",
-                 d.target, nsegs, (unsigned long long)offset, (unsigned long long)d.length, fMaxSegs);
-            fPort->TaskUnmap(task);
-            return kFailure;
-        }
-    }
+    /* Tasks waiting for a mapping go first: this one waits behind them (order, as a frozen SIM queue). */
+    Lock();
+    const bool behind = fMapWaitHead != nullptr;
+    Unlock();
+    uint32_t nsegs = 0;
+    const MapResult mr = behind ? kMapShort : MapTask(task, d, &nsegs);
+    if (mr == kMapBad)
+        return kFailure;
 
     /*
      * A pass through the gate. The family never has more than fMaxTasks
      * (ReportMaximumTaskCount) outstanding; the count is a check.
      */
-    tg->prepared = prepared;
     Lock();
-    const uint32_t gen = fTargets.Gen(d.target);   /* the nub's device (mps_kext_submit checks it) */
     const bool open = !fStopping && fCoreAttached && fMps;
     const bool room = open && fOutstanding < fMaxTasks;
     if (room) {
@@ -236,7 +295,7 @@ SAS2308Glue::ProcessTask(void *task)
     }
     Unlock();
     if (!room) {
-        if (prepared)
+        if (tg->prepared)
             fPort->TaskUnmap(task);
         tg->prepared = 0;
         if (open)
@@ -253,28 +312,191 @@ SAS2308Glue::ProcessTask(void *task)
      * re-arms it while the task waits outside the IOC (D4).
      */
     fPort->SetTimeoutForTask(task, 0);
-    struct mps_kext_io_result res;
-    const int rc = mps_kext_submit(fMps, d.td, task, d.tag, d.target, d.lun, d.cdb, d.cdbLen, d.dir, d.attr, nsegs,
-                                   d.length, d.timeoutMs, gen, &res);
-
-    Lock();
-    if (rc == MPSK_SUBMIT_DONE) {
-        fKStats.tasksRejected++;
-        ScheduleDone();                 /* delivered from the done call: no family re-entry from here */
-    } else {
-        fKStats.tasks++;
-        if (rc == MPSK_SUBMIT_HELD)
-            fKStats.tasksHeld++;
+    if (mr == kMapShort) {
+        /*
+         * D47: no IOVA space now. FreeBSD's busdma defers the load and
+         * calls back when resources are free; we retry from the next
+         * completion delivery and the 1 s timer. Timed from here, as
+         * FreeBSD arms the ccb's callout before mps_map_command.
+         */
+        Lock();
+        tg->mapwait = 1;
+        if (fMapWaitTail)
+            mps_kext_task_glue(fMapWaitTail)->next = d.td;
+        else
+            fMapWaitHead = d.td;
+        fMapWaitTail = d.td;
+        const bool first = fKStats.mapWaits++ == 0;
+        ScheduleDone();                 /* a retry soon, from the done call */
+        if (--fBusy == 0 && fStopping)
+            mps_kext_wakeup(&fBusy);
+        Unlock();
+        if (first)
+            Klog(MPSK_ERROR | MPSK_XINFO, "IO for target %u waits for a DMA mapping (no IOVA space); "
+                 "counted as \"Tasks waiting for a mapping\", logged once", d.target);
+        return kInProcess;
     }
+    Post(task, d, nsegs);
+    Lock();
     if (--fBusy == 0 && fStopping)
         mps_kext_wakeup(&fBusy);
     Unlock();
-
-    if (rc == MPSK_SUBMIT_DONE)
-        /* refused by mpssas_action_scsiio (unknown target, gone, invalid, too big) */
-        Klog(res.kind == MPSK_IO_REJECT ? MPSK_ERROR : (MPSK_ERROR | MPSK_XINFO),
-             "IO for target %u refused (CAM status 0x%x)", d.target, res.cam_status);
     return kInProcess;
+}
+
+//-----------------------------------------------------------------------------
+//	Tasks waiting for a mapping (D47). RetryMapWait maps and posts them in
+//	order until one is short again; one retrier at a time. TakeWaiting
+//	removes one (fLock held): a waiting task is unlinked; one the retrier
+//	holds is marked, and the retrier completes it instead of posting it.
+//-----------------------------------------------------------------------------
+
+void
+SAS2308Glue::RetryMapWait(void)
+{
+    for (;;) {
+        Lock();
+        void *td = fMapWaitHead;
+        if (!td || fMapRetrying || fStopping || !fCoreAttached || !fMps) {
+            Unlock();
+            return;
+        }
+        struct mps_kext_task_glue *tg = mps_kext_task_glue(td);
+        fMapWaitHead = tg->next;
+        if (!fMapWaitHead)
+            fMapWaitTail = nullptr;
+        tg->next = nullptr;
+        tg->mapwait = 0;
+        tg->retrying = 1;
+        fMapRetrying = true;
+        fBusy++;
+        Unlock();
+
+        void *task = tg->task;
+        SAS2308GluePort::TaskDesc d;
+        uint32_t nsegs = 0;
+        MapResult mr = fPort->TaskDescribe(task, &d) && d.td == td ? MapTask(task, d, &nsegs) : kMapBad;
+        if (mr == kMapOk && d.length == 0)
+            d.dir = MPSK_DIR_NONE;
+
+        Lock();
+        const uint8_t cancel = tg->cancel;
+        if (mr == kMapShort && !cancel) {
+            tg->next = fMapWaitHead;            /* first in line again */
+            fMapWaitHead = td;
+            if (!fMapWaitTail)
+                fMapWaitTail = td;
+            tg->mapwait = 1;
+        }
+        Unlock();
+
+        bool again = true;
+        if (cancel || mr == kMapBad) {
+            if (tg->prepared)
+                fPort->TaskUnmap(task);
+            tg->prepared = 0;
+            Lock();
+            if (fOutstanding)
+                fOutstanding--;
+            Unlock();
+            fPort->CompleteTask(task, cancel ? cancel - 1 : (int)SAS2308GluePort::kDoneReject, 0, 0, nullptr, 0);
+        } else if (mr == kMapOk) {
+            Post(task, d, nsegs);
+        } else {
+            again = false;                      /* still short: the next completion or tick */
+        }
+        Lock();
+        tg->retrying = 0;
+        tg->cancel = 0;
+        fMapRetrying = false;
+        mps_kext_wakeup(&fMapRetrying);
+        if (--fBusy == 0 && fStopping)
+            mps_kext_wakeup(&fBusy);
+        Unlock();
+        if (!again)
+            return;
+    }
+}
+
+bool
+SAS2308Glue::TakeWaiting(void *td, int done)
+{
+    struct mps_kext_task_glue *tg = mps_kext_task_glue(td);
+
+    if (tg->retrying) {
+        tg->cancel = (uint8_t)(done + 1);
+        return false;                           /* the retrier completes it */
+    }
+    if (!tg->mapwait)
+        return false;
+    void *prev = nullptr;
+    for (void *p = fMapWaitHead; p; prev = p, p = mps_kext_task_glue(p)->next) {
+        if (p != td)
+            continue;
+        if (prev)
+            mps_kext_task_glue(prev)->next = tg->next;
+        else
+            fMapWaitHead = tg->next;
+        if (fMapWaitTail == td)
+            fMapWaitTail = prev;
+        tg->next = nullptr;
+        tg->mapwait = 0;
+        if (fOutstanding)
+            fOutstanding--;
+        return true;
+    }
+    return false;
+}
+
+//-----------------------------------------------------------------------------
+//	AbortWaiting - AbortTaskRequest of a task that waits for its mapping:
+//	completed (DeliveryFailure, like an aborted ccb). False: not waiting.
+//-----------------------------------------------------------------------------
+
+bool
+SAS2308Glue::AbortWaiting(void *task)
+{
+    SAS2308GluePort::TaskDesc d;
+
+    if (!fLock || !fPort->TaskDescribe(task, &d) || !d.td || mps_kext_task_glue(d.td)->task != task)
+        return false;
+    Lock();
+    const bool retrying = mps_kext_task_glue(d.td)->retrying;
+    const bool took = TakeWaiting(d.td, SAS2308GluePort::kDoneRetry);
+    Unlock();
+    if (took)
+        fPort->CompleteTask(task, SAS2308GluePort::kDoneRetry, 0, 0, nullptr, 0);
+    return took || retrying;
+}
+
+//-----------------------------------------------------------------------------
+//	FlushMapWait - complete the waiting tasks of `target' (kAllTargets: all)
+//	as `done', after a running retry has finished: before a nub is
+//	destroyed, and at stop.
+//-----------------------------------------------------------------------------
+
+void
+SAS2308Glue::FlushMapWait(uint32_t target, int done)
+{
+    if (!fLock)
+        return;
+    for (;;) {
+        void *task = nullptr;
+        Lock();
+        while (fMapRetrying)
+            mps_kext_sleep(fLock, &fMapRetrying);
+        for (void *p = fMapWaitHead; p && !task; p = mps_kext_task_glue(p)->next) {
+            const struct mps_kext_task_glue *tg = mps_kext_task_glue(p);
+            if (target == kAllTargets || tg->target == target) {
+                task = tg->task;
+                (void)TakeWaiting(p, done);
+            }
+        }
+        Unlock();
+        if (!task)
+            return;
+        fPort->CompleteTask(task, done, 0, 0, nullptr, 0);
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -298,7 +520,23 @@ SAS2308Glue::HandleTimeout(void *task)
     Lock();
     fKStats.familyTimeouts++;
     Unlock();
-    const int rc = fPort->TaskDescribe(task, &d) ? mps_kext_timeout(fMps, d.td, task, d.timeoutMs, &rearm) : -1;
+    if (!fPort->TaskDescribe(task, &d))
+        d.td = nullptr;
+    /* D47: still waiting for its mapping (FreeBSD's callout runs from mpssas_action_scsiio): timed out */
+    if (d.td && mps_kext_task_glue(d.td)->task == task) {
+        Lock();
+        const bool retrying = mps_kext_task_glue(d.td)->retrying;
+        const bool took = TakeWaiting(d.td, SAS2308GluePort::kDoneTimeout);
+        Unlock();
+        if (took || retrying) {
+            Leave();
+            Klog(MPSK_RECOVERY | MPSK_ERROR, "target %u: timeout while waiting for a DMA mapping", d.target);
+            if (took)
+                fPort->CompleteTask(task, SAS2308GluePort::kDoneTimeout, 0, 0, nullptr, 0);
+            return;
+        }
+    }
+    const int rc = d.td ? mps_kext_timeout(fMps, d.td, task, d.timeoutMs, &rearm) : -1;
     Leave();
     /*
      * Re-armed before any completion of this task reaches the family:
@@ -360,6 +598,7 @@ SAS2308Glue::DeliverCompletions(void)
         }
         fPort->CompleteTask(task, done, res.scsi_status, res.transferred, res.sense, res.sense_len);
     }
+    RetryMapWait();                     /* completions unmapped IOVA space (D47) */
     return n;
 }
 
@@ -376,6 +615,7 @@ SAS2308Glue::TimerDeliver(void)
 {
     if (!fMps || !fLock)
         return;
+    RetryMapWait();                     /* tasks waiting for a mapping (D47) */
     Lock();
     const bool kicked = fDonePending != 0;
     Unlock();
@@ -548,6 +788,7 @@ SAS2308Glue::Hotplug(void)
              * time limit (D14): the removal TM's timeout and the reinit
              * bound it.
              */
+            FlushMapWait(w.targetID, SAS2308GluePort::kDoneGone);
             if (Enter()) {
                 const int left = mps_kext_target_drain(fMps, w.targetID, kDrainReinitMs);
                 Leave();
@@ -585,6 +826,8 @@ SAS2308Glue::WillTerminate(void)
         if (!present)
             mps_kext_disable_now(fMps);
         Leave();
+        if (!present)
+            FlushMapWait(kAllTargets, SAS2308GluePort::kDoneGone);
         DeliverCompletions();
         for (uint32_t id = 0; !present && id < kMaxTargets; id++) {
             if (!Enter())

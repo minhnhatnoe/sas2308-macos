@@ -86,7 +86,10 @@ public:
      */
     static constexpr uint32_t kDrainReinitMs = 60000;
 
+    static constexpr uint32_t kAllTargets = ~0u;
+
     enum Response { kInProcess, kRejected, kFailure };
+    enum MapResult { kMapOk, kMapShort, kMapBad };
     struct KStats {                     /* glue-level counters (core counters: struct mps_xnu_stats) */
         uint64_t tasks;                 /* ProcessParallelTask accepted */
         uint32_t tasksHeld;             /* ... of which the thin CAM held (recovery, sleep) */
@@ -95,6 +98,7 @@ public:
         uint32_t tmRequests, tmRequestsFailed;
         uint32_t deadEvents;            /* controller declared dead */
         uint32_t lostKicks;             /* completions only the 1 s timer delivered (D43) */
+        uint32_t mapWaits;              /* tasks that waited for a DMA mapping (D47) */
     };
 
     bool Init(SAS2308GluePort *port);   /* the lock; false: no memory */
@@ -110,6 +114,8 @@ public:
     void StopCore(void);                /* no new calls, wait for running ones, mps_free */
 
     Response ProcessTask(void *task);
+    bool AbortWaiting(void *task);      /* a task waiting for its mapping: completed (D47) */
+    void FlushMapWait(uint32_t target, int done);   /* no lock held; may sleep */
     void HandleTimeout(void *task);
     uint32_t DeliverCompletions(void);  /* no lock held; returns how many */
     void TimerDeliver(void);            /* the 1 s statistics timer: lost kicks (D43) */
@@ -151,6 +157,14 @@ public:
 
 private:
     void Hotplug(void);
+    MapResult MapTask(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t *nsegs);
+    void Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs);
+    void RetryMapWait(void);            /* no lock held */
+    bool TakeWaiting(void *td, int done);   /* fLock held */
+
+    void              *fMapWaitHead = nullptr;  /* HBA data of tasks waiting for a mapping, in order (D47) */
+    void              *fMapWaitTail = nullptr;
+    bool               fMapRetrying = false;
 };
 
 #endif /* SAS2308_GLUE_H */
