@@ -37,6 +37,7 @@ log-noise); items FINAL.md already fixed.
 | **D. Kext glue and IO path** | D7, D9, D30, D31, D45, D46, D47, D48, D52, D29 (ack counter), D55 (KASSERT counter), D73/D74 (asserts, minor) | 70-device topology -> 70 nubs; SSU sent to SATA SSDs only at shutdown; temperature poll timeout -> no reinit, polling stops; zero-length IN/OUT accepted; IODMACommand shortage -> requeue; task attribute passed | random 4K QD32 before/after (D45 slot removal); temperature property updates; "Event acks sent" after boot + hot-plug (decides D29); D9 needs a SATA SSD (SMART unsafe-shutdown count over 3 `shutdown -r`) |
 | **E. Logging (after log-noise is merged)** | D22, D23, D24, D25, D26, D49(b) | captured log types: default mask info,fault,error; XINFO lines DEBUG; FAULT type only for IOC fault / disabled; iolog fallback for device-less lines; per-target limiter | 5 min idle + hot-plug: persisted line counts by type |
 | **F. Shutdown timeout cap (new, after E)** | F1 | SSU (timeout 0) and read with lost replies, halt begins -> both done 10-15 s later, no diag reset; IO after the halt -> 10 s; no TM answered -> done < 16 s; a 30 s LUN reset pending -> 3 s; a reinit stuck in its diag reset -> stopped < 5 s | `sas2308ctl lose 1` + `sas2308ctl halt` (deterministic); `lose 1` right before `shutdown -r now` with a mounted volume; a normal mounted restart; regression |
+| **G1. Code fixes and reverts to FreeBSD (after F)** | D29, D22, D15a, D55b, D58, L12, L13, L4, L11, L3, L17, L7, L10, D43 | per item in design.md "Batch G1" (each failed before: ack asserts, default mask, plist value, one diag reset, max tasks, ASan bad-free, NULL target array, unreleased freeze, no KASSERT, QMD fault, HIS ignored, lock gone after Fini, nested hotplug, pump while not in the gate) | standard regression; `lose 1` + `reinit` under IO on all 7; sleep/wake under IO; `shutdown -r now` with a mounted JHFS+ volume; default log at idle and in the recovery |
 
 Comment-only changes (no behaviour change) ride with whichever batch touches the file: listed in the last table.
 
@@ -53,6 +54,16 @@ the watchdog window, before any `systemWillShutdown`) every command gets at most
 SYNCHRONIZE CACHE and CAM_TIME_DEFAULT 0 = "SIM default" show FreeBSD has no comparable cap and no
 watchdog, so D15's 10 min was our own number), every TM at most 3 s, and the reinit becomes H5's
 bounded stop: 10 + 3 x 3 + 2 = 21 s worst case. Sleep keeps D15. Design: `design.md` "Batch F".
+**Batch G1 rationale** (2026-11-21, after the final benchmark). The project's rule: keep FreeBSD's
+mps/CAM behaviour unless there is evidence (a measurement, an Apple source line or xnu constraint, a
+reproduced failure) for the deviation. The batch-G evaluations
+(working notes, not in this repo) checked each open item against that rule. G1 takes the ones that need no
+experiment: reverts with no evidence behind the deviation (D29 never ran; D22's `+error` showed
+FreeBSD's internal chatter, not CAM's periph errors; D15a's 30 s had no source; D55b's 3 tries were
+never used on hardware and Linux does not retry either; D58's arithmetic kept 7, not 8) and port
+bugs fixed to FreeBSD's semantics (L3, L4, L7, L10, L11, L12, L13, L17, D43). G2 (D46, D21, D50,
+D15b, D65 and the core-callout IO timer) waits for its experiments. Design: `design.md` "Batch G1".
+
 Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace) after batch B; D75
 (kIOMapPostedWrite A/B) after batch D; D29 decided by batch D's counter.
 
@@ -119,6 +130,20 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | E | D26 | done | e5733f1 | core `D26` (handles 0x09/0x11 shared a window before) | see "Batch E hardware results" |
 | E | D49(b) + KEEP comment D49(a) | done | 89b4e62 | core `D49` (MUR ignored at sleep: counted, said) | see "Batch E hardware results" |
 | F | F1 (halt timeout cap, new) | done | 301d0d8 | glue `F`, `F-new`, `F-tm`, `F-pending-tm`, `F-reinit` (all failed before) | see "Batch F hardware results": lost read capped and failed 10.15 s after the halt began, stop instead of reinit, 0 diag resets; mounted restarts clean, no panic, volume OK |
+| G1 | D29 (revert: no EVENT_ACK) | done | ee85cb9 | core/port: no ack on discovery, hot-add, reinit, removal | see "Batch G1 hardware results" |
+| G1 | D22 (revert: default info,fault; stand-ins info,error) | done | cc9f637 | core `D22`, level presets | see "Batch G1 hardware results" |
+| G1 | D15a (revert: 60 s Read/Write Time Out) | done | de1a7b2 | `plist_test.sh` | see "Batch G1 hardware results" |
+| G1 | D55b (revert: one reinit attempt) | done | 512fa5b | mock reinit failure / nested fault, `D19`, port `TestReinitFailure` | see "Batch G1 hardware results" |
+| G1 | D58 (reserve counted from FreeBSD's reqs: 2039) | done | 432549f | glue: max tasks == SIM openings − 8 | see "Batch G1 hardware results" |
+| G1 | L12 (bad free: KASSERT, leak) | done | 9d2fe75 | core `L12` | KASSERT hits 0 |
+| G1 | L13 (realloc targets: allocate first) | done | 650322a | core `L13` | none (needs a firmware change across a reset) |
+| G1 | L4 (devq freeze fallback entry) | done | 4c304d9 | core `L4` | none (allocation failure) |
+| G1 | L11 (callout handler marker + KASSERTs) | done | eac1298 | core `L11` | KASSERT hits 0 |
+| G1 | L3 (held batch visible to cancel/flush) | done | 39ead7b | core `L3` | none (latent) |
+| G1 | L17 (INTx fallback = mps_intr) | done | 67eb2d7 | glue `L17` | none (MSI only behind Thunderbolt) |
+| G1 | L7 (glue lock until free(); snapshots under it) | done | 0d7fc95 | glue `L7` | see "Batch G1 hardware results" |
+| G1 | L10 (hotplug on its own taskqueue thread) | done | ddddb5a | glue `H1`, `L10` | see "Batch G1 hardware results"; hot-plug: still to run, test 13 |
+| G1 | D43 (TM pump only in the gate; timer detects only) | done | bca741f | glue `D43` | see "Batch G1 hardware results"; hot-plug: still to run, test 13 |
 
 ### Batch A hardware results
 
@@ -405,13 +430,12 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
    must have marked it (`sas2308ctl level debug` before attaching: log line `Target N supports
    SSU`); the shutdown itself is not in the log (logd stops first). A SATA HDD must get no SSU
    (enable_ssu default).
-10. **D29, event acks on hot-plug** (with test 1 or 8). Before and after the pull/re-insert:
-    `sas2308ctl stats | grep "Event acks"`. "Event acks sent" stayed 0 over boot (25 events) on
-    build EBB85578; if it is still 0 after hot-plug events, the ack code goes (FreeBSD never acks);
-    if not, the log names the event (`event X (0x..) asks for an ack`) and the code stays with a
-    comment naming it.
+10. **D29, event acks on hot-plug: dropped.** Batch G1 removed the ack code (FreeBSD never acks;
+    the rule needs no test to revert). With test 1 or 8 only check that the pull / re-insert still
+    works without acks (nub destroyed and created, `sas2308ctl stats` Events grows).
 11. **Batch E log levels on hot-plug** (with tests 1 and 2, default level info, i.e. without
-    `level debug`). Note the time, do the pull / re-insert and the dock unplug / re-plug, then
+    `level debug`; since batch G1 the default mask is FreeBSD's `info,fault`, the lines below are
+    tagged `info|error`). Note the time, do the pull / re-insert and the dock unplug / re-plug, then
     `bash ~/hwE/count.sh --start "<time>"`. Expect: a pull shows FreeBSD's info lines for the
     removal and the re-add (no event field dumps, no `PHY[..]` lines); the dock unplug shows
     `controller gone (surprise removal)` and `surprise removal: controller disabled` as **Error**,
@@ -423,6 +447,13 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
     "Power Off" and spins the disks down with START STOP UNIT, timeout 0, during the halt). Expect
     the Mac to power off within ~35 s (unmount recovery) + <= 21 s (halt), no "Halt/Restart Timed
     Out" panic report after the next boot, the file verifies. Repeat without `lose` as the baseline.
+
+13. **Batch G1, hot-plug on the hotplug taskqueue and the TM waiter** (with tests 1, 3 and 7, build
+    of batch G1 or later). The pull and the re-insert must still destroy and create the nub (the
+    hotplug body now runs on its own kernel thread, L10). Afterwards `sas2308ctl stats`:
+    "TM waits in gate" (D43: 0 expected; non-zero means the family sends TMs inside our work-loop
+    gate, the only case where the waiter still pumps the reply queue), "Lost completion kicks" 0,
+    "KASSERT hits" 0.
 
 ## Ranked table: changes (CHANGE)
 

@@ -107,7 +107,7 @@ FreeBSD `maxio` arithmetic), independent of the 16 KiB arm64 page.
   adapt the mock test's expectations; where we deviate, `/* XNU: ... */`.
 - Deviations that stay (from M2–M4): no `panic` (failed reinit → controller disabled,
   IO failed `CAM_DEV_NOT_THERE`); reinit runs on a thread (taskqueue), not in callout
-  context, and retries the reset on a nested fault (≤ 3 attempts); waits drop `mps_mtx`
+  context, and makes one attempt as FreeBSD (batch G1, D55b; it was ≤ 3 until then); waits drop `mps_mtx`
   (reinit sets `MPS_FLAGS_DIAGRESET` first; `mps_intr_locked` and new IO honour it);
   all-ones register reads = surprise removal (`MPS_FLAGS_XNU_GONE`) once confirmed (D11:
   doorbell and PCI vendor id re-read 5 times 20 ms apart), checked by every
@@ -467,7 +467,7 @@ suspended controller (registers left alone, held IO failed `CAM_DEV_NOT_THERE`).
 ### Properties published
 | Where | Key | Value |
 |---|---|---|
-| personality (Info.plist), as AppleLSIFusionSAS | `Physical Interconnect`, `Physical Interconnect Location`, `Read Time Out Duration`, `Write Time Out Duration`, `IOPCITunnelCompatible` | SAS, External, 30000, 30000, true |
+| personality (Info.plist), as AppleLSIFusionSAS | `Physical Interconnect`, `Physical Interconnect Location`, `Read Time Out Duration`, `Write Time Out Duration`, `IOPCITunnelCompatible` | SAS, External, 60000, 60000 (FreeBSD da's 60 s since batch G1, D15a; was 30000), true |
 | HBA `Protocol Characteristics` | the family copies Interconnect/Location from the personality | SAS / External |
 | HBA `Controller Characteristics` (`SetHBAProperty`) | Vendor Name, Product Name, Product Revision Level, Port Speed, Port Description | LSI, SAS9207-8i (subsystem 1000:3020; 3040 → -8e, else SAS2308), IOCFacts firmware "20.00.07.00", "6 Gigabit", "8-port SAS2 HBA, MPI 2.0, Thunderbolt" |
 | target nub (`CreateTargetForID(id, dict)`) | `SAS Address` (8 bytes, big-endian, from SAS Device Page 0) | the family also sets `Unique SCSI Port Identifier` and names the nub `SAS Target <address>` |
@@ -927,6 +927,33 @@ panic, files verify; the routine launchd shutdown stall reports have no storage 
 Random 4K QD32 1772 IOPS, seq 1 MiB 1944.9 MB/s, verify 0 mismatches. Details: the deviations
 plan, "Batch F hardware results".
 
+## Batch G1: code fixes and reverts to FreeBSD (branch fix-batch-G1, 2026-11-21)
+
+Rule: keep FreeBSD's mps/CAM behaviour unless there is evidence for the deviation.
+Per-item evaluations (current vs FreeBSD with file:lines, proposal, risk, host test):
+working notes, not in this repo. Every host test
+below failed against the unfixed code (or did not build) and passes after.
+
+| ID | Change | Host test |
+|---|---|---|
+| D29 | no EVENT_ACK (FreeBSD never acks; "Event acks sent" was 0 on every boot and stats file): `mps_xnu_event_ack`, its counters and the two properties removed, the event path is the vendor text plus the Events counter | mock/port: discovery, hot-add, reinit, removal send no ack |
+| D22 | default mask FreeBSD's `info,fault`; `error` only at levels error/warn/debug; the port's periph stand-ins tagged `info|error` (Logging section) | mock `D22`: level masks, default mask, a MEDIUM ERROR IO and a surprise removal still print as ERROR |
+| D15a | Read/Write Time Out Duration 60000 ms (FreeBSD da `DA_DEFAULT_TIMEOUT`); no Apple value or ERC measurement backed 30 s | `plist_test.sh` |
+| D55b | `mps_reinit` is FreeBSD's linear body: one diag reset, `mps_xnu_disable` where FreeBSD panics (D55a kept); `MPS_XNU_REINIT_TRIES` gone. A wake whose attach sequence fails (D12) still falls back to one diag reset (FreeBSD's reinit) | mock: diag reset stuck / nested fault → one attempt, disabled; `D19` one restore; port `TestReinitFailure` |
+| D58 | `mps_kext_max_tasks` = FreeBSD's `reqs` (num_reqs − num_prireqs − 1) − 8 = 2039: the old expression kept only 7 | glue: max tasks == SIM openings − 8 |
+| L12 | `free()` of a bad pointer: KASSERT and return (leak), never IOFree/unload with a garbage header | mock `L12` (was an ASan bad-free) |
+| L13 | `mpssas_realloc_targets` allocates first; on NULL (IOMalloc can fail: Z_WAITOK without Z_NOFAIL) the old array is zeroed and kept | mock `L13` (facts change across a reinit, the array's malloc fails: new `failMallocSize` hook) |
+| L4 | a devq freeze whose entry cannot be allocated counts in an entry embedded in the SIM ((wildcard, wildcard), holds everything), undone by the next unmatched device release; `sim->freeze` is the simq's only | mock `L4` |
+| L11 | the mutex records the callout whose handler runs; `msleep`/`mtx_unlock` KASSERT none does, `callout_drain` KASSERTs it is not draining itself (FreeBSD's THREAD_NO_SLEEPING around `c_func`): what makes drain == stop (D71) safe | mock `L11` (a handler that unlocks and drains itself: 2 hits) |
+| L3 | a run of the held queue keeps its batch in `sim->batch` (`xnu_held` 2): cancel removes from the ccb's own list, both flushes drain the batch, the held count includes it, a run ends with it empty (KASSERT) | mock `L3` (cancel tail/middle and flush from `sim_action`: QMD fault before) |
+| L17 | INTx fallback (no MSI source): `HandleInterruptRequest` runs FreeBSD's `mps_intr` (HIS checked) via `mps_kext_intr_intx`, as `mps_pci.c`; the filter still always schedules. Unreachable behind Thunderbolt | glue `L17` (mock HIS now reports RDI) |
+| L7 | glue lock freed only in `free()` (`FreeLock`); `ReleaseResources` takes `fMps` under it (`TakeCore`); `Snapshot` (glue) copies a detached core under it without mps_mtx (`mps_kext_snapshot_detached`); `setProperties` sets the mask under it (`SetDebug`). FreeBSD: entry points drained, then `mtx_destroy` | glue `L7` |
+| L10 | the hotplug body runs on a compat taskqueue with its own kernel thread (`mps_kext_tq_*`), as FreeBSD's event taskqueue / `xpt_scanner_thread`, not on a HIGH thread call; compat gains `taskqueue_enqueue_flags(TASKQUEUE_FAIL_IF_PENDING)` and `taskqueue_cancel`. The done call stays a thread call | glue `H1` (removal during a create: two runs, no nesting; it nested before), `L10` |
+| D43 | the OS TM waiter pumps the reply queue only when its caller holds the family's work-loop gate (`IOWorkLoop::inGate`, the counterpart of `mps_wait_command`'s NO_SLEEP; counted "TM waits in gate"); the target drain only sleeps; the 1 s timer delivers nothing: completions left with no kick for two ticks are counted once per stall ("Lost completion kicks") and logged once, and go out with the next interrupt or the family's timeout | glue `D43` |
+
+Not changed here (batch G2, experiments decide): D46, D21, D50, D15b, D65. KEEP-WITH-EVIDENCE items of
+the evaluations (L16c, D56, D58's post-queue lines, D63) stay as they are.
+
 ## What is implemented (M1 – M4)
 > **Names after M5.** The tables and sections below are the M1–M4 history and use the names of
 > the deleted C++ core. Old → new: `MpsCore::Attach/Detach/Shutdown` → `mps_attach`/`mps_free`;
@@ -1132,7 +1159,7 @@ SPC tables (FreeBSD uses CAM's `scsi_sense_desc`/`scsi_op_desc`).
 | Class (category) | What |
 |---|---|
 | `fault` | IOC FAULT with code, reset/handshake failures, failed attach / resume, controller disabled (a surprise removal is `error`: an unplugged dock is a user action) |
-| `error` | failed IO (decoded: IOC/transport failures, CHECK CONDITION MEDIUM/HARDWARE ERROR), stale/duplicate/malformed replies, dropped event acks, DMA failures |
+| `error` | FreeBSD's error lines (internal chatter, e.g. "NULL handle for target" per IO in a reinit: hidden by default as in FreeBSD), stale replies, DMA failures; the port's periph stand-ins carry `info|error` and show by default (see below) |
 | `recovery` | IO timeouts, every TM sent/completed (type, SMID, target, IOCStatus, response, terminations, loginfo, ms), escalation steps, TM timeouts and late replies, held IO posted, reinit requests |
 | `info` | the important subset of all classes (FreeBSD default is `info,fault`) |
 | `init` | attach, IOC state transitions (doorbell, WhoInit, fault code), IOCFacts / IOCInit summary, queue sizes, reinit phases with durations, PortEnable, detach |
@@ -1142,10 +1169,16 @@ SPC tables (FreeBSD uses CAM's `scsi_sense_desc`/`scsi_op_desc`).
 | `user` | task management requested by the OS |
 
 Levels (the user-facing knob) are presets of that mask:
-0 error = fault,error · 1 warn = fault,error,recovery · **2 info (default)** = fault,error,info ·
+0 error = fault,error · 1 warn = fault,error,recovery · **2 info (default)** = fault,info ·
 3 debug = everything but trace · 4 trace = everything. The default is FreeBSD's (`mps.c`:
-`sc->mps_debug = MPS_INFO|MPS_FAULT`) plus `error`, since no CAM periph prints IO errors on macOS
-(D22). FreeBSD tags the recovery lines that matter (command timeout, abort / reset sent and
+`sc->mps_debug = MPS_INFO|MPS_FAULT`; batch G1, D22 revert: until then `error` was added). The IO
+errors a FreeBSD user sees come from CAM's periph (`cam_periph_error`), which macOS lacks, so the
+port's stand-ins are tagged `MPS_INFO|MPS_ERROR` (os_log ERROR, shown at info): the failed-IO line
+(IOC/transport failures, CHECK CONDITION MEDIUM/HARDWARE ERROR) and its suppression summary,
+surprise removal, the IOC temperature warning, the reply hardening lines (where FreeBSD panics),
+the cannot-map IO failure, and the kext's user-visible failures (CreateTargetForID failed, IO
+refused/rejected, timeouts while stopping or waiting for a mapping, IOs left at a target's destroy,
+attach/PM setup failures, lost completion kicks). FreeBSD tags the recovery lines that matter (command timeout, abort / reset sent and
 finished, reinitializing) `MPS_INFO|MPS_RECOVERY`, so they show at info; `recovery`, `init`,
 `event` and `mapping` alone are opt-in (debug, or `sas2308ctl mask +recovery`). warn is the
 errors plus the whole recovery trail without the info lines (not a subset of info). A raw mask
@@ -1242,8 +1275,7 @@ similar IO error lines suppressed", printed with the next line after the window 
 `mach_absolute_time` reads and a few counter increments; no allocation, no registry update.
 
 ## Stubbed / deferred (after M5)
-- Event acks: an ack that finds no free command is dropped and counted (`event_ack_dropped`);
-  no queueing.
+- Event acks: none, as FreeBSD (batch G1, D29: the port's EVENT_ACK code never ran on hardware).
 - Persistent mapping (`mps_mapping.c`) not ported: target IDs are handed out by `mps_xnu_get_tid`
   (the last handle of an ID is preferred after a reinit). SAS Device Page 0 is read since M5b
   (SAS address, device info); no SATA identify. Device removal is FreeBSD's (target reset, then
@@ -1256,7 +1288,8 @@ similar IO error lines suppressed", printed with the next line after the window 
   the aborted task to be completed by the HBA (we complete it), that `HandleTimeout` may return
   before the task is completed (completed later, when the IOC gives it back — FreeBSD and Linux
   do the same), and whether the family calls the `*Request` TM methods with its work-loop gate
-  held (the waiter pumps the reply queue itself, so it works either way). (The family calls
+  held (since batch G1 the waiter pumps the reply queue only then, and counts it: "TM waits in
+  gate"). (The family calls
   `ReportHBAConstraints` after `InitializeController`: IOSCSIParallelFamily source.)
 - `mps_pci_restore` only turns memory decode and bus mastering back on after a diag reset
   (FreeBSD restores the saved config space); whether the SAS2308 diag reset clears more of its
