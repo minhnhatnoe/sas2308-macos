@@ -97,6 +97,12 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | D | PCIe Link property (feature request) | done | 6d5b57a | `kext_pcie_test` | **8.0 GT/s (Gen3) x4** of the card's Gen3 x8; MPS **128** B (supports 4096), MRRS 512 B; same after forced reinits |
 | D | D75 (switch for the A/B, then the default) | done | fb15323, ed91e3b | none (IOKit) | A/B below: posted writes faster on the host-bound load, 0 errors -> default (ed91e3b) |
 | D | KEEP comment D46 (no periodic ORDERED) | done | 51b85a5, 1f30ae6 | none (comment) | |
+| E | D22 | done | 9e2b9ed | core `D22` (default mask; no event dumps / Doorbell lines at attach and reinit) | see "Batch E hardware results" |
+| E | D24 | done | aa63b9c | core `D24` (FAULT type, one precedence, surprise removal ERROR) | see "Batch E hardware results" |
+| E | D23 | done | b98a54d | glue `D23` (core-refused IO: one line; xinfo race; no async lines) | see "Batch E hardware results" |
+| E | D25 | done | 079715a | glue `D25` (did not build before: new API) | see "Batch E hardware results" |
+| E | D26 | done | e5733f1 | core `D26` (handles 0x09/0x11 shared a window before) | see "Batch E hardware results" |
+| E | D49(b) + KEEP comment D49(a) | done | 89b4e62 | core `D49` (MUR ignored at sleep: counted, said) | see "Batch E hardware results" |
 
 ### Batch A hardware results
 
@@ -228,6 +234,53 @@ D31's timeout handler and the D7 table hooks are new XNU lines).
 - **Not tested here**: D9 (no SATA SSD: still to run, test 9), D52's other two ids (no such card),
   D7 beyond 64 devices (no expander: host tests only).
 
+### Batch E hardware results
+
+Build **6542C39F** (fix-batch-E 89b4e62), installed 2026-11-20 22:29, 7 drives, 0 config page
+failures, IOC 54 C; `SAS2308DebugMask` 0x23 = info,fault,error. Rollback:
+`~/sas2308-rollback-509E19D3` (batch D build, master a71e38a). `tools/diff-vs-freebsd.sh`: common
+7383 unchanged, removed 3595 unchanged, added 1281 -> 1293 (D49's said-and-counted sleep stop in
+the XNU-only `mps_xnu_suspend`, D26's member in `struct mpssas_target`; mps.c's default mask line is
+FreeBSD's again plus `MPS_ERROR`). Persisted lines counted with `log show --info --debug --style
+ndjson` (script `~/hwE/count.sh`).
+
+- **Boot**: 0 driver lines persisted from attach and discovery. macOS loses the first ~1 min of
+  kernel os_log after boot (the check ran 29 s after boot; it was the same on every earlier build),
+  so attach-time lines are not a measure; the two `debug mask ... set from userland` lines of
+  `sas2308ctl level debug` / `level info` were the only lines since boot after 6 min.
+- **5 min idle** (drives spinning, temperature polled every 30 s): **0 lines** of any type (batch D
+  build: 0 too, the log-noise change had already removed the TEST UNIT READY lines).
+- **Forced recovery under IO** (random 4K QD8 on all 7 raw drives, 130 s; `sas2308ctl lose 1` at
+  5 s, `sas2308ctl reinit` at 80 s), same script on both builds:
+
+  | build | persisted lines | Default | Error | Fault | by category |
+  |---|---|---|---|---|---|
+  | 509E19D3 (batch D, old default) | **1164** | 1156 | 8 | 0 | event 660, recovery 297, init 104, mapping 84, info 11, error 8 |
+  | 6542C39F (batch E) | **31** | 25 | 6 | 0 | info 12, recovery 9, error 6, init 4 |
+
+  Batch E's 31 lines carry the whole story: the debug triggers (info), FreeBSD's
+  `Command timeout`, `Sending abort`, `Aborting command`, `Sending logical unit reset`, `... sending
+  target reset`, `Target reset complete ... resetting controller`, `Reinitializing controller` x2,
+  `reinit done in N ms` x2, `Firmware` / `IOCCapabilities` per reinit, the IO the resets terminated
+  (5 error lines + one `similar IO error lines suppressed`, per target, D26). Gone: the per-event
+  field dumps, startup refcount, PHY, `Target id added`, `killed by a reset: re-sent` (83) and
+  `UNIT ATTENTION ... re-sending` (14) recovery-trail lines (opt-in: `sas2308ctl mask +recovery`).
+  Outcome identical on both builds: 1 IO timeout, abort -> LUN reset -> target reset -> reinit, 2
+  diag resets, **0 IO errors, 0 mismatches**, 1084 IOPS (old 1087), max latency 38.9 s (the lost
+  command).
+- **D24**: no FAULT line in any window (no IOC fault, nothing disabled); the FAULT path (IOC fault,
+  failed reinit) and the ERROR surprise removal are host-tested; dock unplug: still to run, test 11.
+- **D25**: no device-less line occurred (no KASSERT hit, `KASSERT hits` 0); host-tested.
+- **D49(b)**: `Sleep stop failures` 0 (published); no sleep cycle in this batch (the wake path is
+  unchanged except for the failure lines; batches A/B ran 10 wakes on it).
+- **Regression** (6542C39F, drives unmounted): random 4K read QD32 all 7, 60 s: **1765 IOPS**; seq
+  1 MiB read QD2 all 7, 60 s: **1945.4 MB/s**; verify 64 KiB random QD64, 256 MiB per drive: **0
+  mismatches, 0 errors**; **0 driver lines persisted** during the regression. `sas2308ctl stats`
+  after: 1 IO timeout, 2 reinits / diag resets, 1 target reset (all from the forced recovery
+  test), 0 stale replies, 0 lost kicks, 0 transient all-ones reads, 0 config page failures, 0
+  KASSERT hits, 0 sleep stop failures.
+- **Not tested here**: hot-plug line counts (still to run, test 11).
+
 ### Hardware tests still to run
 
 Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found with
@@ -258,8 +311,8 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
    only). Still to do by hand: the same with a mounted JHFS+ volume under F_FULLFSYNC writes on that
    drive (`~/hwA/fsyncw`): no write error, `Unit attentions after reset retried` goes up.
 6. **D10, OS task management from the family.** Nothing unattended makes SAM send AbortTask /
-   LogicalUnitReset / TargetReset. If a tool or a stuck drive does: expect `OS requests ...` log
-   lines, a target or LUN reset as one TARGET_RESET (`TM target reset` +1, `TM requests from OS`
+   LogicalUnitReset / TargetReset. If a tool or a stuck drive does: expect one `OS <type> on target
+   N lun L tag T: <outcome>` log line per request (batch E, D23), a target or LUN reset as one TARGET_RESET (`TM target reset` +1, `TM requests from OS`
    +1), an abort as the task's recovery (`IO timeouts` +1), ABORT TASK SET / CLEAR TASK SET /
    CLEAR ACA rejected; never two TMs on one target at once.
 7. **D11, dock unplug** (with test 2): the log must show `register 0x.. reads 0xffffffff: checking
@@ -287,6 +340,12 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
     build EBB85578; if it is still 0 after hot-plug events, the ack code goes (FreeBSD never acks);
     if not, the log names the event (`event X (0x..) asks for an ack`) and the code stays with a
     comment naming it.
+11. **Batch E log levels on hot-plug** (with tests 1 and 2, default level info, i.e. without
+    `level debug`). Note the time, do the pull / re-insert and the dock unplug / re-plug, then
+    `bash ~/hwE/count.sh --start "<time>"`. Expect: a pull shows FreeBSD's info lines for the
+    removal and the re-add (no event field dumps, no `PHY[..]` lines); the dock unplug shows
+    `controller gone (surprise removal)` and `surprise removal: controller disabled` as **Error**,
+    no **Fault** line; a few dozen lines in all, not hundreds.
 
 ## Ranked table: changes (CHANGE)
 

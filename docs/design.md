@@ -425,6 +425,15 @@ The family controller has no PM (only its target nubs: `IOSCSIParallelInterfaceD
   `CAM_DEV_NOT_THERE`).
 - Edge: a reinit still running after the drain bound (diag reset > 10 s) gives up at its next wait
   once `MPS_FLAGS_XNU_SUSPENDED` is set; the resume reinit starts over.
+- Edge (D49): an IOC that does not stop at the MUR is still marked suspended (bus mastering off,
+  fault line `suspend: the IOC did not stop`, then `suspended without a clean stop ... the resume
+  reinitializes the IOC`, counted `Sleep stop failures`): the wake's reinit, diag reset as the
+  fallback, is what recovers it. A wake whose resume cannot run at all is a fault line (`wake:
+  the controller could not be resumed`).
+- Synchronous on purpose (D49): drain + MUR + reinit measured well under a second (498 ms wake),
+  the worst case is bounded (10 s drain + the stop) and inside the PM thread's tolerance; an
+  asynchronous ack (`acknowledgeSetPowerState`) would add a second state machine for no measured
+  benefit.
 
 ### Shutdown / restart
 The dock has its own PSU: across a Mac restart the IOC would keep running and could DMA into
@@ -1073,26 +1082,46 @@ SPC tables (FreeBSD uses CAM's `scsi_sense_desc`/`scsi_op_desc`).
 
 | Class (category) | What |
 |---|---|
-| `fault` | IOC FAULT with code, all-ones reads (surprise removal), reset/handshake failures, controller disabled |
+| `fault` | IOC FAULT with code, reset/handshake failures, failed attach / resume, controller disabled (a surprise removal is `error`: an unplugged dock is a user action) |
 | `error` | failed IO (decoded: IOC/transport failures, CHECK CONDITION MEDIUM/HARDWARE ERROR), stale/duplicate/malformed replies, dropped event acks, DMA failures |
 | `recovery` | IO timeouts, every TM sent/completed (type, SMID, target, IOCStatus, response, terminations, loginfo, ms), escalation steps, TM timeouts and late replies, held IO posted, reinit requests |
 | `info` | the important subset of all classes (FreeBSD default is `info,fault`) |
 | `init` | attach, IOC state transitions (doorbell, WhoInit, fault code), IOCFacts / IOCInit summary, queue sizes, reinit phases with durations, PortEnable, detach |
-| `event` / `mapping` | every event (name, context, ack), topology PHY entries (handle, PHY status, link rate), device arrive/gone with target ID, target create/destroy |
-| `xinfo` | field dumps (`mps_print_iocfacts`, `mps_print_evt_sas`), each DMA allocation (size, alignment, IOVA), held IO, acks, IOs completed with a SCSI status (see below) |
+| `event` / `mapping` | every event (name, context, ack) and its field dump (`mps_print_evt_sas` via `MPS_DPRINT_EVENT`, gated on `event`, not `xinfo`), topology PHY entries (handle, PHY status, link rate), device arrive/gone with target ID, target create/destroy |
+| `xinfo` | `mps_print_iocfacts` / `mps_print_portfacts` field dumps, each DMA allocation (size, alignment, IOVA), held IO, Freezing/Unfreezing devq, IOs completed with a SCSI status (see below) |
 | `trace` | one line per IO start (SMID, handle, LUN, CDB name, LBA, blocks, length, segments, chains) and completion (status, transfer, latency) |
 | `user` | task management requested by the OS |
 
-Levels (the user-facing knob) are presets of that mask, each including the previous:
-0 error = fault,error · 1 warn = +recovery · **2 info (default)** = +info,init,event,mapping ·
-3 debug = +xinfo,log,user · 4 trace = +trace. A raw mask (`SAS2308DebugMask`, number or
-`mps_parse_debug` list such as `info,fault,+recovery`) overrides the level.
+Levels (the user-facing knob) are presets of that mask:
+0 error = fault,error · 1 warn = fault,error,recovery · **2 info (default)** = fault,error,info ·
+3 debug = everything but trace · 4 trace = everything. The default is FreeBSD's (`mps.c`:
+`sc->mps_debug = MPS_INFO|MPS_FAULT`) plus `error`, since no CAM periph prints IO errors on macOS
+(D22). FreeBSD tags the recovery lines that matter (command timeout, abort / reset sent and
+finished, reinitializing) `MPS_INFO|MPS_RECOVERY`, so they show at info; `recovery`, `init`,
+`event` and `mapping` alone are opt-in (debug, or `sas2308ctl mask +recovery`). warn is the
+errors plus the whole recovery trail without the info lines (not a subset of info). A raw mask
+(`SAS2308DebugMask`, number or `mps_parse_debug` list such as `info,fault,+recovery`) overrides
+the level. Changing the level or mask and the debug triggers log one `info` line whatever the mask.
+Before D22 the default also had recovery/init/event/mapping: every event dumped field by field, a
+`Doorbell=` line per 50 ms poll of `mps_transition_ready` and both devq lines of every TM persisted.
 
-**Where lines go.** os_log subsystem `org.sas2308.driver.SAS2308HBA` (the bundle ID), category = the most specific
-class of the line, message prefixed `hbaN:`. os_log type: fault/error → ERROR;
+**Where lines go.** os_log subsystem `org.sas2308.driver.SAS2308HBA` (the bundle ID), message prefixed
+`hbaN:`. One class of the line decides both the category and the type (D24), picked in the order
+xinfo, trace (most verbose: a line tagged `xinfo` is detail whatever else it carries), fault,
+error (most serious), recovery, event, mapping, init, log, user, info: `MPS_RECOVERY|MPS_INFO` is
+`recovery`/DEFAULT, `MPS_ERROR|MPS_RECOVERY` is `error`/ERROR, `MPS_XINFO|MPS_RECOVERY` is
+`xinfo`/DEBUG. os_log type of that class: fault → FAULT; error → ERROR;
 info/recovery/init/event/mapping → DEFAULT (shown by `log stream`, persisted);
-xinfo/trace/log/user only → DEBUG (`--level debug`). Boot-arg `sas2308_iolog=1` (or
-property `SAS2308LogToIOLog`) sends them to IOLog instead (`dmesg`, survives into panic logs).
+xinfo/trace/log/user → DEBUG (`--level debug`). Boot-arg `sas2308_iolog=1` (or
+property `SAS2308LogToIOLog`) sends them to IOLog instead (`dmesg`, survives into panic logs);
+lines without a device (printf, hexdump, KASSERT, thin CAM warnings) follow the last attached
+controller's switch and carry its unit (D25).
+The kext adds no line the core already prints (D23): an IO `mpssas_action_scsiio` refused is
+the core's line (NULL handle, shutting down, cannot map) or none (target being removed), as on
+FreeBSD; the kext logs only refusals that never reached the core (invalid request: error;
+detached or another disk behind the id: xinfo); no line for AC_BUS_RESET / AC_SENT_BDR; one
+`recovery` line per OS task management request with its outcome; a timeout racing its
+completion is xinfo.
 Format strings must not use `%{public}`/`%{private}`: the kernel os_log encoder rejects any
 `%{` (EINVAL, line dropped, msgbuf shows "{public}s"); kernel string arguments are always public.
 `make check` greps for it.
@@ -1153,9 +1182,11 @@ answered NOT READY (30 min sample: 3977 × 65536, 108 × 0, 83 × 512, …), whi
 printed as "xfer 65536/0". Cosmetic: the family is told 0 bytes (`dxfer_len - resid`).
 
 **Rate limiting.** Failed-IO lines (not terminations from our own recovery) are limited
-per target (handle mod 8) to 5 per 10 s (error lines only; `xinfo` lines are debug-level, opt-in, not limited); then one line "N similar IO error lines
-suppressed", printed with the next line after the window or by `Service()` within a
-second of the window closing.
+per target (the limiter is a member of `struct mpssas_target`, D26; it was 8 slots hashed on
+handle mod 8, shared by targets and naming the last one) to 5 per 10 s (error lines only;
+`xinfo` lines are debug-level, opt-in, not limited); then one line "target N (handle H): M
+similar IO error lines suppressed", printed with the next line after the window or by
+`mps_periodic` within a second of the window closing.
 
 **Hot-path cost below debug.** A disabled line costs one relaxed load and an AND (the
 `mps_dprint` macro skips argument evaluation); per IO there are always two
