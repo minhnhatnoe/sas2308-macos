@@ -290,8 +290,7 @@ xpt_action(union ccb *ccb)
 	 * Device-queued ccbs (cam_xpt.c xpt_action_default: SCSI IO, reset
 	 * device) are held while frozen; the rest goes through.
 	 */
-	if ((ccb->ccb_h.func_code == XPT_SCSI_IO ||
-	    ccb->ccb_h.func_code == XPT_RESET_DEV) &&
+	if ((ccb->ccb_h.func_code & XPT_FC_DEV_QUEUED) == XPT_FC_DEV_QUEUED &&
 	    (cam_xnu_blocked(sim, ccb) || !TAILQ_EMPTY(&sim->held))) {
 		cam_xnu_hold(sim, ccb);
 		if (!cam_xnu_blocked(sim, ccb))

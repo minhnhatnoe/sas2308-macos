@@ -2717,6 +2717,26 @@ static void DeviationTests()
         CHECK(r2->done && r2->status == CAM_REQ_CMP);
     }
 
+    if (Want("D37")) {
+        /* cam_compat.h: CAM's own values (cam_ccb.h, cam.h), as its header claims */
+        CHECK(XPT_SCSI_IO == 0x901 && XPT_RESET_DEV == 0x912 && XPT_ABORT == 0x10);
+        CHECK(XPT_SCAN_BUS == 0x708 && XPT_SCAN_LUN == 0x714 && XPT_SCAN_TGT == 0x71e);
+        CHECK(XPT_RESET_BUS == 0x411 && XPT_TERM_IO == 0x13 && XPT_SMP_IO == 0x91b);
+        CHECK(AC_ADVINFO_CHANGED == 0x2000 && CAM_PRIORITY_NORMAL == 0x480);
+        /* device-queued ccbs are still held behind a frozen queue */
+        Rig g;
+        mps_lock(g.sc);
+        xpt_freeze_simq(g.sc->sassc->sim, 1);
+        mps_unlock(g.sc);
+        Io *r = g.Read(0x0009, 0, 2);
+        CHECK(g.Go(r) == kHeld);
+        mps_lock(g.sc);
+        xpt_release_simq(g.sc->sassc->sim, 1);
+        mps_unlock(g.sc);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
     if (Want("D18")) {
         /*
          * An "impossible" SGL state (no room left for a chain element):

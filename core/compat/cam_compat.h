@@ -108,18 +108,25 @@ typedef uint32_t	cam_status;
 #define MSG_ORDERED_Q_TAG	0x22
 #define MSG_ACA_TASK		0x24
 
-/* func_code */
+/* func_code (cam_ccb.h) */
 typedef enum {
+	XPT_FC_QUEUED		= 0x100,
+	XPT_FC_USER_CCB		= 0x200,
+	XPT_FC_XPT_ONLY		= 0x400,
+	XPT_FC_DEV_QUEUED	= 0x800 | XPT_FC_QUEUED,
 	XPT_NOOP		= 0x00,
-	XPT_SCSI_IO		= 0x01,
+	XPT_SCSI_IO		= 0x01 | XPT_FC_DEV_QUEUED,
+	XPT_SCAN_BUS		= 0x08 | XPT_FC_QUEUED | XPT_FC_USER_CCB
+				       | XPT_FC_XPT_ONLY,
 	XPT_ABORT		= 0x10,
-	XPT_RESET_BUS		= 0x11,
-	XPT_RESET_DEV		= 0x12,
+	XPT_RESET_BUS		= 0x11 | XPT_FC_XPT_ONLY,
+	XPT_RESET_DEV		= 0x12 | XPT_FC_DEV_QUEUED,
 	XPT_TERM_IO		= 0x13,
-	XPT_SCAN_BUS		= 0x14,
-	XPT_SCAN_LUN		= 0x16,
-	XPT_SMP_IO		= 0x1b,
-	XPT_SCAN_TGT		= 0x1E
+	XPT_SCAN_LUN		= 0x14 | XPT_FC_QUEUED | XPT_FC_USER_CCB
+				       | XPT_FC_XPT_ONLY,
+	XPT_SMP_IO		= 0x1b | XPT_FC_DEV_QUEUED,
+	XPT_SCAN_TGT		= 0x1e | XPT_FC_QUEUED | XPT_FC_USER_CCB
+				       | XPT_FC_XPT_ONLY
 } xpt_opcode;
 
 /* async codes (cam_ccb.h ac_code) */
@@ -127,11 +134,12 @@ typedef enum {
 #define AC_SENT_BDR		0x00000010
 #define AC_FOUND_DEVICE		0x00000080
 #define AC_LOST_DEVICE		0x00000100
-#define AC_ADVINFO_CHANGED	0x00008000
+#define AC_ADVINFO_CHANGED	0x00002000
 /* XNU: xpt_rescan() -> async callbacks; arg is the XPT_SCAN_* ccb */
 #define AC_XNU_SCAN		0x40000000
 
-#define CAM_PRIORITY_NORMAL	5
+/* cam.h: CAM_RL_NORMAL is 4 */
+#define CAM_PRIORITY_NORMAL	((4 << 8) + 0x80)
 #define SCSI_STATUS_OK		0x00	/* scsi_all.h */
 #define IOCDBLEN		16
 #define SSD_FULL_SIZE		252
