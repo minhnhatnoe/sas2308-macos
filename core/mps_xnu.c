@@ -1026,6 +1026,25 @@ mps_xnu_tm_done(struct mps_softc *sc, struct mps_command *tm)
 	    reply->ResponseCode, le32toh(reply->TerminationCount));
 }
 
+/*
+ * Debug (sas2308ctl lose N, hardware tests of the recovery): the next N
+ * SCSI IOs are marked posted but never reach the IOC, a lost command.
+ * The family timer, the abort and its escalation then run for real.
+ */
+int
+mps_xnu_debug_lose(struct mps_softc *sc, struct mps_command *cm)
+{
+	if (cm->cm_ccb == NULL || cm->cm_ccb->ccb_h.func_code != XPT_SCSI_IO ||
+	    cm->cm_complete == NULL)
+		return (0);
+	sc->xnu.debug_lose--;
+	mps_dprint(sc, MPS_RECOVERY|MPS_INFO, "debug: SCSI IO SMID %u for "
+	    "target %u not posted (lost command injected, %u more)\n",
+	    cm->cm_desc.Default.SMID, cm->cm_ccb->ccb_h.target_id,
+	    sc->xnu.debug_lose);
+	return (1);
+}
+
 /* D12: log and count which way a wake reinitialized the IOC */
 void
 mps_xnu_resume_done(struct mps_softc *sc, int diag_reset)

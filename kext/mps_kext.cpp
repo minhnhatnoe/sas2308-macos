@@ -100,6 +100,8 @@ struct mps_kext {
     /* CAM da's DA_FLAG_RETRY_UA (D3): per target, the LUNs (bit 63: 63 and up) armed by our reset */
     uint64_t                ua_luns[MPSK_MAX_TARGETS];
     uint32_t                ua_gen[MPSK_MAX_TARGETS];   /* the target's generation when armed */
+    struct callout          hold_callout;   /* debug: SIM queue frozen for a while */
+    int                     hold_active;
 };
 
 static volatile int gKexts = 0;
@@ -349,6 +351,7 @@ int mps_kext_attach(struct mps_kext *k, uint32_t debug_mask)
         return error;
     }
     k->attached = 1;
+    callout_init_mtx(&k->hold_callout, &sc->mps_mtx, 0);
     if (xpt_create_path(&path, NULL, cam_sim_path(sc->sassc->sim), CAM_TARGET_WILDCARD,
                         CAM_LUN_WILDCARD) == CAM_REQ_CMP) {
         if (xpt_register_async(AC_XNU_SCAN | AC_BUS_RESET | AC_SENT_BDR | AC_LOST_DEVICE,
@@ -386,6 +389,7 @@ void mps_kext_detach(struct mps_kext *k)
     if (!k->attached)
         return;
     k->attached = 0;
+    callout_drain(&k->hold_callout);    /* a hold still running: mps_free drops the freeze */
     error = mps_free(sc);
     if (error != 0) {
         /* the IOC may still own DMA memory: keep everything */
@@ -809,6 +813,55 @@ int mps_kext_tm(struct mps_kext *k, uint8_t type, uint32_t tid, uint64_t lun, vo
     if (w)
         mps_os_free(w, sizeof(*w));
     return result;
+}
+
+/*
+ * Debug triggers for hardware tests (sas2308ctl reinit | hold MS | lose N):
+ * a controller reinit (diag reset), new IO held for MS (SIM queue frozen,
+ * as a long recovery would), the next N SCSI IOs lost.
+ */
+static void mps_kext_hold_end(void *arg)
+{
+    struct mps_kext *k = (struct mps_kext *)arg;
+
+    if (!k->hold_active)
+        return;
+    k->hold_active = 0;
+    mps_dprint(&k->sc, MPS_RECOVERY | MPS_INFO, "debug: IO hold ended\n");
+    xpt_release_simq(k->sc.sassc->sim, 1);
+}
+
+int mps_kext_debug(struct mps_kext *k, int what, uint32_t arg)
+{
+    struct mps_softc *sc = &k->sc;
+    int error = 0;
+
+    if (!k->attached)
+        return ENXIO;
+    mps_lock(sc);
+    switch (what) {
+    case MPSK_DEBUG_REINIT:
+        mps_xnu_request_reinit(sc, "requested from userland (debug)");
+        break;
+    case MPSK_DEBUG_HOLD:
+        if (k->hold_active || arg == 0 || arg > 600000) {
+            error = EINVAL;
+            break;
+        }
+        k->hold_active = 1;
+        xpt_freeze_simq(sc->sassc->sim, 1);
+        callout_reset(&k->hold_callout, (int)((uint64_t)arg * hz / 1000), mps_kext_hold_end, k);
+        mps_dprint(sc, MPS_RECOVERY | MPS_INFO, "debug: new IO held for %u ms\n", arg);
+        break;
+    case MPSK_DEBUG_LOSE:
+        sc->xnu.debug_lose = arg;
+        mps_dprint(sc, MPS_RECOVERY | MPS_INFO, "debug: the next %u SCSI IOs will be lost\n", arg);
+        break;
+    default:
+        error = EINVAL;
+    }
+    mps_unlock(sc);
+    return error;
 }
 
 int mps_kext_check_present(struct mps_kext *k)

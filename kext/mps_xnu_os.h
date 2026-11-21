@@ -188,6 +188,10 @@ void	*mps_kext_next_done(struct mps_kext *k, struct mps_kext_io_result *res);
 int	 mps_kext_timeout(struct mps_kext *k, void *td, void *os_task,
 	    uint32_t timeout_ms, uint32_t *rearm_ms);
 
+/* ---- debug triggers for hardware tests (sas2308ctl) --------------------- */
+enum { MPSK_DEBUG_REINIT = 1, MPSK_DEBUG_HOLD, MPSK_DEBUG_LOSE };
+int	 mps_kext_debug(struct mps_kext *k, int what, uint32_t arg);
+
 /* ---- OS task management (D10): FreeBSD's paths, waits for the end ------ */
 
 enum { MPSK_TM_COMPLETE, MPSK_TM_REJECTED, MPSK_TM_FAILED };

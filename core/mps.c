@@ -1416,6 +1416,9 @@ mps_enqueue_request(struct mps_softc *sc, struct mps_command *cm)
 	KASSERT(cm->cm_state == MPS_CM_STATE_BUSY,
 	    ("command not busy, state = %u\n", cm->cm_state));
 	cm->cm_state = MPS_CM_STATE_INQUEUE;
+	if (__predict_false(sc->xnu.debug_lose != 0) &&
+	    mps_xnu_debug_lose(sc, cm))
+		return;		/* XNU: debug, a lost command (sas2308ctl) */
 
 	/* TODO-We may need to make below regwrite atomic */
 	mps_regwrite(sc, MPI2_REQUEST_DESCRIPTOR_POST_LOW_OFFSET,

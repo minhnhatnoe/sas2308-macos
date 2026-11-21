@@ -125,6 +125,7 @@ struct mps_xnu {
 	int			 gone_tries;		/* 0: no confirmation running */
 	int			 resume_ready;		/* next reinit: FreeBSD's attach sequence first (D12) */
 	int			 final_drain;		/* mps_free polls the reply queue (D51) */
+	u_int			 debug_lose;		/* debug: next SCSI IOs not posted */
 	uint32_t		 gone_offset;		/* the register that read all-ones */
 	uint16_t		 tid_handle[MPS_XNU_MAX_TARGETS]; /* last handle */
 	/*
@@ -257,6 +258,7 @@ void	mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm,
 /* a TM reply arrived (reply != NULL): recovery line, statistics */
 void	mps_xnu_tm_done(struct mps_softc *sc, struct mps_command *tm);
 void	mps_xnu_resume_done(struct mps_softc *sc, int diag_reset);
+int	mps_xnu_debug_lose(struct mps_softc *sc, struct mps_command *cm);
 /* a reinit finished: duration statistics */
 void	mps_xnu_reinit_done(struct mps_softc *sc);
 /* register access while MPS_FLAGS_XNU_SUSPENDED: refused, logged once, 0 */

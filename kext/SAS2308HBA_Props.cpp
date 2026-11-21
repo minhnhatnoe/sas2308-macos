@@ -154,6 +154,26 @@ SAS2308HBA::setProperties(OSObject *properties)
         setProperty(kIOLogKey, b->isTrue());
         handled = true;
     }
+    static const struct { const char *key; int what; } dbg[] = {
+        { "SAS2308DebugReinit", MPSK_DEBUG_REINIT },
+        { "SAS2308DebugHoldMs", MPSK_DEBUG_HOLD },
+        { "SAS2308DebugLose", MPSK_DEBUG_LOSE },
+    };
+    for (const auto &e : dbg) {
+        OSNumber *n = OSDynamicCast(OSNumber, d->getObject(e.key));
+        if (!n)
+            continue;
+        int rc = -1;
+        if (Enter()) {
+            rc = mps_kext_debug(fGlue.fMps, e.what, n->unsigned32BitValue());
+            Leave();
+        }
+        Klog(MPSK_ERROR | MPSK_INFO, "debug trigger %s %u from userland: %s", e.key, n->unsigned32BitValue(),
+             rc == 0 ? "done" : "refused");
+        if (rc != 0)
+            return kIOReturnBadArgument;
+        handled = true;
+    }
     if (d->getObject(kResetStatsKey)) {
         if (Enter()) {
             mps_kext_reset_stats(fGlue.fMps);

@@ -812,6 +812,37 @@ int main()
         f.Detach();
     }
 
+    if (Want("debug")) {
+        /* the hardware-test triggers: a hold longer than the timeout (re-armed, D4) and a lost command */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009);
+        CHECK(mps_kext_debug(f.k, MPSK_DEBUG_HOLD, 35000) == 0);
+        FakeTask *a = f.NewRead(t9);
+        CHECK(f.Submit(a) == SAS2308Glue::kInProcess && f.glue.fKStats.tasksHeld == 1);
+        f.Run(40000);
+        CHECK(a->completions == 1 && a->done == SAS2308GluePort::kDoneStatus && a->timeouts == 1);
+        CHECK(gHost.sc->xnu.stats.timer_rearms == 1 && gHost.sc->xnu.stats.io_timeouts == 0 && m.tms.empty());
+        CHECK(mps_kext_debug(f.k, MPSK_DEBUG_LOSE, 1) == 0);
+        FakeTask *b = f.NewRead(t9);
+        CHECK(f.Submit(b) == SAS2308Glue::kInProcess);
+        f.Run(29000);
+        CHECK(b->completions == 0);
+        f.Run(10000);                               /* timeout, abort (nothing to abort), escalation */
+        CHECK(b->completions == 1 && gHost.sc->xnu.stats.io_timeouts == 1 && !m.tms.empty());
+        CHECK(m.tms[0].type == MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK);
+        const int resets = m.diagResetCount;
+        CHECK(mps_kext_debug(f.k, MPSK_DEBUG_REINIT, 1) == 0);
+        f.Run(3000);
+        CHECK(m.diagResetCount == resets + 1);
+        FakeTask *c = f.NewRead(t9);
+        CHECK(f.Submit(c) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        CHECK(c->completions == 1 && c->done == SAS2308GluePort::kDoneStatus);
+        f.Detach();
+    }
+
     printf("PASS (%d checks)\n", gChecks);
     return 0;
 }
