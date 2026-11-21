@@ -118,6 +118,7 @@ struct mps_kext_limits {
 	uint32_t	chain_frames;		/* num_chains */
 	uint32_t	os_commands;		/* xnu.io_cmds */
 	uint32_t	max_segs;		/* buffer_dmat nsegments */
+	uint64_t	maxio;			/* sc->maxio: largest IO, bytes (mps.max_io_pages) */
 	uint64_t	dma_bytes;
 	uint64_t	heap_bytes;
 };
@@ -139,8 +140,7 @@ struct mps_kext_seg {			/* = bus_dma_segment_t */
 	uint64_t	len;
 };
 
-size_t	 mps_kext_task_size(void);			/* HBA data per task */
-uint32_t mps_kext_task_maxsegs(void);			/* segs[] capacity */
+size_t	 mps_kext_task_size(struct mps_kext *k);	/* HBA data per task (after attach) */
 struct mps_kext_seg *mps_kext_task_segs(void *td);
 
 enum { MPSK_DIR_NONE, MPSK_DIR_IN, MPSK_DIR_OUT };

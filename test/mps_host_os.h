@@ -46,6 +46,12 @@ struct HostThreadCall {
     bool Cancel() { if (!queued) return false; queued = false; return true; }
 };
 
+/* kext/Info.plist's personality keys that are core tunables (mps.max_io_pages, D32) */
+static const int kMaxIoPages = 256;
+static const std::map<std::string, std::string> kInfoPlistTunables = {
+    {"mps.max_io_pages", "256"},
+};
+
 struct MpsHostOs {
     std::vector<HostThreadCall *> threadCalls;  /* run by HostRunPending */
     MockIocModel *ioc = nullptr;
@@ -58,7 +64,8 @@ struct MpsHostOs {
     int sleeps = 0, delays = 0;
     std::function<void()> onOtherThreads;   /* test hook, runs inside HostRunPending */
     std::function<void(uint64_t)> onDelay;  /* test hook, runs at the start of every DELAY/pause */
-    std::map<std::string, std::string> tunables;    /* mps_os_getenv: boot-args / personality */
+    /* mps_os_getenv: boot-args / personality; the defaults are kext/Info.plist's */
+    std::map<std::string, std::string> tunables = kInfoPlistTunables;
 
     /* callouts, taskqueues */
     std::set<struct mtx *> calloutMtx;      /* mutexes with an armed deadline */

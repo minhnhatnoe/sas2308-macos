@@ -166,7 +166,7 @@ static void TestAttach(struct mps_softc *sc)
     T(sc->fqdepth == 128 && sc->pqdepth == 128);
     T(gIoc.fq == 128 && gIoc.pq == 128 && gIoc.frameSz == 128);
     T(sc->reqframesz == 128 && sc->replyframesz == 128);
-    T(sc->maxio == MPS_XNU_MAXIO_PAGES * PAGE_SIZE);
+    T(sc->maxio == kMaxIoPages * PAGE_SIZE);
     /* (256 pages + 9 - 2) / 9 SGEs per chain frame, per request credit */
     T(sc->num_chains == 29 * 100);
     T(sc->chain_free == sc->num_chains);

@@ -182,7 +182,7 @@ SAS2308Glue::ProcessTask(void *task)
      * ReportHBASpecificTaskDataSize()), not on the kernel stack: they stay
      * valid until the task completes, which a held IO needs.
      */
-    if (!d.td || d.tdSize < mps_kext_task_size() || fMaxSegs == 0)
+    if (!d.td || d.tdSize < mps_kext_task_size(fMps) || fMaxSegs == 0)
         return kFailure;
 
     /*

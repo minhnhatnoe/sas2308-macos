@@ -1867,7 +1867,7 @@ mps_get_tunables(struct mps_softc *sc)
 	sc->disable_msi = 0;
 	sc->max_msix = MPS_MSIX_MAX;
 	sc->max_chains = MPS_CHAIN_FRAMES;
-	sc->max_io_pages = MPS_XNU_MAXIO_PAGES;
+	sc->max_io_pages = MPS_MAXIO_PAGES;
 	sc->enable_ssu = MPS_SSU_ENABLE_SSD_DISABLE_HDD;
 	sc->spinup_wait_time = DEFAULT_SPINUP_WAIT;
 	sc->use_phynum = 1;

@@ -30,7 +30,6 @@ struct mps_softc;
  * MPS_XNU_INTERNAL_CMDS (xnu.io_cmds, the family's ReportMaximumTaskCount).
  */
 #define MPS_XNU_INTERNAL_CMDS	8	/* events, acks, port enable, removal */
-#define MPS_XNU_MAXIO_PAGES	256	/* 1 MiB */
 #define MPS_XNU_REINIT_TRIES	3	/* mps_reinit attempts on nested faults */
 #define MPS_XNU_MAX_TARGETS	64	/* target ids handed out */
 #define MPS_XNU_CFG_TRIES	3	/* page 0 attempts in a row (10, 20 ms apart) */

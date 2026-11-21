@@ -224,7 +224,7 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         tasks.push_back(t);
         t->target = target; t->tag = tasks.size(); t->timeoutMs = timeoutMs;
         t->cdb[0] = 0x28; t->cdb[5] = 1; t->cdb[8] = 8;
-        t->td.resize(mps_kext_task_size());
+        t->td.resize(mps_kext_task_size(k));
         ioc->DmaAlloc(4096, 4096, &t->iova);
         return t;
     }
@@ -309,12 +309,12 @@ int main()
         CHECK(l.request_credit == 10240 && l.high_priority_credit == MockIocModel::kHighPriorityCredit &&
               l.max_reply_post_depth == 65520 && l.req_frames == MPS_REQ_FRAMES && l.os_commands == 2040 &&
               l.pri_req_frames == MockIocModel::kHighPriorityCredit && l.reply_frames >= l.req_frames + l.pri_req_frames &&
-              l.chain_frames == MPS_CHAIN_FRAMES && l.req_frame_bytes == 128 && l.max_segs == MPS_XNU_MAXIO_PAGES + 1);
+              l.chain_frames == MPS_CHAIN_FRAMES && l.req_frame_bytes == 128 && l.max_segs == kMaxIoPages + 1);
         printf("  limits: %u request + %u high-priority frames, %u replies (post queue %u), %u chains, %u OS tasks; "
                "DMA %llu B, core heap %llu B, slots %zu B, task data %zu B\n",
                l.req_frames, l.pri_req_frames, l.reply_frames, l.post_queue_depth, l.chain_frames, f.glue.fMaxTasks,
                (unsigned long long)l.dma_bytes, (unsigned long long)l.heap_bytes,
-               sizeof(SAS2308Glue::Slot) * f.glue.fMaxTasks, mps_kext_task_size() * f.glue.fMaxTasks);
+               sizeof(SAS2308Glue::Slot) * f.glue.fMaxTasks, mps_kext_task_size(f.k) * f.glue.fMaxTasks);
         m.holdIo = true;
         std::vector<FakeTask *> v;
         for (uint32_t i = 0; i < f.glue.fMaxTasks; i++) {

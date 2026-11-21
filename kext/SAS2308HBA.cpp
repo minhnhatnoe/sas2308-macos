@@ -437,13 +437,15 @@ SAS2308HBA::InitializeController(void)
     }
 
     /*
-     * Upper-layer transfer cap: 1 MiB (the core's maxio), or less if the
-     * IOC's SGL limit (buffer_dmat nsegments: request frame + MaxChainDepth
-     * chain frames) could not describe a page-scattered buffer of that size.
+     * Upper-layer transfer cap: the core's maxio (max_io_pages x 4 KiB,
+     * mps.max_io_pages in the personality: 1 MiB), or less if the IOC's SGL
+     * limit (buffer_dmat nsegments) could not describe a page-scattered
+     * buffer of that size.
      */
     {
+        struct mps_kext_limits lim;
         UInt64 segs = fGlue.fMaxSegs;
-        UInt64 maxBytes = 1024 * 1024;
+        UInt64 maxBytes = (mps_kext_limits(fGlue.fMps, &lim) == 0 && lim.maxio != 0) ? lim.maxio : PAGE_SIZE;
         if (segs < 2)
             maxBytes = PAGE_SIZE;
         else if ((segs - 1) * PAGE_SIZE < maxBytes)
@@ -674,7 +676,8 @@ SAS2308HBA::ReportMaximumTaskCount(void)
 }
 
 /* Per task: the XPT_SCSI_IO ccb and its bus_dma_segment_t list (mps_xnu_os.cpp). */
-UInt32 SAS2308HBA::ReportHBASpecificTaskDataSize(void) { return (UInt32)mps_kext_task_size(); }
+/* called after InitializeController: the core knows its segment count */
+UInt32 SAS2308HBA::ReportHBASpecificTaskDataSize(void) { return (UInt32)mps_kext_task_size(fGlue.fMps); }
 UInt32 SAS2308HBA::ReportHBASpecificDeviceDataSize(void) { return sizeof(UInt64); /* unused */ }
 /* We create targets from firmware discovery events, the family must not scan. */
 bool SAS2308HBA::DoesHBAPerformDeviceManagement(void) { return true; }

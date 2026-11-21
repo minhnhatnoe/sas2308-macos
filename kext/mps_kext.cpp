@@ -53,7 +53,6 @@ static inline void memset_zero(void *p, size_t n) { memset(p, 0, n); }
  * mps_kext_*: the IOKit class's view of the core
  * ==================================================================== */
 
-#define MPSK_TASK_MAXSEGS	(MPS_XNU_MAXIO_PAGES + 1)	/* buffer_dmat: maxio + 1 */
 #define MPSK_SEG_BYTES		0xFFFFFFull			/* MPI2 simple SGE length */
 
 /* The HBA data of one SCSIParallelTask. */
@@ -71,8 +70,13 @@ struct mps_kext_task {
 #define MPSK_T_SYNC_DONE    3   /* completed inside xpt_action() */
 #define MPSK_T_QUEUED       4   /* on the done queue */
     int                     ua_retried; /* re-sent once for a UNIT ATTENTION after our reset (D3) */
-    bus_dma_segment_t       segs[MPSK_TASK_MAXSEGS];
+    /* then mps_kext_max_segs() bus_dma_segment_t (mps_kext_task_size) */
 };
+
+static inline bus_dma_segment_t *mps_kext_task_seglist(struct mps_kext_task *t)
+{
+    return (bus_dma_segment_t *)(void *)(t + 1);
+}
 
 /* An OS target reset (XPT_RESET_DEV, D10). */
 struct mps_kext_tmreq {
@@ -424,7 +428,7 @@ uint32_t mps_kext_max_segs(struct mps_kext *k)
     struct mps_softc *sc = &k->sc;
     if (!k->attached || sc->buffer_dmat == NULL || sc->buffer_dmat->dt_nsegments <= 0)
         return 0;
-    return MIN((uint32_t)sc->buffer_dmat->dt_nsegments, (uint32_t)MPSK_TASK_MAXSEGS);
+    return (uint32_t)sc->buffer_dmat->dt_nsegments;     /* max_io_pages + 1 (mps.max_io_pages, D32) */
 }
 
 /* xnu.io_cmds: the normal request frames (min(RequestCredit, MPS_REQ_FRAMES)) less the internal commands */
@@ -471,6 +475,7 @@ int mps_kext_limits(struct mps_kext *k, struct mps_kext_limits *l)
     l->os_commands = sc->xnu.io_cmds > 0 ? (uint32_t)sc->xnu.io_cmds : 0;
     l->max_segs = sc->buffer_dmat != NULL && sc->buffer_dmat->dt_nsegments > 0 ?
         (uint32_t)sc->buffer_dmat->dt_nsegments : 0;
+    l->maxio = (uint64_t)sc->maxio;
     l->dma_bytes = DmaTagBytes(sc->queues_dmat) + DmaTagBytes(sc->reply_dmat) + DmaTagBytes(sc->req_dmat) +
         DmaTagBytes(sc->chain_dmat) + DmaTagBytes(sc->sense_dmat) + DmaTagBytes(sc->xnu.cfg_dmat);
     /* + one struct bus_dmamap (mps_compat.c: 4 pointer-sized fields) per command */
@@ -513,19 +518,15 @@ void mps_kext_intr(struct mps_kext *k)
     k->inline_owner = nullptr;
 }
 
-size_t mps_kext_task_size(void)
+/* the family sizes its tasks after InitializeController (mps_attach): segments for buffer_dmat */
+size_t mps_kext_task_size(struct mps_kext *k)
 {
-    return sizeof(struct mps_kext_task);
-}
-
-uint32_t mps_kext_task_maxsegs(void)
-{
-    return MPSK_TASK_MAXSEGS;
+    return sizeof(struct mps_kext_task) + (size_t)mps_kext_max_segs(k) * sizeof(bus_dma_segment_t);
 }
 
 struct mps_kext_seg *mps_kext_task_segs(void *td)
 {
-    return (struct mps_kext_seg *)((struct mps_kext_task *)td)->segs;
+    return (struct mps_kext_seg *)mps_kext_task_seglist((struct mps_kext_task *)td);
 }
 
 /* The XPT_SCSI_IO ccb of mock_ioc_test.cpp Rig::NewIo/Go. */
@@ -557,7 +558,7 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
     t->os_task = os_task;
     t->os_tag = os_tag;
     t->done_next = nullptr;
-    if (!k->attached || cdblen == 0 || cdblen > IOCDBLEN || nsegs > MPSK_TASK_MAXSEGS ||
+    if (!k->attached || cdblen == 0 || cdblen > IOCDBLEN || nsegs > mps_kext_max_segs(k) ||
         len > 0xFFFFFFFFull) {
         /* refused before the core: delivered like any completion */
         ccb->ccb_h.status = k->attached ? CAM_REQ_INVALID : CAM_DEV_NOT_THERE;
@@ -589,7 +590,7 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
         ccb->ccb_h.timeout = MPSK_UNTIMED_BACKSTOP_MS;
     ccb->ccb_h.flags = (dir == MPSK_DIR_IN ? CAM_DIR_IN : dir == MPSK_DIR_OUT ? CAM_DIR_OUT : CAM_DIR_NONE) |
                        (nsegs ? CAM_DATA_SG_PADDR : 0);
-    ccb->csio.data_ptr = nsegs ? (uint8_t *)t->segs : NULL;
+    ccb->csio.data_ptr = nsegs ? (uint8_t *)mps_kext_task_seglist(t) : NULL;
     ccb->csio.sglist_cnt = (uint16_t)nsegs;
     ccb->csio.dxfer_len = (uint32_t)len;
     ccb->csio.sense_len = SSD_FULL_SIZE;

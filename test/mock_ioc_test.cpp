@@ -510,7 +510,7 @@ int main()
     CHECK(ioc.state == MPI2_IOC_STATE_OPERATIONAL);
     CHECK(g.sc->num_reqs - g.sc->num_prireqs - 1 == ioc.requestCredit - 1);   /* normal SMIDs */
     /* 128-byte frames: FreeBSD maxio 1 MiB -> 257 segments; 1 SGE + chain in the request frame, 9 + chain per chain frame. */
-    CHECK(g.MaxSegs() == MPS_XNU_MAXIO_PAGES + 1);
+    CHECK(g.MaxSegs() == kMaxIoPages + 1);
     CHECK(ChainsFor(1) == 0 && ChainsFor(2) == 1 && ChainsFor(10) == 1 &&
           ChainsFor(11) == 2 && ChainsFor(256) == 29 && ChainsFor(257) == 29);
     CHECK(g.ChainsTotal() == ioc.requestCredit * 29 && g.ChainsFree() == g.ChainsTotal());
@@ -609,7 +609,7 @@ int main()
 
     printf("max-size transfers: 1 MiB in 256 x 4 KiB, 3 x max SGE length\n");
     {
-        std::vector<uint32_t> lens(MPS_XNU_MAXIO_PAGES, 4096);
+        std::vector<uint32_t> lens(kMaxIoPages, 4096);
         for (uint32_t dir : {CAM_DIR_IN, CAM_DIR_OUT})
             DataIo(g, dir, Scatter(big, lens, rng), big, 0x11);
         Buf huge = AllocBuf(ioc, 3ull * kMaxSegBytes + 256);
@@ -657,7 +657,7 @@ int main()
         CHECK(!a->done && !b->done && !c->done);
         CHECK(g.IoOutstanding(a) && g.IoOutstanding(b) && g.IoOutstanding(c));
         CHECK(g.ChainsFree() == g.ChainsTotal() - 2 - 29 - 29 && g.ChainsTotal() == ioc.requestCredit * 29);
-        CHECK(g.MaxSegs() == MPS_XNU_MAXIO_PAGES + 1);
+        CHECK(g.MaxSegs() == kMaxIoPages + 1);
         ioc.holdIo = false;
         ioc.ReleasePending();
         g.Pump();
@@ -948,7 +948,7 @@ int main()
     printf("chain pool exhaustion: requeued (SIM queue frozen), nothing consumed, recovers\n");
     {
         Rig m({0x0009}, [](Rig &r) { r.sc->max_chains = 5; });     /* hw.mps.max_chains */
-        CHECK(m.ChainsTotal() == 5 && m.MaxSegs() == MPS_XNU_MAXIO_PAGES + 1);   /* FreeBSD keeps maxio */
+        CHECK(m.ChainsTotal() == 5 && m.MaxSegs() == kMaxIoPages + 1);   /* FreeBSD keeps maxio */
         Buf b = AllocBuf(m.ioc, 1u << 20);
         std::vector<uint32_t> l17(17, 256), l11(11, 256), l1(1, 256), l46(46, 256);
         auto s17 = Scatter(b, l17, rng), s11 = Scatter(b, l11, rng), s1 = Scatter(b, l1, rng),
@@ -2962,7 +2962,7 @@ static void DeviationTests()
         gHost.tunables["mps." + std::to_string(unit + 1) + ".spinup_wait_time"] = "9";   /* another HBA's */
         gHost.tunables["mps.use_phy_num"] = "x";                                       /* not a number */
         Rig g;
-        gHost.tunables.clear();
+        gHost.tunables = kInfoPlistTunables;
         CHECK(g.sc->spinup_wait_time == 7 && g.sc->max_evtframes == 32);
         CHECK(g.sc->max_chains == 300 && g.sc->num_chains <= 300);
         CHECK(g.sc->use_phynum == 1);
@@ -2970,6 +2970,22 @@ static void DeviationTests()
         CHECK(g.Go(r) == kPosted);
         g.Pump();
         CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
+    if (Want("D32")) {
+        /* maxio: FreeBSD's MPS_MAXIO_PAGES (-1) in the core, 256 pages from the personality */
+        {
+            Rig g;
+            CHECK(g.sc->max_io_pages == kMaxIoPages && g.sc->maxio == kMaxIoPages * 4096);
+            CHECK(g.MaxSegs() == (uint32_t)kMaxIoPages + 1);
+        }
+        gHost.tunables.clear();                     /* no key: FreeBSD's default, the IOC's limit */
+        Rig g;
+        gHost.tunables = kInfoPlistTunables;
+        CHECK(g.sc->max_io_pages == -1);
+        /* 128-byte frames: (128/12 - 1) x MaxChainDepth 128 + 1 = 1153 pages, i.e. 4.5 MiB (mps.c) */
+        CHECK(g.sc->maxio == (((128 / 12) - 1) * 128 + 1) * 4096);
+        CHECK(g.MaxSegs() == (uint32_t)g.sc->maxio / 4096);   /* + 1, capped at the chain depth (D59) */
     }
 
     if (Want("D18")) {

@@ -263,7 +263,7 @@ SAS2308HBA::PublishLimits(bool log)
     const uint32_t tasks = fGlue.fMaxTasks;
     fGlue.Unlock();
     const uint64_t slotBytes = (uint64_t)tasks * sizeof(SAS2308Glue::Slot);
-    const uint64_t taskDataBytes = (uint64_t)tasks * mps_kext_task_size();
+    const uint64_t taskDataBytes = (uint64_t)tasks * mps_kext_task_size(fGlue.fMps);
 
     OSDictionary *d = OSDictionary::withCapacity(24);
     if (!d)

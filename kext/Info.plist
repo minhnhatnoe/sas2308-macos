@@ -46,6 +46,12 @@
 			     overrides it, sas2308ctl changes it at runtime (docs/design.md "Logging") -->
 			<key>SAS2308LogLevel</key>
 			<integer>2</integer>
+			<!-- FreeBSD loader tunables (hw.mps.X, dev.mps.N.X) are read as mps.X / mps.N.X:
+			     a boot-arg of that name first, else a key here (D33). max_io_pages: 256 x 4 KiB
+			     = 1 MiB per IO, what IOBlockStorageDriver sends; FreeBSD's default (-1) would
+			     size every task for the IOC's 4.5 MiB (1154 segments, ~38 MiB wired) (D32) -->
+			<key>mps.max_io_pages</key>
+			<integer>256</integer>
 			<!-- as Apple's AppleLSIFusionMPT (AppleLSIFusionSAS personality): the family copies
 			     Physical Interconnect / Location into the HBA's Protocol Characteristics; the
 			     kext copies them and the timeouts (ms) into every target nub's. 30 s: the Linux sd
