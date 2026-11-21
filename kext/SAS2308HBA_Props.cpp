@@ -411,6 +411,18 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Reinit max ms", st.reinit_max_ms);
     SetNumber(d, "Controller dead", ks.deadEvents);
     SetNumber(d, "Transient all-ones reads", st.transient_allones);
+    {
+        uint16_t cmd, ctl;
+        uint64_t addr;
+        uint32_t data;
+        ReadMsi(&cmd, &ctl, &addr, &data);          /* D13: compare before / after a diag reset */
+        SetNumber(d, "PCI command", cmd);
+        SetNumber(d, "MSI control", ctl);
+        SetNumber(d, "MSI address", addr);
+        SetNumber(d, "MSI data", data);
+        SetNumber(d, "PCI state restores", fPciRestores);
+        SetNumber(d, "PCI state restore failures", fPciRestoreFailures);
+    }
     SetNumber(d, "Stale replies", st.stale_replies);
     SetNumber(d, "Bad replies", st.bad_replies);
     SetNumber(d, "Events", st.events);

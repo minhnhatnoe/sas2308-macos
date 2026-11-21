@@ -185,6 +185,7 @@ private:
     void PublishControllerCharacteristics(void);
     bool Snapshot(struct mps_kext_snapshot *snap);
     void PublishStats(bool force);
+    void ReadMsi(uint16_t *command, uint16_t *control, uint64_t *address, uint32_t *data);
     void PublishLimits(bool log);
     void LogCounters(const char *why);
     static void StatsTimerFired(OSObject *owner, IOTimerEventSource *sender);
@@ -197,6 +198,9 @@ private:
     thread_call_t  fDoneCall = nullptr; /* delivers completions queued by callouts / the reinit task */
     IOTimerEventSource *fStatsTimer = nullptr;
     bool           fBusLeadOff = false;     /* bus mastering cut after the IOC died */
+    bool           fPciSaved = false;       /* saveDeviceState done: diag resets restore it (D13) */
+    uint32_t       fPciRestores = 0;        /* restoreDeviceState calls, and failures */
+    uint32_t       fPciRestoreFailures = 0;
     bool           fTunnelled = false;      /* IOPCITunnelled: behind Thunderbolt */
 
     /* power management (SAS2308HBA_PM.cpp) */

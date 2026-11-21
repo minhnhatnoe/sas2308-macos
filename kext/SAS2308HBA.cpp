@@ -80,19 +80,51 @@ SAS2308HBA::HostFreeInterrupts(void *hba)
 }
 
 //-----------------------------------------------------------------------------
-//	HostPciRestore - mps_pci_restore() after a diag reset: memory decode and
-//	bus mastering (MSI) back on.									[PRIVATE]
+//	HostPciRestore - mps_pci_restore() after a diag reset: FreeBSD's
+//	pci_cfg_restore (BARs, command, MSI address/data/enable) is
+//	restoreDeviceState() of the config space saved in StartController (D13);
+//	memory decode and bus mastering are set again as a fallback.	[PRIVATE]
 //-----------------------------------------------------------------------------
 
 int
 SAS2308HBA::HostPciRestore(void *hba)
 {
     SAS2308HBA *self = (SAS2308HBA *)hba;
-    if (self->fPCI && !self->fBusLeadOff) {
-        self->fPCI->setMemoryEnable(true);
-        self->fPCI->setBusLeadEnable(true);
+    if (!self->fPCI || self->fBusLeadOff)
+        return 0;
+    if (self->fPciSaved) {
+        const IOReturn r = self->fPCI->restoreDeviceState();
+        self->fPciRestores++;
+        if (r != kIOReturnSuccess)
+            self->fPciRestoreFailures++;
     }
+    self->fPCI->setMemoryEnable(true);
+    self->fPCI->setBusLeadEnable(true);
     return 0;
+}
+
+/* MSI as the config space holds it now (D13 hardware check). */
+void
+SAS2308HBA::ReadMsi(uint16_t *command, uint16_t *control, uint64_t *address, uint32_t *data)
+{
+    UInt8 off = 0;
+
+    *command = *control = 0;
+    *address = 0;
+    *data = 0;
+    if (!fPCI)
+        return;
+    *command = fPCI->configRead16(kIOPCIConfigCommand);
+    if (!fPCI->findPCICapability(kIOPCIMSICapability, &off) || off == 0)
+        return;
+    *control = fPCI->configRead16(off + 2);
+    *address = fPCI->configRead32(off + 4);
+    if (*control & 0x0080) {                        /* 64-bit address capable */
+        *address |= (uint64_t)fPCI->configRead32(off + 8) << 32;
+        *data = fPCI->configRead16(off + 12);
+    } else {
+        *data = fPCI->configRead16(off + 8);
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -412,6 +444,23 @@ SAS2308HBA::StartController(void)
     fGlue.Start();
 
     EnableInterrupt();                              /* family: enable the event source */
+    /*
+     * D13: keep the config space as it is now (BARs, command, MSI set up by
+     * the interrupt source) for HostPciRestore, as FreeBSD's
+     * pci_cfg_save/restore. kIOPCIConfigShadowPermanent: save only (no
+     * power state change), and the copy stays valid across restores.
+     */
+    if (fPCI) {
+        const IOReturn r = fPCI->saveDeviceState(kIOPCIConfigShadowPermanent);
+        fPciSaved = r == kIOReturnSuccess;
+        uint16_t cmd, ctl;
+        uint64_t addr;
+        uint32_t data;
+        ReadMsi(&cmd, &ctl, &addr, &data);
+        Klog(fPciSaved ? (MPSK_INIT | MPSK_INFO) : (MPSK_INIT | MPSK_ERROR),
+             "PCI config space %s (0x%x): command 0x%04x, MSI control 0x%04x address 0x%llx data 0x%04x",
+             fPciSaved ? "saved" : "not saved", r, cmd, ctl, (unsigned long long)addr, data);
+    }
     if (!Enter()) {
         Klog(MPSK_FAULT | MPSK_INIT, "StartController without an attached core");
         return false;
