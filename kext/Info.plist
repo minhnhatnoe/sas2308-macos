@@ -55,6 +55,11 @@
 			     size every task for the IOC's 4.5 MiB (1154 segments, ~38 MiB wired) (D32) -->
 			<key>mps.max_io_pages</key>
 			<integer>256</integer>
+			<!-- BAR1 mapped kIOMapPostedWrite (D75 A/B on the 9207 behind the JHL7440: sequential 4K
+			     QD32 on 7 drives 177563 IOPS vs 173081 / 173343 non-posted, random 4K and verify
+			     unchanged, 0 errors); boot-arg sas2308_posted_write=0 maps it non-posted -->
+			<key>sas2308_posted_write</key>
+			<integer>1</integer>
 			<!-- as Apple's AppleLSIFusionMPT (AppleLSIFusionSAS personality): the family copies
 			     Physical Interconnect / Location into the HBA's Protocol Characteristics; the
 			     kext copies them and the timeouts (ms) into every target nub's. 30 s: the Linux sd

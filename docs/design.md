@@ -44,7 +44,8 @@ DriverKit SDK / iig). Built with Command Line Tools only (`kext/Makefile`, arm64
 - `tools/diff-vs-freebsd.sh` — `diff -u` of the ported files against FreeBSD, with a summary.
 - `test/mock_ioc_test.cpp`, `test/mps_port_test.cpp` — the core against the software IOC
   model (`test/mock_ioc.h`) under ASan/UBSan/LSan; host hooks in `test/mps_host_os.*`;
-  `test/kext_targets_test.cpp` — the kext's target table;
+  `test/kext_targets_test.cpp` — the kext's target table; `test/kext_pcie_test.cpp` — the "PCIe Link"
+  decoding; `test/plist_test.sh` — the personality's device ids;
   `make -C test freestanding` compiles the core like the kext (`-nostdinc`, `-Werror`).
 
 ## M5: FreeBSD-shaped core
@@ -461,7 +462,8 @@ suspended controller (registers left alone, held IO failed `CAM_DEV_NOT_THERE`).
 | target nub (`CreateTargetForID(id, dict)`) | `SAS Address` (8 bytes, big-endian, from SAS Device Page 0) | the family also sets `Unique SCSI Port Identifier` and names the nub `SAS Target <address>` |
 | target nub `Protocol Characteristics` (from `InitializeTargetForID`, before registration) | Physical Interconnect, Location, Read/Write Time Out Duration | SAS, the HBA's Location, the HBA's timeouts |
 | HBA | `SAS2308Statistics` (+ Suspends, Resumes, Suspend drain left, Config page reads/failures; State "suspended") | |
-| HBA | `Controller Limits` (queue-freebsd) | IOCFacts RequestCredit, HighPriorityCredit, MaxReplyDescriptorPostQueueDepth, MaxChainDepth, IOCRequestFrameSize (bytes), ReplyFrameSize (bytes), MaxTargets, MaxVolumes, MaxMSIxVectors; effective Request / High-priority / Reply frames, Reply post queue depth, Chain frames, Max segments per IO, Core OS commands, OS task count; DMA / Heap / Task data bytes. At attach and after every reinit or resume |
+| HBA | `Controller Limits` (queue-freebsd) | IOCFacts RequestCredit, HighPriorityCredit, MaxReplyDescriptorPostQueueDepth, MaxChainDepth, IOCRequestFrameSize (bytes), ReplyFrameSize (bytes), MaxTargets, MaxVolumes, MaxMSIxVectors; effective Request / High-priority / Reply frames, Reply post queue depth, Chain frames, Max segments per IO, Core OS commands, OS task count; DMA / Heap / Task data bytes (Heap: the core's only since batch D, D45). At attach and after every reinit or resume |
+| HBA | `PCIe Link` (batch D) | Link Speed / Link Width (Link Status), Max Link Speed / Max Link Width (Link Capabilities), Max Payload Size, Max Read Request Size (Device Control), Max Payload Size Supported (Device Capabilities), the four raw registers, BAR1 Posted Writes. With `Controller Limits` |
 Not published: the HBA's own SAS address (SetHBAProperty in IOSCSIParallelFamily-352 accepts no SAS
 key; it would need SAS IO Unit Page 0, not ported); `IOPCIUseDeviceMapper` (Apple's plist has it,
 the DART is always used on Apple silicon).
@@ -832,6 +834,33 @@ failures, no IODMACommand/descriptor growth across the temperature polls; a forc
 command under IO on all 7 drives recover with 0 errors (DELAY with the lock, the taskqueue thread, the
 deferred held run); a `shutdown -r` at full write rate leaves every block with old or new data, none
 corrupt (D34). Random 4K QD32 1765 IOPS, seq 1 MiB 1944.6 MB/s, verify 0 mismatches.
+
+## FreeBSD deviation fixes, batch D (branch fix-batch-D, 2026-11-20)
+Kext glue and IO path items of `docs/reviews/2026-11-freebsd-deviations.md` (final fixes in
+`docs/reviews/2026-11-decisions.md`), the agreed counters, and the card's PCIe link in the registry.
+Each host test failed before its fix (`MOCK_ONLY=<id>` / `KGLUE_ONLY=<id>`), except where noted.
+`tools/diff-vs-freebsd.sh -s`: 1198 added / 3836 removed lines before; after: see the deviations plan
+(D9 and use_phynum bring FreeBSD code back, D31 adds to an XNU-only function).
+
+| id | fix | host test |
+|---|---|---|
+| D52 | the personality matches 0x0086, 0x0087 and 0x006E (FreeBSD's SAS2308 ids) | `test/plist_test.sh` |
+| D48 | `kIOMinimumSegmentAlignmentByteCountKey` 1, as the DMA specification and FreeBSD's buffer tag | none (IOKit class) |
+| D30 | no doorbell read on an interrupt that finds the reply queue empty; `mps_periodic` (1 s) finds faults, as on FreeBSD | core `D30`; the two M2 fault scenarios now wait for `mps_periodic` |
+| D31 | IO Unit Page 7 waits 5 s with a timeout handler (FreeBSD's IDENTIFY pattern), never `mps_reinit`; the command the IOC still owns is freed late or by the next reinit; polling stops after a timeout until the next reinit; counter `IOC temperature read timeouts`, one error line. Poll on by default | core temperature `D31` |
+| D29 | counter `Event acks sent`; the first ack of each event code logged at info (decides D29 on hardware) | core `D29` |
+| D55 | `KASSERT hits`: every KASSERT failure and returned `panic()` counted (one counter per kext) | core `D55` |
+| D46 | the family's task attribute (SIMPLE / ORDERED / HEAD / ACA) becomes the ccb's `tag_action`, as da passes its own; still no periodic ORDERED tag (comment) | glue `D46` |
+| D45 | no slot table: the glue's per-task state (`struct mps_kext_task_glue`: prepared, the mapping-wait link) lives in the task's HBA data and comes back with the completion; AbortTaskRequest finds its task with the family's `FindTaskForAddress`; a counter keeps the `fMaxTasks` check. No O(outstanding) scan per IO | glue `D45` (did not build before) |
+| D47 | direction IN/OUT with length 0 is a command without data (FreeBSD); an IODMACommand prepare/gen failure (no IOVA space) no longer fails the task: it is accepted, timed, and waits in order on a list (later tasks queue behind it, as behind a frozen SIM queue), mapped again after the next completions and on the 1 s timer; its timer runs from the submit (FreeBSD arms the callout before `mps_map_command`), so a timeout completes it `TaskTimeoutOccurred`; an abort, a stop or the target's removal completes it. Counter `Tasks waiting for a mapping` | glue `D47` (the zero-length part failed before; the rest did not build) |
+| D7 | target ids 0 .. MaxTargets + MaxVolumes - 1 (1024 here), as FreeBSD's `sassc->maxtargets`: the core's per-id identity tables are an array allocated with `sassc->targets`; FreeBSD's `use_phynum` fallback is back in `mpssas_add_device`; the async callback passes the event's target (or all) with present/generation arrays; RETRY_UA state per id; the glue's target table has one entry per id; `ReportHighestSupportedDeviceID` = maxtargets - 1, initiator id = maxtargets; termination destroys what the family's loop misses above its limit | core `D7` (70 devices, failed at the 65th before); glue `D7`; targets (1024 ids) |
+| D9 | FreeBSD's shutdown SSU: `mpssas_ir_shutdown` (its IR half removed, D53), the `enable_ssu` choice (default: SSDs only), `mpssas_SSU_to_SATA_devices`, `mpssas_stop_unit_done`, the `SSU_refcount` decrement; called by the kext's shutdown before the drain and the MUR, with RB_NOSYNC's 10 s bound (halt watchdog 30 s), the wait polls the reply queue. The INQUIRY snoop that sets `supports_SSU` uses the target's devinfo (SATA end device, not ATAPI) since our data is a physical segment list, and also runs on the fast path (SAM's INQUIRY completes without a reply frame; FreeBSD snoops only reply frames) | glue `D9` (SAS disk, SATA SSD, SATA HDD: one STOP to the SSD at shutdown, then the MUR) |
+| D73 | `mps_os_dmamem_alloc` / `mps_os_dmamap_load_buf` refuse an IODMACommand that bounces (`getIOMemoryDescriptor` is the copy): `bus_dmamap_sync` is a no-op. Task buffers are safe either way (prepare/complete synchronize) | none (IOKit) |
+| D74 | the tag's alignment goes to `withSpecification`; the DMA hook no longer zeroes, `bus_dmamem_alloc` does for BUS_DMA_ZERO (FreeBSD) | none (IOKit) |
+| PCIe | "PCIe Link" next to "Controller Limits": negotiated speed/width (Link Status) vs the card's (Link Capabilities), MPS and MRRS in use (Device Control), MPS supported (Device Capabilities), raw registers, BAR1 mapping; at attach (one log line) and after every reinit/resume; `sas2308ctl show` prints it | `kext_pcie_test` |
+| D75 | `sas2308_posted_write` (boot-arg or personality key, default 0) maps BAR1 `kIOMapPostedWrite` for the hardware A/B | none (IOKit) |
+
+Hardware tests and results: the deviations plan (Status, "Batch D hardware results").
 
 ## What is implemented (M1 – M4)
 > **Names after M5.** The tables and sections below are the M1–M4 history and use the names of

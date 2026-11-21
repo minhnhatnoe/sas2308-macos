@@ -82,6 +82,21 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | C | D78 | done | 08c020f | core `D78`; whole suite with QUEUE_MACRO_DEBUG_TRASH/ASSERTIONS | n/a (host only) |
 | C | D6 | done | b8e6b94 | core `D6` (2 page reads during a stuck IDENTIFY; 1000 reads -> 0 mappings) | see "Batch C hardware results"; M5c retries / re-add slots kept: still to run, test 8 |
 | C | KEEP comments D38, D65, D69, D17 | done | 0e8927d, 7080f64, afe2fc5 | none (comments) | |
+| D | D52 | done | 9620c91 | `test/plist_test.sh` | HW-D52 |
+| D | D48 | done | 5340603 | none (IOKit class) | HW-D48 |
+| D | D30 | done | fe1ea5b | core `D30` | HW-D30 |
+| D | D31 | done | a0fbc9b | core temperature `D31` | HW-D31 |
+| D | D29 (counter) | done | dd50951 | core `D29` | HW-D29 |
+| D | D55 (counter) | done | e322813 | core `D55` | HW-D55 |
+| D | D46 | done | 1f30ae6 | glue `D46` | HW-D46 |
+| D | D45 | done | 35d0029 | glue `D45` (did not build before) | HW-D45 |
+| D | D47 | done | 01f164a | glue `D47` (zero-length part failed before; the rest did not build) | HW-D47 |
+| D | D7 | done | b121c7f | core `D7` (failed at the 65th device before), glue `D7`, targets 1024 ids | HW-D7 |
+| D | D9 | done | 987f693 | glue `D9` (failed before) | HW-D9 |
+| D | D73, D74 | done | bc5bfea | none (IOKit) | HW-D73 |
+| D | PCIe Link property (feature request) | done | 6d5b57a | `kext_pcie_test` | HW-PCIE |
+| D | D75 (switch for the A/B) | done | fb15323 | none (IOKit) | HW-D75 |
+| D | KEEP comment D46 (no periodic ORDERED) | done | 51b85a5, 1f30ae6 | none (comment) | |
 
 ### Batch A hardware results
 
@@ -217,6 +232,19 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
    "Device re-adds scheduled" 0 (with D6 a page read no longer waits for a shared buffer). If both
    stay 0 over 3 replugs, the retries (`mps_xnu_get_sas_device_pg0`) and re-add slots
    (`MPS_XNU_EVENT_READD` for adds; D8's re-IDENTIFY keeps the slot machinery) can go.
+9. **D9, SATA SSD stopped at shutdown** (batch D, build EBB85578 or later). Attach a SATA SSD to a
+   free breakout port (no data needed on it). Read its SMART "Unsafe Shutdown Count" (attribute
+   192 / 174 / vendor's, e.g. `smartctl -A` from a Linux box, or with smartmontools on the Mac if
+   it can reach a SCSI nub: `smartctl -d sat -A /dev/diskN`). Then 3 x `sudo shutdown -r now`
+   (drives unmounted). Read the count again: it must not have grown. The INQUIRY at nub creation
+   must have marked it (`sas2308ctl level debug` before attaching: log line `Target N supports
+   SSU`); the shutdown itself is not in the log (logd stops first). A SATA HDD must get no SSU
+   (enable_ssu default).
+10. **D29, event acks on hot-plug** (with test 1 or 8). Before and after the pull/re-insert:
+    `sas2308ctl stats | grep "Event acks"`. "Event acks sent" stayed 0 over boot (25 events) on
+    build EBB85578; if it is still 0 after hot-plug events, the ack code goes (FreeBSD never acks);
+    if not, the log names the event (`event X (0x..) asks for an ack`) and the code stays with a
+    comment naming it.
 
 ## Ranked table: changes (CHANGE)
 

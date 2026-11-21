@@ -418,7 +418,8 @@ SAS2308HBA::InitializeController(void)
      * D75 (hardware A/B): the default device mapping is non-posted
      * (nGnRnE); kIOMapPostedWrite lets the doorbell and host-index writes
      * post (ordering is the H3 barriers' job in the MMIO hooks). Chosen by
-     * the boot-arg or personality key sas2308_posted_write (default 0).
+     * the boot-arg or personality key sas2308_posted_write: 1 in Info.plist
+     * (faster host path in the A/B, no errors); absent = non-posted.
      */
     {
         char v[8] = "";
