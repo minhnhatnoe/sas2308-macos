@@ -203,9 +203,16 @@ static void WaitIdle(volatile SInt32 *inflight)
 
 extern "C" {
 
+/*
+ * malloc(9) for M_WAITOK and M_NOWAIT alike (D38): IOMalloc may block, which
+ * is legal everywhere the core runs: no core path runs at primary interrupt
+ * level or with preemption disabled (FilterInterruptRequest returns without
+ * entering the core; the rest is work-loop, thread-call, taskqueue and client
+ * threads). An M_WAITOK NULL is checked by every caller (FINAL L13).
+ */
 void *mps_os_malloc(size_t size, int canwait)
 {
-    (void)canwait;                           /* mps_mtx is a blocking mutex: IOMalloc may block */
+    (void)canwait;
     return IOMalloc(size);
 }
 
