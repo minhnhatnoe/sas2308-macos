@@ -9,8 +9,12 @@
 CXX ?= c++
 CC ?= cc
 SAN := -fsanitize=address,undefined -fno-sanitize-recover=undefined
-CXXFLAGS ?= -std=gnu++20 -O1 -g -Wall -Wextra -fno-exceptions -fno-rtti $(SAN)
-PORT_CFLAGS := -std=gnu11 -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare $(SAN)
+CXXFLAGS ?= -std=gnu++20 -O1 -g -Wall -Wextra -fno-exceptions -fno-rtti $(SAN) $(QMD)
+# FreeBSD's queue(3) debugging (D78): trashed links and consistency checks;
+# TRASH in the C core only (QMD_SAVELINK's void ** does not compile as C++)
+QMD := -DQUEUE_MACRO_DEBUG_ASSERTIONS
+PORT_CFLAGS := -std=gnu11 -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare $(SAN) \
+	$(QMD) -DQUEUE_MACRO_DEBUG_TRASH
 
 
 PORT_SRCS := ../core/compat/mps_compat.c ../core/compat/cam_compat.c ../core/mps.c ../core/mps_config.c \

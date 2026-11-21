@@ -34,8 +34,10 @@
 
 /*
  * XNU: subset of FreeBSD sys/sys/queue.h (commit in core/VENDOR.txt):
- * the SLIST and TAILQ macros used by the mps driver core, without the
- * QUEUE_MACRO_DEBUG variants.  Renamed include guard so that it does not
+ * the SLIST and TAILQ macros used by the mps driver core, with FreeBSD's
+ * QUEUE_MACRO_DEBUG_TRASH and QUEUE_MACRO_DEBUG_ASSERTIONS (the host test
+ * build turns both on; QMD_PANIC is compat's panic(), which logs) but not
+ * QUEUE_MACRO_DEBUG_TRACE.  Renamed include guard so that it does not
  * collide with a platform <sys/queue.h>.
  */
 #ifndef _MPS_COMPAT_QUEUE_H_
@@ -45,10 +47,35 @@
 #define QMD_TRACE_HEAD(head)
 #define TRACEBUF
 #define TRACEBUF_INITIALIZER
+
+#ifdef QUEUE_MACRO_DEBUG_TRASH
+#define QMD_SAVELINK(name, link)	void **name = (void *)&(link)
+#define TRASHIT(x)		do {(x) = (void *)-1;} while (0)
+#define QMD_IS_TRASHED(x)	((x) == (void *)(intptr_t)-1)
+#else	/* !QUEUE_MACRO_DEBUG_TRASH */
 #define QMD_SAVELINK(name, link)
 #define TRASHIT(x)
 #define QMD_IS_TRASHED(x)	0
+#endif	/* QUEUE_MACRO_DEBUG_TRASH */
+
+#ifdef QUEUE_MACRO_DEBUG_ASSERTIONS
+#ifndef QMD_PANIC
+#define QMD_PANIC(fmt, ...) do {					\
+	mps_compat_panic(fmt, ##__VA_ARGS__);	/* XNU: panic() */	\
+} while (0)
+#endif /* !QMD_PANIC */
+
+#ifndef QMD_ASSERT
+#define QMD_ASSERT(expression, fmt, ...) do {				\
+	if (__predict_false(!(expression)))				\
+		QMD_PANIC("%s:%u: %s: " fmt,				\
+		    __FILE__, __LINE__, __func__,  ##__VA_ARGS__);	\
+} while (0)
+#endif /* !QMD_ASSERT */
+#else /* !QUEUE_MACRO_DEBUG_ASSERTIONS */
+#undef QMD_ASSERT
 #define QMD_ASSERT(test, fmt, ...) do {} while (0)
+#endif /* QUEUE_MACRO_DEBUG_ASSERTIONS */
 
 
 #ifdef __cplusplus

@@ -3004,6 +3004,23 @@ static void DeviationTests()
         CHECK(r->done && r->status == CAM_REQ_CMP);
     }
 
+    if (Want("D78")) {
+        /* queue(3) debugging is on in the host build: a broken link is caught, not walked */
+        struct E { TAILQ_ENTRY(E) link; int v; };
+        TAILQ_HEAD(, E) head = TAILQ_HEAD_INITIALIZER(head);
+        E a{}, b{}, stray{};
+        TAILQ_INSERT_TAIL(&head, &a, link);
+        TAILQ_INSERT_TAIL(&head, &b, link);
+        E *dummy = &stray;
+        b.link.tqe_prev = &dummy;                       /* as a list misuse leaves it (FINAL L3) */
+        gHost.panicsAllowed = 1;
+        const int panics = gHost.panics;
+        TAILQ_REMOVE(&head, &b, link);                  /* QMD_TAILQ_CHECK_PREV */
+        CHECK(gHost.panics == panics + 1);
+        gHost.panicsAllowed = 0;
+        (void)stray;
+    }
+
     if (Want("D18")) {
         /*
          * An "impossible" SGL state (no room left for a chain element):
