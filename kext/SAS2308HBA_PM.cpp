@@ -96,6 +96,10 @@ SAS2308HBA::StopPowerManagement(void)
 
 //-----------------------------------------------------------------------------
 //	setPowerState - synchronous; returns kIOPMAckImplied.			[PUBLIC]
+//	Synchronous on purpose (D49): drain + MUR + reinit measured well under
+//	a second (498 ms wake, measured on the test setup), and the bounded worst case (10 s
+//	drain + the stop) is inside the PM thread's tolerance; an asynchronous
+//	ack would add a second state machine for no measured benefit.
 //-----------------------------------------------------------------------------
 
 IOReturn
@@ -161,8 +165,16 @@ SAS2308HBA::QuiesceController(uint32_t drainMs, const char *why, bool shutdown)
     fSuspended = true;
     fGlue.Unlock();
     DisableInterrupt();
-    Klog(rc ? (MPSK_FAULT | MPSK_INIT) : (MPSK_INIT | MPSK_INFO), "%s: controller stopped%s", why,
-         rc ? " (the IOC did not acknowledge the message unit reset)" : " (message unit reset)");
+    /*
+     * Marked suspended even when the IOC did not stop (the core's fault
+     * line and "Sleep stop failures" say so, D49): the wake's reinit is
+     * what recovers it; a shutdown leaves it to the next boot.
+     */
+    if (rc)
+        Klog(MPSK_INIT | MPSK_ERROR, "%s: the IOC did not stop cleanly (error %d): marked stopped, %s", why, rc,
+             shutdown ? "the next attach resets it" : "the wake reinitializes it");
+    else
+        Klog(MPSK_INIT | MPSK_INFO, "%s: controller stopped (message unit reset)", why);
     return rc == 0;
 }
 
@@ -186,6 +198,8 @@ SAS2308HBA::ResumeController(void)
         Leave();
     }
     DeliverCompletions();
-    Klog(MPSK_INIT | MPSK_INFO, "wake: %s", rc == 0 ? "reinitializing the controller, IO held until rediscovery"
-                                                     : "controller not running");
+    if (rc == 0)
+        Klog(MPSK_INIT | MPSK_INFO, "wake: reinitializing the controller, IO held until rediscovery");
+    else            /* a resume that could not run: the disks stay unreachable (D49) */
+        Klog(MPSK_FAULT | MPSK_INIT, "wake: the controller could not be resumed (error %d): not running", rc);
 }

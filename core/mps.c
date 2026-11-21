@@ -1133,6 +1133,7 @@ mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms, int shutdown)
 			mps_dprint(sc, MPS_INIT|MPS_FAULT, "suspend: the IOC "
 			    "did not stop (error %d): bus mastering off\n",
 			    error);
+			sc->xnu.stats.suspend_stop_failed++;
 			mps_os_controller_dead(sc->mps_dev);
 		}
 	}
@@ -1140,9 +1141,19 @@ mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms, int shutdown)
 		mpssas_xnu_fail_all(sc);	/* held IO too: nothing resumes */
 	else
 		mpssas_xnu_suspend(sc);
+	/*
+	 * Suspended even when the IOC did not stop (D49): the resume's reinit
+	 * (diag reset as the fallback) is what brings it back; said so, and
+	 * counted ("Sleep stop failures").
+	 */
 	sc->mps_flags |= MPS_FLAGS_XNU_SUSPENDED;
 	sc->xnu.suspended_logged = 0;
-	mps_dprint(sc, MPS_INIT|MPS_INFO, "suspended: IOC stopped\n");
+	if (error != 0)
+		mps_dprint(sc, MPS_INIT|MPS_ERROR, "suspended without a clean "
+		    "stop (error %d): the resume reinitializes the IOC\n",
+		    error);
+	else
+		mps_dprint(sc, MPS_INIT|MPS_INFO, "suspended: IOC stopped\n");
 	return (error);
 }
 

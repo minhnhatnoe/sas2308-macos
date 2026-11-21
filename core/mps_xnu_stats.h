@@ -55,6 +55,7 @@ struct mps_xnu_stats {
 	uint32_t	chain_free_low;
 	/* system sleep / shutdown (mps_xnu_suspend) */
 	uint32_t	suspends, resumes;
+	uint32_t	suspend_stop_failed;	/* the IOC did not stop, suspended anyway (D49) */
 	uint32_t	suspend_drain_left;	/* commands still owned by the IOC at the MUR */
 	uint32_t	suspended_access;	/* register accesses refused while suspended */
 	/* SAS Device Page 0 reads (mpssas_add_device) */

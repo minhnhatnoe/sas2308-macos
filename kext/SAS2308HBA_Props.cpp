@@ -449,7 +449,7 @@ SAS2308HBA::PublishStats(bool force)
                          st.faults + st.reinits + st.reinit_failures + st.stale_replies + st.bad_replies + st.events +
                          st.chain_alloc_fail + ks.tasks + ks.tasksRejected + ks.familyTimeouts + ks.tmRequests +
                          snap.held + snap.tms_busy + (gone ? 1 : 0) + (resetting ? 2 : 0) + (fSuspended ? 4 : 0) + mask +
-                         st.suspends + st.resumes + st.config_reads + st.config_retries + st.readd_scheduled +
+                         st.suspends + st.resumes + st.suspend_stop_failed + st.config_reads + st.config_retries + st.readd_scheduled +
                          st.recovered_sense + st.temp_reads + (uint32_t)st.ioc_temp_c;
     fGlue.Lock();
     if (!force && sig == fLastPublishedSig) {
@@ -528,6 +528,7 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Chain free low", st.chain_free_low);
     SetNumber(d, "Suspends", st.suspends);
     SetNumber(d, "Resumes", st.resumes);
+    SetNumber(d, "Sleep stop failures", st.suspend_stop_failed);
     SetNumber(d, "Resumes without reset", st.resume_ready);
     SetNumber(d, "Resumes with diag reset", st.resume_diag_reset);
     SetNumber(d, "Suspend drain left", st.suspend_drain_left);

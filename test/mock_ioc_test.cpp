@@ -3446,4 +3446,22 @@ static void DeviationTests()
         CHECK(HasLog(mark, a) && HasLog(mark, b));
         CHECK(CountLog(mark, "similar IO error lines suppressed") == 2);
     }
+
+    if (Want("D49")) {
+        /* sleep with an IOC that does not stop: suspended anyway, said so and counted; the wake recovers */
+        Rig g;
+        MockIocModel &m = g.ioc;
+        m.murIgnored = true;
+        size_t mark = LogMark();
+        Suspend(g, 100);
+        CHECK(g.Stats().suspend_stop_failed == 1 && (g.sc->mps_flags & MPS_FLAGS_XNU_SUSPENDED));
+        CHECK(HasLog(mark, "suspended without a clean stop") && !HasLog(mark, "suspended: IOC stopped"));
+        CHECK(mps_xnu_log_type(LogClass(mark, "suspended without a clean stop")) == MPS_XNU_LOG_ERROR);
+        m.murIgnored = false;
+        /* a clean sleep: not counted */
+        Rig g2({0x0009});
+        mark = LogMark();
+        Suspend(g2, 100);
+        CHECK(g2.Stats().suspend_stop_failed == 0 && HasLog(mark, "suspended: IOC stopped"));
+    }
 }
