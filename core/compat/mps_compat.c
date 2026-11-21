@@ -933,25 +933,22 @@ taskqueue_enqueue(struct taskqueue *tq, struct task *task)
 	return (0);
 }
 
-void
-mps_compat_taskqueue_run(struct taskqueue *tq)
+/*
+ * Run the queued tasks, tq_lock held on entry and exit.  FreeBSD runs every
+ * mps queue on one thread (taskqueue_start_threads(..., 1, ...)), so its
+ * tasks never overlap: mpssas_firmware_event_work handles one firmware
+ * event at a time even while it sleeps in a config page read.  On xnu the
+ * queue has that one thread too; tq_active keeps the host test's nested
+ * invocations (a queue kicked while it runs) out.
+ */
+static void
+taskqueue_run_locked(struct taskqueue *tq)
 {
 	struct task *task;
 	int pending;
 
-	mps_os_lock(tq->tq_lock);
-	/*
-	 * FreeBSD runs every mps queue on one thread (taskqueue_start_threads(
-	 * ..., 1, ...)), so its tasks never overlap: mpssas_firmware_event_work
-	 * handles one firmware event at a time even while it sleeps in a config
-	 * page read.  A platform thread call kicked while it runs starts a
-	 * second invocation on another thread (xnu thread_call): that one
-	 * leaves the queue to the running one, whose loop picks up the task.
-	 */
-	if (tq->tq_active) {
-		mps_os_unlock(tq->tq_lock);
+	if (tq->tq_active)
 		return;
-	}
 	tq->tq_active = 1;
 	while ((task = TAILQ_FIRST(&tq->tq_queue)) != NULL) {
 		TAILQ_REMOVE(&tq->tq_queue, task, ta_link);
@@ -962,18 +959,51 @@ mps_compat_taskqueue_run(struct taskqueue *tq)
 		task->ta_func(task->ta_context, pending);
 		mps_os_lock(tq->tq_lock);
 		tq->tq_running = NULL;
+		mps_os_wakeup(&tq->tq_running);		/* taskqueue_drain */
 	}
 	tq->tq_active = 0;
+}
+
+void
+mps_compat_taskqueue_run(struct taskqueue *tq)
+{
+	mps_os_lock(tq->tq_lock);
+	taskqueue_run_locked(tq);
 	mps_os_unlock(tq->tq_lock);
 }
 
+/*
+ * The queue's thread (FreeBSD taskqueue_thread_loop): sleeps until a task
+ * is queued, runs it; after taskqueue_free() it runs what is left and
+ * leaves.  A reinit that runs for minutes (diag reset) only occupies it.
+ */
+void
+mps_compat_taskqueue_thread(struct taskqueue *tq)
+{
+	mps_os_lock(tq->tq_lock);
+	for (;;) {
+		taskqueue_run_locked(tq);
+		if (tq->tq_flags & TQ_FLAGS_STOPPED)
+			break;
+		(void)mps_os_sleep(tq->tq_lock, tq, 0);
+	}
+	tq->tq_exited = 1;
+	mps_os_wakeup(&tq->tq_exited);
+	mps_os_unlock(tq->tq_lock);
+}
+
+/* FreeBSD: sleeps until the task is neither queued nor running. */
 void
 taskqueue_drain(struct taskqueue *tq, struct task *task)
 {
 	mps_os_lock(tq->tq_lock);
 	while (task->ta_pending != 0 || tq->tq_running == task) {
+		if (tq->tq_threads) {
+			(void)mps_os_sleep(tq->tq_lock, &tq->tq_running, 0);
+			continue;
+		}
 		mps_os_unlock(tq->tq_lock);
-		mps_os_taskqueue_wait(tq);
+		mps_os_taskqueue_wait(tq);	/* no thread: the host test */
 		mps_os_lock(tq->tq_lock);
 	}
 	mps_os_unlock(tq->tq_lock);
@@ -983,9 +1013,16 @@ taskqueue_drain(struct taskqueue *tq, struct task *task)
 void
 taskqueue_free(struct taskqueue *tq)
 {
+	mps_os_lock(tq->tq_lock);
 	tq->tq_flags |= TQ_FLAGS_STOPPED;
+	if (tq->tq_threads) {
+		mps_os_wakeup(tq);
+		while (!tq->tq_exited)
+			(void)mps_os_sleep(tq->tq_lock, &tq->tq_exited, 0);
+	}
+	mps_os_unlock(tq->tq_lock);
 	mps_os_taskqueue_stop(tq);
-	mps_compat_taskqueue_run(tq);
+	mps_compat_taskqueue_run(tq);		/* no thread (host test) */
 	mps_os_lock_free(tq->tq_lock);
 	mps_compat_free(tq, NULL);
 }

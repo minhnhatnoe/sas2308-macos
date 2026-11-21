@@ -2929,6 +2929,30 @@ static void DeviationTests()
         bus_dma_tag_destroy(child2);
     }
 
+    if (Want("D39")) {
+        /* a taskqueue with its own thread (xnu): drain sleeps until woken, free waits for the thread */
+        Rig g;                                          /* a clock and a log for the hooks */
+        struct taskqueue *tq = taskqueue_create("t39", M_WAITOK, taskqueue_thread_enqueue, nullptr);
+        CHECK(tq != nullptr && taskqueue_start_threads(&tq, 1, PRIBIO, "t39") == 0);
+        tq->tq_threads = 1;                             /* as mps_os_taskqueue_start on xnu */
+        static int runs;
+        runs = 0;
+        struct task t1, t2;
+        TASK_INIT(&t1, 0, [](void *, int) { runs++; }, nullptr);
+        TASK_INIT(&t2, 0, [](void *, int) { runs += 10; }, nullptr);
+        CHECK(taskqueue_enqueue(tq, &t1) == 0);
+        const int sleeps = gHost.sleeps;
+        taskqueue_drain(tq, &t1);                       /* sleeps; the queue's run wakes it */
+        CHECK(runs == 1 && gHost.sleeps == sleeps + 1);
+        /* the thread runs what is queued at taskqueue_free, then leaves */
+        CHECK(taskqueue_enqueue(tq, &t2) == 0);
+        gHost.kicked.clear();                           /* only the thread may run it */
+        tq->tq_flags |= TQ_FLAGS_STOPPED;
+        mps_compat_taskqueue_thread(tq);
+        CHECK(runs == 11 && tq->tq_exited == 1);
+        taskqueue_free(tq);                             /* the thread has left: no wait */
+    }
+
     if (Want("D18")) {
         /*
          * An "impossible" SGL state (no room left for a chain element):

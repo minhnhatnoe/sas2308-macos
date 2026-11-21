@@ -453,9 +453,11 @@ struct taskqueue {
 	struct task		*tq_running;
 	int			 tq_active;	/* a thread runs the queue */
 	const char		*tq_name;
-	void			*tq_os;		/* platform: thread call */
+	void			*tq_os;		/* platform: its thread */
 	int			 tq_flags;
 #define TQ_FLAGS_STOPPED	0x0001
+	int			 tq_threads;	/* 1: mps_compat_taskqueue_thread runs it */
+	int			 tq_exited;	/* that thread has left the queue */
 };
 
 typedef void taskqueue_enqueue_fn(void *context);
@@ -589,6 +591,8 @@ bus_dmamap_sync(bus_dma_tag_t dmat, bus_dmamap_t map, int op)
 void	mps_compat_callout_run(struct mtx *m);
 /* Run every queued task of `tq', in order, without any mutex. */
 void	mps_compat_taskqueue_run(struct taskqueue *tq);
+/* A taskqueue's own thread: runs its tasks until taskqueue_free(). */
+void	mps_compat_taskqueue_thread(struct taskqueue *tq);
 /*
  * Run (and remove) the config_intrhooks a driver instance established
  * (ich_arg == arg, mps: the softc), once its interrupt works: per hook as
@@ -642,11 +646,16 @@ void	 mps_os_dmamem_unload(bus_dma_tag_t tag, void *cookie);
 /* callouts: run mps_compat_callout_run(m) at deadline_us (0: disarm) */
 void	 mps_os_callout_arm(struct mtx *m, uint64_t deadline_us);
 
-/* taskqueues: run mps_compat_taskqueue_run(tq) on a thread */
+/*
+ * taskqueues: start a thread that calls mps_compat_taskqueue_thread(tq) and
+ * set tq->tq_threads (xnu, FreeBSD's model), or run mps_compat_taskqueue_run
+ * when kicked (the host test); stop releases the platform's state once the
+ * thread has left the queue.
+ */
 int	 mps_os_taskqueue_start(struct taskqueue *tq);
 void	 mps_os_taskqueue_kick(struct taskqueue *tq);
-void	 mps_os_taskqueue_wait(struct taskqueue *tq);	/* drain: let it progress */
-void	 mps_os_taskqueue_stop(struct taskqueue *tq);	/* no more runs; waits */
+void	 mps_os_taskqueue_wait(struct taskqueue *tq);	/* drain without a thread */
+void	 mps_os_taskqueue_stop(struct taskqueue *tq);
 
 /* logging: one line, no newline; cls = mps_dprint classes (0: always) */
 void	 mps_os_log(device_t dev, uint32_t cls, const char *line);

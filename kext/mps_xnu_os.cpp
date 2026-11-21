@@ -17,7 +17,7 @@
  *                  IOMapper (DART): IOVA < 4 GiB for a 32-bit lowaddr; several
  *                  segments allowed when the tag allows them (chain pool)
  *      callouts    one thread_call per mutex, armed for its earliest callout
- *      taskqueue   one thread_call per queue (the reinit task)
+ *      taskqueue   one kernel thread per queue (FreeBSD's model; the event and reinit tasks)
  *      log         os_log, one category per mps_dprint class, or IOLog
  * 2. The mps_kext_*() calls of mps_xnu_os.h for the IOKit class: the call
  *    sequence of test/mock_ioc_test.cpp `Rig', ccbs for SCSI IO and task
@@ -35,6 +35,8 @@
 #include <IOKit/IOMapper.h>
 #include <kern/clock.h>
 #include <kern/thread_call.h>
+#include <kern/thread.h>
+#include <mach/thread_act.h>
 #include <libkern/OSAtomic.h>
 #include <os/log.h>
 
@@ -156,11 +158,9 @@ struct XnuLock {
     volatile SInt32 inflight;    /* callout invocations queued or running */
 };
 
-/* One per taskqueue (tq_os): runs mps_compat_taskqueue_run() on a thread call. */
+/* One per taskqueue (tq_os): its kernel thread runs mps_compat_taskqueue_thread(). */
 struct XnuTq {
-    thread_call_t   call;
-    volatile SInt32 inflight;    /* invocations queued or running */
-    volatile int    stopped;
+    thread_t        thread;
 };
 
 struct XnuDma {
@@ -183,12 +183,15 @@ static void XnuCalloutFire(thread_call_param_t p0, thread_call_param_t)
     OSDecrementAtomic(&xl->inflight);        /* last use of xl */
 }
 
-static void XnuTqRun(thread_call_param_t p0, thread_call_param_t)
+/*
+ * A taskqueue's thread. taskqueue_free() waits until the loop has left the
+ * queue (tq_exited); after that the thread touches neither tq nor x and
+ * only terminates itself.
+ */
+static void XnuTqThread(void *arg, wait_result_t)
 {
-    struct taskqueue *tq = (struct taskqueue *)p0;
-    XnuTq *x = (XnuTq *)tq->tq_os;
-    mps_compat_taskqueue_run(tq);
-    OSDecrementAtomic(&x->inflight);         /* last use of tq and x */
+    mps_compat_taskqueue_thread((struct taskqueue *)arg);
+    (void)thread_terminate(current_thread());
 }
 
 /* Wait (outside every lock) until no invocation of a thread call is left. */
@@ -495,42 +498,37 @@ int mps_os_taskqueue_start(struct taskqueue *tq)
     if (x == nullptr)
         return ENOMEM;
     bzero(x, sizeof(*x));
-    x->call = thread_call_allocate(XnuTqRun, tq);
-    if (x->call == nullptr) {
+    tq->tq_os = x;
+    tq->tq_threads = 1;
+    if (kernel_thread_start(XnuTqThread, tq, &x->thread) != KERN_SUCCESS) {
+        tq->tq_threads = 0;
+        tq->tq_os = nullptr;
         IOFree(x, sizeof(*x));
         return ENOMEM;
     }
-    tq->tq_os = x;
     return 0;
 }
 
+/* a task was queued: wake the queue's thread (it sleeps on tq) */
 void mps_os_taskqueue_kick(struct taskqueue *tq)
 {
-    XnuTq *x = (XnuTq *)tq->tq_os;
-    if (x == nullptr || x->stopped)
-        return;
-    if (!thread_call_enter(x->call))
-        OSIncrementAtomic(&x->inflight);
+    mps_os_wakeup(tq);
 }
 
-/* taskqueue_drain(): the queue runs on its thread call; give it time. */
+/* taskqueue_drain() of a queue without a thread: not on xnu (start fails instead) */
 void mps_os_taskqueue_wait(struct taskqueue *tq)
 {
-    mps_os_taskqueue_kick(tq);
+    (void)tq;
     IOSleep(1);
 }
 
-/* taskqueue_free(): no more runs; wait for a running one (compat runs the rest inline). */
+/* taskqueue_free(): the thread has left the queue (tq_exited) */
 void mps_os_taskqueue_stop(struct taskqueue *tq)
 {
     XnuTq *x = (XnuTq *)tq->tq_os;
     if (x == nullptr)
         return;
-    x->stopped = 1;
-    if (thread_call_cancel(x->call))
-        OSDecrementAtomic(&x->inflight);
-    WaitIdle(&x->inflight);
-    thread_call_free(x->call);
+    thread_deallocate(x->thread);
     tq->tq_os = nullptr;
     IOFree(x, sizeof(*x));
 }
