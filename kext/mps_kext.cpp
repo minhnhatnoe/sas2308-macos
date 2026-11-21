@@ -488,9 +488,9 @@ int mps_kext_limits(struct mps_kext *k, struct mps_kext_limits *l)
         (uint32_t)sc->buffer_dmat->dt_nsegments : 0;
     l->maxio = (uint64_t)sc->maxio;
     l->dma_bytes = DmaTagBytes(sc->queues_dmat) + DmaTagBytes(sc->reply_dmat) + DmaTagBytes(sc->req_dmat) +
-        DmaTagBytes(sc->chain_dmat) + DmaTagBytes(sc->sense_dmat) + DmaTagBytes(sc->xnu.cfg_dmat);
-    /* + one struct bus_dmamap (mps_compat.c: 4 pointer-sized fields) per command */
-    l->heap_bytes = (uint64_t)sc->num_reqs * (sizeof(struct mps_command) + 4 * sizeof(void *)) +
+        DmaTagBytes(sc->chain_dmat) + DmaTagBytes(sc->sense_dmat);
+    /* + one struct bus_dmamap (mps_compat.c: 6 pointer-sized fields) per command */
+    l->heap_bytes = (uint64_t)sc->num_reqs * (sizeof(struct mps_command) + 6 * sizeof(void *)) +
         (uint64_t)sc->num_chains * sizeof(struct mps_chain);
     mps_unlock(sc);
     return 0;

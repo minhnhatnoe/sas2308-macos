@@ -1053,39 +1053,6 @@ mps_xnu_suspended_access(struct mps_softc *sc, uint32_t offset)
 
 /* ---- config pages (mps_config.c) -------------------------------------------- */
 
-void *
-mps_xnu_config_page(struct mps_softc *sc, struct mps_command *cm)
-{
-	if (sc->xnu.cfg_busy || cm->cm_length == 0 ||
-	    cm->cm_length > MPS_XNU_CFG_PAGE_BYTES)
-		return (NULL);
-	if (sc->xnu.cfg_page == NULL) {
-		if (bus_dma_tag_create(sc->mps_parent_dmat, 4, 0,
-		    BUS_SPACE_MAXADDR, BUS_SPACE_MAXADDR, NULL, NULL,
-		    MPS_XNU_CFG_PAGE_BYTES, 1, MPS_XNU_CFG_PAGE_BYTES, 0, NULL,
-		    NULL, &sc->xnu.cfg_dmat) != 0)
-			return (NULL);
-		if (bus_dmamem_alloc(sc->xnu.cfg_dmat, &sc->xnu.cfg_page,
-		    BUS_DMA_NOWAIT, &sc->xnu.cfg_map) != 0) {
-			bus_dma_tag_destroy(sc->xnu.cfg_dmat);
-			sc->xnu.cfg_dmat = NULL;
-			sc->xnu.cfg_page = NULL;
-			return (NULL);
-		}
-	}
-	bzero(sc->xnu.cfg_page, cm->cm_length);
-	bus_dmamap_xnu_lend(cm->cm_dmamap, sc->xnu.cfg_map);
-	sc->xnu.cfg_busy = 1;
-	return (sc->xnu.cfg_page);
-}
-
-void
-mps_xnu_config_page_done(struct mps_softc *sc, void *page)
-{
-	if (page != NULL && page == sc->xnu.cfg_page)
-		sc->xnu.cfg_busy = 0;
-}
-
 /*
  * Nothing new may be started on the event queue: reset, gone, suspended,
  * shutting down.
@@ -1099,9 +1066,9 @@ mps_xnu_quiet(struct mps_softc *sc)
 }
 
 /*
- * A page read that failed on our side (no free command: EBUSY, the page
- * buffer busy: ENOMEM) or that the IOC refused for now (BUSY, insufficient
- * resources).  A wait error (timeout: mps_reinit ran; reset in progress) is
+ * A page read that failed on our side (no free command: EBUSY, no memory
+ * for the page or its DMA mapping: ENOMEM) or that the IOC refused for now
+ * (BUSY, insufficient resources).  A wait error (timeout: mps_reinit ran; reset in progress) is
  * not: the rediscovery after the reset adds the device; a firmware error
  * (invalid page: the handle is gone) is final, as on FreeBSD.
  */
@@ -1122,7 +1089,7 @@ mps_xnu_errno_str(int error)
 {
 	switch (error) {
 	case EBUSY:	return ("no free command");
-	case ENOMEM:	return ("page buffer busy");
+	case ENOMEM:	return ("no memory for the page");
 	case ENXIO:	return ("no reply or IOC error");
 	default:	return ("error");
 	}
@@ -1539,20 +1506,6 @@ mps_xnu_temperature(struct mps_softc *sc)
 		    "again\n", t, MPS_XNU_TEMP_REARM_C);
 	}
 	mps_dprint(sc, MPS_XINFO, "IOC temperature %d C\n", t);
-}
-
-void
-mps_xnu_config_free(struct mps_softc *sc)
-{
-	if (sc->xnu.cfg_page != NULL)
-		bus_dmamem_free(sc->xnu.cfg_dmat, sc->xnu.cfg_page,
-		    sc->xnu.cfg_map);
-	if (sc->xnu.cfg_dmat != NULL)
-		bus_dma_tag_destroy(sc->xnu.cfg_dmat);
-	sc->xnu.cfg_page = NULL;
-	sc->xnu.cfg_map = NULL;
-	sc->xnu.cfg_dmat = NULL;
-	sc->xnu.cfg_busy = 0;
 }
 
 int

@@ -243,6 +243,26 @@ struct MockIocModel {
         liveAllocs++;
         return p;
     }
+    /* Map memory the host owns (a malloc'd config page, D6): an IOVA range, not owned */
+    int liveMaps = 0;
+    uint64_t DmaMap(void *cpu, size_t size) {
+        nextIova = (nextIova + 15) & ~(uint64_t)15;
+        const uint64_t iova = nextIova;
+        regions.push_back({iova, (uint8_t *)cpu, size, nullptr});
+        nextIova += size + 0x1000;
+        liveMaps++;
+        return iova;
+    }
+    void DmaUnmap(uint64_t iova) {
+        for (size_t i = 0; i < regions.size(); i++)
+            if (regions[i].iova == iova && regions[i].block == nullptr) {
+                regions.erase(regions.begin() + i);
+                liveMaps--;
+                return;
+            }
+        printf("FAIL: unmap of IOVA 0x%llx that is not mapped\n", (unsigned long long)iova);
+        exit(1);
+    }
     void DmaFree(void *cpu) {
         if (!cpu) return;
         for (size_t i = 0; i < regions.size();)

@@ -465,6 +465,99 @@ void mps_os_dmamem_unload(bus_dma_tag_t tag, void *cookie)
 }
 
 /*
+ * D6: a malloc() block of the core (config page, SATA IDENTIFY data) mapped
+ * for the IOC at bus_dmamap_load(), as busdma loads any kernel buffer: an
+ * IOMemoryDescriptor on the kernel range, prepared (wired), and an
+ * IODMACommand on the device's mapper (DART) for the IOVA. Compat releases
+ * it at unload, at the next load of the map or when the block is freed.
+ * Called with mps_mtx held; both may block (allowed under a lck_mtx).
+ */
+struct XnuBufMap {
+    IOMemoryDescriptor *md;
+    IODMACommand       *cmd;
+};
+
+void mps_os_dmamap_unload_buf(bus_dma_tag_t tag, void *cookie)
+{
+    (void)tag;
+    XnuBufMap *b = (XnuBufMap *)cookie;
+    if (b == nullptr)
+        return;
+    if (b->cmd) {
+        b->cmd->clearMemoryDescriptor(true);    /* completes: unmaps the IOVA */
+        b->cmd->release();
+    }
+    if (b->md) {
+        b->md->complete();
+        b->md->release();
+    }
+    IOFree(b, sizeof(*b));
+}
+
+int mps_os_dmamap_load_buf(bus_dma_tag_t tag, void *buf, size_t len, void **cookie,
+                           bus_dma_segment_t *segs, int maxsegs, int *nsegs)
+{
+    struct mps_kext_host *host = HostOf(tag->dt_dev);
+    struct mps_softc *sc = (struct mps_softc *)tag->dt_dev->dv_softc;
+    IOMapper *mapper = host ? (IOMapper *)host->mapper : nullptr;
+    const bool low32 = tag->dt_lowaddr <= 0xFFFFFFFFull;
+    const uint64_t align = tag->dt_alignment ? tag->dt_alignment : 1;
+
+    *cookie = nullptr;
+    *nsegs = 0;
+    XnuBufMap *b = (XnuBufMap *)IOMalloc(sizeof(*b));
+    if (b == nullptr)
+        return ENOMEM;
+    bzero(b, sizeof(*b));
+    b->md = IOMemoryDescriptor::withAddressRange((mach_vm_address_t)(uintptr_t)buf, len, kIODirectionInOut,
+                                                 kernel_task);
+    if (b->md == nullptr || b->md->prepare() != kIOReturnSuccess) {
+        if (b->md)
+            b->md->release();
+        IOFree(b, sizeof(*b));
+        return ENOMEM;
+    }
+    UInt64 maxSegSize = tag->dt_maxsegsz >= len ? 0 : tag->dt_maxsegsz;
+    b->cmd = IODMACommand::withSpecification(kIODMACommandOutputHost64, low32 ? 32 : 64, maxSegSize,
+                                             IODMACommand::kMapped, 0, 1, mapper, NULL);
+    IOReturn ret = b->cmd ? b->cmd->setMemoryDescriptor(b->md, true) : kIOReturnNoMemory;
+    UInt64 offset = 0;
+    int n = 0, error = (ret == kIOReturnSuccess) ? 0 : ENOMEM;
+    while (error == 0 && offset < len) {
+        IODMACommand::Segment64 seg[4];
+        UInt32 cnt = 4;
+        ret = b->cmd->gen64IOVMSegments(&offset, seg, &cnt);
+        if (ret != kIOReturnSuccess || cnt == 0) {
+            error = ENOMEM;
+            break;
+        }
+        for (UInt32 i = 0; i < cnt; i++) {
+            if (n >= maxsegs) {
+                error = EFBIG;
+                break;
+            }
+            if (seg[i].fIOVMAddr % align != 0 || seg[i].fIOVMAddr + seg[i].fLength - 1 > tag->dt_lowaddr) {
+                error = EINVAL;
+                break;
+            }
+            segs[n].ds_addr = seg[i].fIOVMAddr;
+            segs[n].ds_len = seg[i].fLength;
+            n++;
+        }
+    }
+    if (error != 0) {
+        if (sc)
+            mps_dprint(sc, MPS_ERROR, "DMA map of %zu bytes at %p failed: ret 0x%x, error %d, %d segments\n",
+                       len, buf, ret, error, n);
+        mps_os_dmamap_unload_buf(tag, b);
+        return error;
+    }
+    *cookie = b;
+    *nsegs = n;
+    return 0;
+}
+
+/*
  * One thread call per mutex, armed for the earliest callout of that mutex;
  * it runs mps_compat_callout_run(m), which takes the mutex. `inflight'
  * counts invocations queued or running so mps_os_lock_free() can wait for

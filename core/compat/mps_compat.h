@@ -584,17 +584,21 @@ int	bus_dmamap_create(bus_dma_tag_t dmat, int flags, bus_dmamap_t *mapp);
 int	bus_dmamap_destroy(bus_dma_tag_t dmat, bus_dmamap_t map);
 /*
  * Loads a bus_dmamem_alloc() buffer (any number of segments, as the platform
- * maps it within the tag's constraints).  Arbitrary kernel virtual addresses
- * are not supported (XNU: the core never maps such buffers): EINVAL.
- * Errors as busdma: the callback gets (segs, 0, error) and the call returns
- * 0, except ENOMEM, which is also returned.
+ * maps it within the tag's constraints), or a malloc() block of the core
+ * (config page, IDENTIFY data: mps_os_dmamap_load_buf maps it; released at
+ * unload, at the next load of the map, at free() of the block or at
+ * bus_dmamap_destroy(), D6).  Other addresses: EINVAL (XNU: the core loads
+ * nothing else).  Errors as busdma: the callback gets (segs, 0, error) and
+ * the call returns 0, except ENOMEM, which is also returned.
  */
 int	bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 	    bus_size_t buflen, bus_dmamap_callback_t *callback,
 	    void *callback_arg, int flags);
 void	bus_dmamap_unload(bus_dma_tag_t dmat, bus_dmamap_t map);
-/* XNU: lend bus_dmamem_alloc() memory to a map until its next unload */
-void	bus_dmamap_xnu_lend(bus_dmamap_t map, bus_dmamap_t mem);
+/* XNU: drop the mapping of the malloc() block loaded on `map' (D6) */
+void	bus_dmamap_xnu_unload_buf(bus_dmamap_t map);
+/* XNU: malloc() blocks mapped for the device right now (D6, tests) */
+long	mps_compat_bufmap_count(void);
 /* XNU: PCIe DMA on Apple silicon (DART) is coherent; nothing to do. */
 static __inline void
 bus_dmamap_sync(bus_dma_tag_t dmat, bus_dmamap_t map, int op)
@@ -661,6 +665,10 @@ void	 mps_os_dmamem_free(bus_dma_tag_t tag, void *vaddr, void *cookie);
 int	 mps_os_dmamem_load(bus_dma_tag_t tag, void *cookie,
 	    bus_dma_segment_t *segs, int maxsegs, int *nsegs);
 void	 mps_os_dmamem_unload(bus_dma_tag_t tag, void *cookie);
+/* map `len' bytes at `buf' (kernel heap) for the device within the tag's limits */
+int	 mps_os_dmamap_load_buf(bus_dma_tag_t tag, void *buf, size_t len,
+	    void **cookie, bus_dma_segment_t *segs, int maxsegs, int *nsegs);
+void	 mps_os_dmamap_unload_buf(bus_dma_tag_t tag, void *cookie);
 
 /* callouts: run mps_compat_callout_run(m) at deadline_us (0: disarm) */
 void	 mps_os_callout_arm(struct mtx *m, uint64_t deadline_us);

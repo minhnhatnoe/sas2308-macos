@@ -311,6 +311,29 @@ void mps_os_dmamem_unload(bus_dma_tag_t, void *)
 {
 }
 
+/* D6: a malloc'd block mapped for the IOC (the DART on xnu) */
+int mps_os_dmamap_load_buf(bus_dma_tag_t tag, void *buf, size_t len, void **cookie,
+                           bus_dma_segment_t *segs, int maxsegs, int *nsegs)
+{
+    if (gHost.AllocFails() || maxsegs < 1)
+        return ENOMEM;
+    CHECK(len > 0 && len <= tag->dt_maxsegsz);
+    const uint64_t iova = gHost.ioc->DmaMap(buf, len);
+    segs[0].ds_addr = iova;
+    segs[0].ds_len = len;
+    *nsegs = 1;
+    *cookie = new uint64_t(iova);
+    gHost.bufLoads++;
+    return 0;
+}
+
+void mps_os_dmamap_unload_buf(bus_dma_tag_t, void *cookie)
+{
+    uint64_t *iova = (uint64_t *)cookie;
+    gHost.ioc->DmaUnmap(*iova);
+    delete iova;
+}
+
 void mps_os_callout_arm(struct mtx *m, uint64_t deadline_us)
 {
     for (size_t i = 0; i < gHost.armed.size(); i++)

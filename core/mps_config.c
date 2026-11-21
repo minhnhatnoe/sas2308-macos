@@ -118,7 +118,7 @@ mps_config_get_iounit_pg7(struct mps_softc *sc, Mpi2ConfigReply_t *mpi_reply,
 	cm->cm_sglsize = sizeof(MPI2_SGE_IO_UNION);
 	cm->cm_flags = MPS_CM_FLAGS_SGE_SIMPLE | MPS_CM_FLAGS_DATAIN;
 	cm->cm_desc.Default.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE;
-	page = mps_xnu_config_page(sc, cm);	/* XNU: as sas_device_pg0 */
+	page = malloc((cm->cm_length), M_MPT2, M_ZERO | M_NOWAIT);
 	if (!page) {
 		printf("%s: page alloc failed\n", __func__);
 		error = ENOMEM;
@@ -147,11 +147,9 @@ mps_config_get_iounit_pg7(struct mps_softc *sc, Mpi2ConfigReply_t *mpi_reply,
 	    (sizeof(Mpi2IOUnitPage7_t))));
 
 out:
-	mps_xnu_config_page_done(sc, page);	/* XNU: instead of free() */
-	if (cm) {
-		bus_dmamap_unload(sc->buffer_dmat, cm->cm_dmamap);	/* XNU */
+	free(page, M_MPT2);
+	if (cm)
 		mps_free_command(sc, cm);
-	}
 	return (error);
 }
 
@@ -248,12 +246,7 @@ mps_config_get_sas_device_pg0(struct mps_softc *sc, Mpi2ConfigReply_t
 	cm->cm_sglsize = sizeof(MPI2_SGE_IO_UNION);
 	cm->cm_flags = MPS_CM_FLAGS_SGE_SIMPLE | MPS_CM_FLAGS_DATAIN;
 	cm->cm_desc.Default.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE;
-	/*
-	 * XNU: bus_dmamap_load() maps bus_dmamem_alloc() memory only, so the
-	 * page is read into the preallocated sc->xnu.cfg_page (lent to the
-	 * command's map) instead of a malloc() buffer.
-	 */
-	page = mps_xnu_config_page(sc, cm);
+	page = malloc(cm->cm_length, M_MPT2, M_ZERO | M_NOWAIT);
 	if (!page) {
 		printf("%s: page alloc failed\n", __func__);
 		error = ENOMEM;
@@ -291,10 +284,8 @@ mps_config_get_sas_device_pg0(struct mps_softc *sc, Mpi2ConfigReply_t
 	bcopy(page, config_page, MIN(cm->cm_length, 
 	    sizeof(Mpi2SasDevicePage0_t)));
 out:
-	mps_xnu_config_page_done(sc, page);	/* XNU: instead of free() */
-	if (cm) {
-		bus_dmamap_unload(sc->buffer_dmat, cm->cm_dmamap);	/* XNU */
+	free(page, M_MPT2);
+	if (cm)
 		mps_free_command(sc, cm);
-	}
 	return (error);
 }

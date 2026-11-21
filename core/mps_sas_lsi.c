@@ -669,7 +669,12 @@ mpssas_get_sata_identify(struct mps_softc *sc, u16 handle,
 	char *buffer;
 	int error = 0;
 
+	buffer = malloc( sz, M_MPT2, M_NOWAIT | M_ZERO);
+	if (!buffer)
+		return ENOMEM;
+
 	if ((cm = mps_alloc_command(sc)) == NULL) {
+		free(buffer, M_MPT2);
 		return (EBUSY);
 	}
 	mpi_request = (MPI2_SATA_PASSTHROUGH_REQUEST *)cm->cm_req;
@@ -689,16 +694,6 @@ mpssas_get_sata_identify(struct mps_softc *sc, u16 handle,
 	cm->cm_flags = MPS_CM_FLAGS_SGE_SIMPLE | MPS_CM_FLAGS_DATAIN;
 	cm->cm_desc.Default.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE;
 	cm->cm_length = htole32(sz);
-	/*
-	 * XNU: the IOC writes DMA memory: the config page buffer lent to the
-	 * command's map (mps_xnu_config_page, as mps_config.c), not malloc.
-	 * Identify runs on the event queue like the page reads, one at a time.
-	 */
-	buffer = mps_xnu_config_page(sc, cm);
-	if (buffer == NULL) {
-		mps_free_command(sc, cm);
-		return (ENOMEM);
-	}
 	cm->cm_data = buffer;
 
 	/*
@@ -744,9 +739,8 @@ out:
 	 * Reset TM and the command comes back from the controller.
 	 */
 	if ((cm->cm_flags & MPS_CM_FLAGS_SATA_ID_TIMEOUT) == 0) {
-		mps_xnu_config_page_done(sc, buffer);	/* XNU: not free() */
-		bus_dmamap_unload(sc->buffer_dmat, cm->cm_dmamap);	/* XNU */
 		mps_free_command(sc, cm);
+		free(buffer, M_MPT2);
 	}
 	return (error);
 }
@@ -763,9 +757,7 @@ mpssas_ata_id_complete(struct mps_softc *sc, struct mps_command *cm)
 	mps_dprint(sc, MPS_INFO, "%s ATA ID completed late cm %p sc %p\n",
 	    __func__, cm, sc);
 
-	/* XNU: the lent config page buffer, not free(cm->cm_data) */
-	mps_xnu_config_page_done(sc, sc->xnu.cfg_page);
-	bus_dmamap_unload(sc->buffer_dmat, cm->cm_dmamap);
+	free(cm->cm_data, M_MPT2);
 	mps_free_command(sc, cm);
 }
 

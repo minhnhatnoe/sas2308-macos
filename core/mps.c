@@ -2302,7 +2302,6 @@ mps_free(struct mps_softc *sc)
 	 * to free these buffers too.
 	 */
 	mps_iocfacts_free(sc);
-	mps_xnu_config_free(sc);	/* XNU: config page buffer */
 
 	/* XNU: no sysctl tree, no shutdown handler */
 

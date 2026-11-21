@@ -543,8 +543,10 @@ mps_compat_global_unlock(void)
 static long mps_compat_mallocs;
 
 struct mps_malloc_hdr {
-	size_t	size;
-	size_t	magic;
+	size_t		size;
+	size_t		magic;
+	bus_dmamap_t	map;	/* the map this block is loaded on (D6) */
+	size_t		pad;	/* 16-byte multiple: the block stays aligned */
 };
 #define MPS_MALLOC_MAGIC	0x6d70735f6d616cUL
 
@@ -559,6 +561,7 @@ mps_compat_malloc(size_t size, struct malloc_type *type, int flags)
 		return (NULL);
 	h->size = size;
 	h->magic = MPS_MALLOC_MAGIC;
+	h->map = NULL;
 	if (flags & M_ZERO)
 		memset(h + 1, 0, size);
 	__atomic_add_fetch(&mps_compat_mallocs, 1, __ATOMIC_RELAXED);
@@ -575,6 +578,13 @@ mps_compat_free(void *addr, struct malloc_type *type)
 		return;
 	h = (struct mps_malloc_hdr *)addr - 1;
 	KASSERT(h->magic == MPS_MALLOC_MAGIC, ("free: bad pointer %p", addr));
+	/*
+	 * XNU (D6): FreeBSD's synchronous config and IDENTIFY paths free the
+	 * page without bus_dmamap_unload(); the platform mapping of the block
+	 * (DART) must not outlive it.
+	 */
+	if (h->map != NULL)
+		bus_dmamap_xnu_unload_buf(h->map);
 	h->magic = 0;
 	__atomic_sub_fetch(&mps_compat_mallocs, 1, __ATOMIC_RELAXED);
 	mps_os_free(h, sizeof(*h) + h->size);
@@ -1130,8 +1140,13 @@ struct bus_dmamap {
 	void		*dm_cookie;	/* mps_os_dmamem_alloc(), NULL otherwise */
 	void		*dm_vaddr;
 	int		 dm_loaded;
-	bus_dmamap_t	 dm_lent;	/* bus_dmamap_xnu_lend() memory, until unload */
+	/* a malloc() block loaded on this map (D6) */
+	void		*dm_buf;
+	void		*dm_buf_cookie;	/* mps_os_dmamap_load_buf() */
+	bus_dma_tag_t	 dm_buf_tag;
 };
+
+static long mps_compat_bufmaps;	/* caller-buffer mappings alive */
 
 static long mps_compat_dmamems;
 
@@ -1300,11 +1315,56 @@ int
 bus_dmamap_destroy(bus_dma_tag_t dmat, bus_dmamap_t map)
 {
 	(void)dmat;
+	bus_dmamap_xnu_unload_buf(map);
 	mps_compat_free(map, NULL);
 	return (0);
 }
 
 #define MPS_COMPAT_MAXSEGS	4096
+
+/*
+ * XNU (D6): release the platform mapping of the malloc() block loaded on
+ * `map': at bus_dmamap_unload(), at the next load of the map, at free() of
+ * the block, at bus_dmamap_destroy().
+ */
+void
+bus_dmamap_xnu_unload_buf(bus_dmamap_t map)
+{
+	struct mps_malloc_hdr *h;
+
+	if (map->dm_buf_cookie == NULL)
+		return;
+	mps_os_dmamap_unload_buf(map->dm_buf_tag, map->dm_buf_cookie);
+	h = (struct mps_malloc_hdr *)map->dm_buf - 1;
+	if (h->map == map)
+		h->map = NULL;
+	map->dm_buf = NULL;
+	map->dm_buf_cookie = NULL;
+	map->dm_buf_tag = NULL;
+	map->dm_loaded = 0;
+	__atomic_sub_fetch(&mps_compat_bufmaps, 1, __ATOMIC_RELAXED);
+}
+
+long
+mps_compat_bufmap_count(void)
+{
+	return (__atomic_load_n(&mps_compat_bufmaps, __ATOMIC_RELAXED));
+}
+
+/*
+ * The malloc() block `buf' points into, or NULL.  Only the core's own
+ * allocations are loaded this way (config pages, SATA IDENTIFY: FreeBSD
+ * mallocs them M_MPT2), so the header in front of `buf' is ours.
+ */
+static struct mps_malloc_hdr *
+mps_compat_malloc_hdr(void *buf, bus_size_t buflen)
+{
+	struct mps_malloc_hdr *h = (struct mps_malloc_hdr *)buf - 1;
+
+	if (h->magic != MPS_MALLOC_MAGIC || buflen > h->size)
+		return (NULL);
+	return (h);
+}
 
 int
 bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
@@ -1312,7 +1372,7 @@ bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
     int flags)
 {
 	bus_dma_segment_t *segs, few[16];
-	bus_dmamap_t mem;
+	struct mps_malloc_hdr *h;
 	bus_size_t left;
 	int error, i, maxsegs, nsegs = 0;
 
@@ -1337,13 +1397,33 @@ bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 			return (ENOMEM);
 		}
 	}
-	mem = (map->dm_lent != NULL) ? map->dm_lent : map;
-	if (mem->dm_cookie == NULL || buf != mem->dm_vaddr ||
-	    buflen > dmat->dt_maxsize)
-		error = EINVAL;		/* XNU: only bus_dmamem_alloc() memory */
-	else
-		error = mps_os_dmamem_load(dmat, mem->dm_cookie, segs, maxsegs,
-		    &nsegs);
+	bus_dmamap_xnu_unload_buf(map);		/* the map's previous block */
+	if (buflen > dmat->dt_maxsize)
+		error = EINVAL;
+	else if (map->dm_cookie != NULL && buf == map->dm_vaddr)
+		error = mps_os_dmamem_load(dmat, map->dm_cookie, segs, maxsegs,
+		    &nsegs);		/* bus_dmamem_alloc() memory */
+	else if ((h = mps_compat_malloc_hdr(buf, buflen)) != NULL) {
+		/*
+		 * XNU (D6): a malloc() buffer (config page, IDENTIFY data)
+		 * is mapped for the device here, as busdma loads any kernel
+		 * buffer; the mapping lives until the map is unloaded or
+		 * loaded again, or the block is freed.
+		 */
+		if (h->map != NULL)
+			bus_dmamap_xnu_unload_buf(h->map);
+		error = mps_os_dmamap_load_buf(dmat, buf, (size_t)buflen,
+		    &map->dm_buf_cookie, segs, maxsegs, &nsegs);
+		if (error == 0) {
+			map->dm_buf = buf;
+			map->dm_buf_tag = dmat;
+			h->map = map;
+			__atomic_add_fetch(&mps_compat_bufmaps, 1,
+			    __ATOMIC_RELAXED);
+		} else
+			map->dm_buf_cookie = NULL;
+	} else
+		error = EINVAL;		/* XNU: not memory the core allocated */
 	if (error == 0) {
 		/* the list covers the allocation: cut it to `buflen' */
 		for (i = 0, left = buflen; i < nsegs && left > 0; i++) {
@@ -1365,27 +1445,12 @@ bus_dmamap_load(bus_dma_tag_t dmat, bus_dmamap_t map, void *buf,
 	return (error == ENOMEM ? ENOMEM : 0);
 }
 
-/*
- * XNU: lend `mem' (from bus_dmamem_alloc()) to `map' until map's next
- * bus_dmamap_unload(), so bus_dmamap_load(map, mem's buffer) works on a
- * command's own map.  FreeBSD loads any kernel buffer; here only
- * bus_dmamem_alloc() memory has a bus address (mps_config.c uses this).
- */
-void
-bus_dmamap_xnu_lend(bus_dmamap_t map, bus_dmamap_t mem)
-{
-	KASSERT(map->dm_lent == NULL && mem->dm_cookie != NULL,
-	    ("bus_dmamap_xnu_lend: map busy or not dmamem"));
-	map->dm_lent = mem;
-}
-
 void
 bus_dmamap_unload(bus_dma_tag_t dmat, bus_dmamap_t map)
 {
-	bus_dmamap_t mem = (map->dm_lent != NULL) ? map->dm_lent : map;
-
-	if (mem->dm_cookie != NULL && map->dm_loaded)
-		mps_os_dmamem_unload(dmat, mem->dm_cookie);
+	if (map->dm_buf_cookie != NULL)
+		bus_dmamap_xnu_unload_buf(map);
+	else if (map->dm_cookie != NULL && map->dm_loaded)
+		mps_os_dmamem_unload(dmat, map->dm_cookie);
 	map->dm_loaded = 0;
-	map->dm_lent = NULL;
 }

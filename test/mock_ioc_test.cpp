@@ -1550,7 +1550,7 @@ static void ConfigTests()
         CHECK(mps_xnu_target_info(g.sc, 40, &a, &di, &lr) == 0);
         CHECK(g.Stats().config_reads == 4 && g.Stats().config_failures == 0);
         CHECK(g.ChainsFree() == g.ChainsTotal() && g.sc->io_cmds_active == 0);
-        CHECK(!g.sc->xnu.cfg_busy && g.sc->xnu.cfg_page != nullptr);
+        CHECK(mps_compat_bufmap_count() == 0);                          /* every page unmapped (D6) */
 
         printf("config: hot-added device gets its page read from the event task\n");
         size_t mark = LogMark();
@@ -1575,7 +1575,7 @@ static void ConfigTests()
         CHECK(g.Stats().config_failures == 1);
         CHECK(HasLog(mark, "Error reading SAS device 0xa page0, iocstatus= 0x22"));
         CHECK(HasLog(mark, "page read with error; iocstatus = 0x22"));
-        CHECK(!g.sc->xnu.cfg_busy && g.ChainsFree() == g.ChainsTotal());
+        CHECK(mps_compat_bufmap_count() == 0 && g.ChainsFree() == g.ChainsTotal());
     }
 
     printf("config: parent page read fails -> device added without a parent address\n");
@@ -1599,7 +1599,7 @@ static void ConfigTests()
         HostRunPending();                        /* waits 60 s (virtual), mps_reinit, rediscovery */
         CHECK(g.Stats().reinits == reinits + 1);
         CHECK(g.Present(g.Tid(0x0009), 0x0009) && g.Present(g.Tid(0x000B), 0x000B));
-        CHECK(!g.sc->xnu.cfg_busy && g.ChainsFree() == g.ChainsTotal());
+        CHECK(mps_compat_bufmap_count() == 0 && g.ChainsFree() == g.ChainsTotal());
     }
 }
 
@@ -1661,7 +1661,7 @@ static void HotplugTests()
         }
         CHECK(g.Stats().config_failures == 0 && g.Stats().config_reads == reads + 6);
         CHECK(!HasLog(mark, "Error reading SAS device"));
-        CHECK(!g.sc->xnu.cfg_busy);
+        CHECK(mps_compat_bufmap_count() == 0);
         ReleaseIo(g, busy);
 
         printf("hotplug: the same port unplugged and replugged as one 3-entry list while port 1 changes\n");
@@ -1681,7 +1681,7 @@ static void HotplugTests()
         CHECK(g.Stats().config_failures == 0);
         CHECK(!HasLog(mark, "Error reading SAS device"));
         ReleaseIo(g, busy);
-        CHECK(g.ChainsFree() == g.ChainsTotal() && !g.sc->xnu.cfg_busy);
+        CHECK(g.ChainsFree() == g.ChainsTotal() && mps_compat_bufmap_count() == 0);
     }
 
     printf("hotplug: 7 drives arrive together at port enable (one list per PHY)\n");
@@ -1755,7 +1755,7 @@ static void RetryTests()
         Io *io = g.Read(0x000B);
         CHECK(g.Go(io) == kPosted);
         g.Pump();
-        CHECK(io->status == CAM_REQ_CMP && !g.sc->xnu.cfg_busy);
+        CHECK(io->status == CAM_REQ_CMP && mps_compat_bufmap_count() == 0);
     }
 
     printf("page0 retry: device gone before the later add -> cancelled; reinit -> rediscovery adds it\n");
@@ -1806,7 +1806,7 @@ static void RetryTests()
         CHECK(ReaddPending(g) == 0 && g.Targ(0x000B) == nullptr);
         GiveCommands(g, held);
         HostAdvance(3000);
-        CHECK(g.Targ(0x000B) == nullptr && !g.sc->xnu.cfg_busy);
+        CHECK(g.Targ(0x000B) == nullptr && mps_compat_bufmap_count() == 0);
     }
 
     printf("page0: firmware error (invalid page) is final, as on FreeBSD: no retry\n");
@@ -1962,7 +1962,7 @@ static void TemperatureTests()
         int fired = 0, lastPage = -1;
         const int base = m.configReads;
         gHost.onOtherThreads = [&]() {
-            if (!g.sc->xnu.cfg_busy || m.configReads == lastPage) return;
+            if (mps_compat_bufmap_count() == 0 || m.configReads == lastPage) return;   /* a page read in flight */
             lastPage = m.configReads;
             if (lastPage != base + 1 && lastPage != base + 3) return;   /* 0x0009, 0x000B pages */
             fired++;
@@ -1980,7 +1980,7 @@ static void TemperatureTests()
         gHost.onOtherThreads = nullptr;
         CHECK(fired == 2 && m.iounit7Reads == 2 && g.Stats().temp_failures == 0);
         for (uint16_t h : {0x0009, 0x000B}) CHECK(g.Targ(h) != nullptr && g.Present(g.Tid(h), h));
-        CHECK(g.Stats().config_failures == 0 && g.Stats().config_retries == 0 && !g.sc->xnu.cfg_busy);
+        CHECK(g.Stats().config_failures == 0 && g.Stats().config_retries == 0 && mps_compat_bufmap_count() == 0);
     }
 }
 
@@ -2626,7 +2626,7 @@ static void DeviationTests()
         for (size_t i = tms; i < m.tms.size(); i++)
             reset |= m.tms[i].dev == 0x000B && m.tms[i].type == kTgtT;
         CHECK(reset);
-        CHECK(!g.sc->xnu.cfg_busy);                     /* the late completion gave the buffer back */
+        CHECK(mps_compat_bufmap_count() == 0);                     /* the late completion gave the buffer back */
         CHECK(g.TmsBusy() == 0);
         /* page 0 reads and a second hot-add work again */
         Mpi2ConfigReply_t mpi_reply;
@@ -2645,6 +2645,62 @@ static void DeviationTests()
         CHECK(g.Go(r) == kPosted);
         g.Pump();
         CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
+    if (Want("D6")) {
+        /* config pages and IDENTIFY in malloc()'d buffers, mapped at load (no single lent buffer) */
+        Rig g({0x0009});
+        MockIocModel &m = g.ioc;
+        m.sataSerial[0x000B] = "ZR50BAD0";
+        m.identifyStuck.insert(0x000B);
+        m.devices.push_back(0x000B);
+        int reads = 0, ok = 0;
+        gHost.onOtherThreads = [&]() {
+            if (reads || m.stuckIds.empty()) return;    /* the IDENTIFY is in the IOC, its buffer mapped */
+            reads++;
+            CHECK(mps_compat_bufmap_count() == 1);
+            Mpi2ConfigReply_t rep;
+            Mpi2SasDevicePage0_t pg;
+            Mpi2IOUnitPage7_t p7;
+            mps_lock(g.sc);
+            ok += mps_config_get_sas_device_pg0(g.sc, &rep, &pg, MPI2_SAS_DEVICE_PGAD_FORM_HANDLE, 0x0009) == 0;
+            ok += mps_config_get_iounit_pg7(g.sc, &rep, &p7) == 0;
+            mps_unlock(g.sc);
+        };
+        m.PostTopologyEvent({0x000B});
+        HostRunPending();
+        g.Pump();
+        HostRunPending();
+        gHost.onOtherThreads = nullptr;
+        CHECK(reads == 1 && ok == 2);                   /* both read while the IDENTIFY was stuck */
+        CHECK(mps_compat_bufmap_count() == 0 && m.liveMaps == 0);
+        /* FreeBSD's sync page reads never unload: 1000 reads leave no mapping behind */
+        const int loads = gHost.bufLoads;
+        for (int i = 0; i < 1000; i++) {
+            Mpi2ConfigReply_t rep;
+            Mpi2SasDevicePage0_t pg;
+            mps_lock(g.sc);
+            CHECK(mps_config_get_sas_device_pg0(g.sc, &rep, &pg, MPI2_SAS_DEVICE_PGAD_FORM_HANDLE, 0x0009) == 0);
+            mps_unlock(g.sc);
+        }
+        CHECK(gHost.bufLoads == loads + 1000 && mps_compat_bufmap_count() == 0 && m.liveMaps == 0);
+        /* free() of a loaded block drops its mapping; so does the next load of the map */
+        bus_dmamap_t map;
+        CHECK(bus_dmamap_create(g.sc->buffer_dmat, 0, &map) == 0);
+        auto cb = [](void *, bus_dma_segment_t *, int nsegs, int error) { CHECK(error == 0 && nsegs == 1); };
+        void *b1 = mps_compat_malloc(512, NULL, M_NOWAIT | M_ZERO);
+        void *b2 = mps_compat_malloc(1024, NULL, M_NOWAIT | M_ZERO);
+        CHECK(bus_dmamap_load(g.sc->buffer_dmat, map, b1, 512, cb, nullptr, 0) == 0);
+        CHECK(mps_compat_bufmap_count() == 1 && m.liveMaps == 1);
+        CHECK(bus_dmamap_load(g.sc->buffer_dmat, map, b2, 1024, cb, nullptr, 0) == 0);
+        CHECK(mps_compat_bufmap_count() == 1 && m.liveMaps == 1);   /* b1's mapping released */
+        mps_compat_free(b1, NULL);
+        CHECK(mps_compat_bufmap_count() == 1);
+        mps_compat_free(b2, NULL);
+        CHECK(mps_compat_bufmap_count() == 0 && m.liveMaps == 0);
+        bus_dmamap_destroy(g.sc->buffer_dmat, map);
+        /* the target with the bad IDENTIFY was added after its target reset */
+        CHECK(g.Targ(0x000B) != nullptr);
     }
 
     if (Want("D11")) {

@@ -62,6 +62,7 @@ struct MpsHostOs {
     int locksHeld = 0;
     std::set<void *> woken;
     int sleeps = 0, delays = 0;
+    int bufLoads = 0;                       /* mps_os_dmamap_load_buf calls (D6) */
     std::function<void()> onOtherThreads;   /* test hook, runs inside HostRunPending */
     std::function<void(uint64_t)> onDelay;  /* test hook, runs at the start of every DELAY/pause */
     /* mps_os_getenv: boot-args / personality; the defaults are kext/Info.plist's */
