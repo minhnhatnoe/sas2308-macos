@@ -1058,6 +1058,22 @@ int main()
         f.Detach();
     }
 
+    if (Want("D25")) {
+        /* lines without a device (printf, KASSERT) go where the host's go, with its unit */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f;
+        f.host.unit = 3;
+        f.host.use_iolog = 1;
+        f.Attach(&m);
+        const struct mps_kext_host *h = mps_kext_log_host(nullptr);
+        CHECK(h == &f.host && h->unit == 3 && h->use_iolog == 1);
+        struct mps_kext_host other{};
+        CHECK(mps_kext_log_host(&other) == &other);  /* a line with a device keeps its own */
+        f.Detach();
+        CHECK(mps_kext_log_host(nullptr) == nullptr);
+    }
+
     printf("PASS (%d checks)\n", gChecks);
     return 0;
 }

@@ -127,6 +127,7 @@ static os_log_type_t LogType(uint32_t cls)
 
 extern "C" void mps_kext_log(const struct mps_kext_host *host, uint32_t cls, const char *line)
 {
+    host = mps_kext_log_host(host);           /* device-less lines: the last host's sink and unit (D25) */
     const unsigned unit = host ? host->unit : 0;
     if (host && host->use_iolog) {
         IOLog("SAS2308HBA%u: [%s] %s\n", unit, mps_xnu_category(cls), line);

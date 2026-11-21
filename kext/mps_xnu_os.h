@@ -92,6 +92,8 @@ void	 mps_kext_stop_waiters(struct mps_kext *k);
 void	 mps_kext_detach(struct mps_kext *k);
 /* after detach or a failed attach; the done queue must be drained */
 void	 mps_kext_destroy(struct mps_kext *k);
+/* where a line goes: `host', or for a line without a device the last created host (D25) */
+const struct mps_kext_host *mps_kext_log_host(const struct mps_kext_host *host);
 uint32_t mps_kext_max_segs(struct mps_kext *k);		/* per IO */
 uint32_t mps_kext_max_tasks(struct mps_kext *k);	/* ReportMaximumTaskCount, from IOCFacts */
 /* target ids 0 .. n-1: IOCFacts MaxTargets + MaxVolumes, as FreeBSD (D7); 0 if not attached */

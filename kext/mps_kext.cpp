@@ -113,6 +113,13 @@ struct mps_kext {
 };
 
 static volatile int gKexts = 0;
+/*
+ * The sink of lines without a device (printf, hexdump, KASSERT, thin CAM
+ * warnings): the last created host, so they follow its sas2308_iolog and
+ * carry its unit (D25). Cleared by its destroy; the host (the IOService's
+ * member) outlives that.
+ */
+static struct mps_kext_host *volatile gLogHost = nullptr;
 
 static void mps_kext_result(struct mps_kext_task *t, struct mps_kext_io_result *res)
 {
@@ -354,7 +361,13 @@ struct mps_kext *mps_kext_create(struct mps_kext_host *host, uint16_t devid)
     k->sc.mps_btag = 0;
     k->sc.mps_bhandle = (bus_space_handle_t)(uintptr_t)host->regs;
     __atomic_add_fetch(&gKexts, 1, __ATOMIC_RELAXED);
+    __atomic_store_n(&gLogHost, host, __ATOMIC_RELEASE);
     return k;
+}
+
+const struct mps_kext_host *mps_kext_log_host(const struct mps_kext_host *host)
+{
+    return host ? host : __atomic_load_n(&gLogHost, __ATOMIC_ACQUIRE);
 }
 
 int mps_kext_attach(struct mps_kext *k, uint32_t debug_mask)
@@ -446,6 +459,8 @@ void mps_kext_destroy(struct mps_kext *k)
 {
     if (k == nullptr)
         return;
+    struct mps_kext_host *h = k->host;
+    (void)__atomic_compare_exchange_n(&gLogHost, &h, nullptr, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
     if (k->attached || k->leaked || k->done_head != nullptr)
         return;                              /* still in use: leak rather than free */
     mps_kext_free_targets(k);
