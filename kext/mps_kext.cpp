@@ -223,7 +223,13 @@ static int mps_kext_retry_ua(struct mps_kext *k, struct mps_kext_task *t)
     return 1;
 }
 
-/* ccb_h.cbfcnp of a SCSI IO: mps_mtx held, so only queue it. */
+/*
+ * ccb_h.cbfcnp of a SCSI IO: mps_mtx held, so only queue it.  There is no
+ * periph: the thin CAM's xpt_done has already released the ccb's
+ * CAM_DEV_QFRZN (cam_release_devq's job in FreeBSD), so a retry the family
+ * sends later is ordered behind younger IO; disks allow that among SIMPLE
+ * tasks. TMs therefore freeze the whole target (cam_compat.c, D17).
+ */
 static void mps_kext_io_done(struct cam_periph *periph, union ccb *ccb)
 {
     (void)periph;

@@ -2365,13 +2365,8 @@ mpssas_prepare_for_tm(struct mps_softc *sc, struct mps_command *tm,
 	ccb = xpt_alloc_ccb_nowait();
 	if (ccb) {
 		path_id = cam_sim_path(sc->sassc->sim);
-		/*
-		 * XNU: freeze the whole target, not just lun_id: the thin CAM
-		 * releases a requeued ccb's own freeze at once, so this one
-		 * must hold every IO that would see MPSSAS_TARGET_INRESET.
-		 */
 		if (xpt_create_path(&ccb->ccb_h.path, xpt_periph, path_id,
-		    target->tid, CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
+		    target->tid, lun_id) != CAM_REQ_CMP) {
 			xpt_free_ccb(ccb);
 		} else {
 			tm->cm_ccb = ccb;

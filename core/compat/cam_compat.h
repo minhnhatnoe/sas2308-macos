@@ -161,6 +161,7 @@ struct cam_path {
 	path_id_t	path_id;
 	target_id_t	target_id;
 	lun_id_t	lun_id;
+	int		xnu_sim_own;	/* made with xpt_periph: see xpt_freeze_devq */
 };
 
 typedef union {
@@ -310,7 +311,8 @@ int		 xpt_bus_register(struct cam_sim *sim, device_t parent,
 int		 xpt_bus_deregister(path_id_t path_id);
 struct cam_sim	*cam_xnu_sim_for_path(path_id_t path_id);
 
-#define xpt_periph	((struct cam_periph *)NULL)
+/* the SIM's own paths (mpssas_prepare_for_tm), told apart from the OS's */
+extern struct cam_periph *const xpt_periph;
 cam_status	 xpt_create_path(struct cam_path **new_path_ptr,
 		    struct cam_periph *perph, path_id_t path_id,
 		    target_id_t target_id, lun_id_t lun_id);

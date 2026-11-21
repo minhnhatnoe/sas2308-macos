@@ -2829,6 +2829,29 @@ static void DeviationTests()
         mps_unlock(g.sc);
     }
 
+    if (Want("D17")) {
+        /* a TM's (tid, lun) freeze holds the whole target (compat), mpssas_prepare_for_tm's path is FreeBSD's */
+        Rig g;
+        struct mps_softc *sc = g.sc;
+        mps_lock(sc);
+        struct mps_command *tm = mps_alloc_high_priority_command(sc);
+        CHECK(tm != nullptr);
+        MPI2_SCSI_TASK_MANAGE_REQUEST *req = (MPI2_SCSI_TASK_MANAGE_REQUEST *)tm->cm_req;
+        req->TaskType = MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK;
+        mpssas_prepare_for_tm(sc, tm, g.Targ(0x0009), 1);
+        CHECK(tm->cm_ccb != nullptr && tm->cm_ccb->ccb_h.path->lun_id == 1);
+        mps_unlock(sc);
+        Io *r0 = g.Read(0x0009, 0, 2);                 /* another LUN of that target: held too */
+        CHECK(g.Go(r0) == kHeld);
+        Io *ro = g.Read(0x000A, 0, 3);                 /* another target: not */
+        CHECK(g.Go(ro) == kPosted);
+        mps_lock(sc);
+        mpssas_free_tm(sc, tm);
+        mps_unlock(sc);
+        g.Pump();
+        CHECK(r0->done && r0->status == CAM_REQ_CMP && ro->done && ro->status == CAM_REQ_CMP);
+    }
+
     if (Want("D18")) {
         /*
          * An "impossible" SGL state (no room left for a chain element):

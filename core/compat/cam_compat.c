@@ -128,19 +128,22 @@ cam_xnu_sim_for_path(path_id_t path_id)
 
 /* ---- paths and ccbs ----------------------------------------------------------- */
 
+static char cam_xnu_xpt_periph;
+struct cam_periph *const xpt_periph = (struct cam_periph *)&cam_xnu_xpt_periph;
+
 cam_status
 xpt_create_path(struct cam_path **new_path_ptr, struct cam_periph *perph,
     path_id_t path_id, target_id_t target_id, lun_id_t lun_id)
 {
 	struct cam_path *path;
 
-	(void)perph;
 	path = mps_compat_malloc(sizeof(*path), NULL, M_NOWAIT);
 	if (path == NULL)
 		return (CAM_RESRC_UNAVAIL);
 	path->path_id = path_id;
 	path->target_id = target_id;
 	path->lun_id = lun_id;
+	path->xnu_sim_own = (perph == xpt_periph);
 	*new_path_ptr = path;
 	return (CAM_REQ_CMP);
 }
@@ -379,18 +382,33 @@ xpt_release_simq(struct cam_sim *sim, int run_queue)
 		cam_xnu_run_held(sim);
 }
 
+/*
+ * XNU: a freeze through the SIM's own path (xpt_periph: the TM ccb of
+ * mpssas_prepare_for_tm) holds the whole target, whatever its LUN.  There
+ * is no periph to keep an IO's (tid, lun) freeze until its retry (xpt_done
+ * releases CAM_DEV_QFRZN at once), so the TM's freeze must hold every IO
+ * that would otherwise meet MPSSAS_TARGET_INRESET (D17).
+ */
+static lun_id_t
+cam_xnu_freeze_lun(const struct cam_path *path)
+{
+	return (path->xnu_sim_own ? CAM_LUN_WILDCARD : path->lun_id);
+}
+
 uint32_t
 xpt_freeze_devq(struct cam_path *path, u_int count)
 {
 	struct cam_sim *sim;
 	struct cam_xnu_frozen *f;
+	lun_id_t lun;
 
 	sim = cam_xnu_sim_for_path(path->path_id);
 	KASSERT(sim != NULL, ("xpt_freeze_devq: no SIM"));
 	if (sim == NULL)
 		return (0);
 	mtx_assert(sim->mtx, MA_OWNED);
-	f = cam_xnu_find_frozen(sim, path->target_id, path->lun_id);
+	lun = cam_xnu_freeze_lun(path);
+	f = cam_xnu_find_frozen(sim, path->target_id, lun);
 	if (f == NULL) {
 		f = mps_compat_malloc(sizeof(*f), NULL, M_NOWAIT | M_ZERO);
 		if (f == NULL) {
@@ -399,7 +417,7 @@ xpt_freeze_devq(struct cam_path *path, u_int count)
 			return (count);
 		}
 		f->target_id = path->target_id;
-		f->lun_id = path->lun_id;
+		f->lun_id = lun;
 		TAILQ_INSERT_TAIL(&sim->frozen, f, link);
 	}
 	f->count += (int)count;
@@ -436,7 +454,8 @@ xpt_release_devq(struct cam_path *path, u_int count, int run_queue)
 	if (sim == NULL)
 		return;
 	mtx_assert(sim->mtx, MA_OWNED);
-	cam_xnu_release_dev(sim, path->target_id, path->lun_id, count);
+	cam_xnu_release_dev(sim, path->target_id, cam_xnu_freeze_lun(path),
+	    count);
 	if (run_queue)
 		cam_xnu_run_held(sim);
 }
