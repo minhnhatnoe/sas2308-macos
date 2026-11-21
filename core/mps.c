@@ -2699,12 +2699,7 @@ mps_dispatch_event(struct mps_softc *sc, uintptr_t data,
 	if (handled == 0)
 		mps_dprint(sc, MPS_EVENT, "Unhandled event 0x%x\n", le16toh(event));
 
-	/*
-	 * XNU: acknowledge events that ask for it (FreeBSD never sends
-	 * EVENT_ACK; the pre-FreeBSD driver did, as Linux mpt2sas does).
-	 */
-	sc->xnu.stats.events++;
-	mps_xnu_event_ack(sc, reply);
+	sc->xnu.stats.events++;		/* XNU: "Events" counter */
 
 	/*
 	 * This is the only place that the event/reply should be freed.

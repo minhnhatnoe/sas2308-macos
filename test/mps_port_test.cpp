@@ -215,7 +215,7 @@ static void TestDiscovery(struct mps_softc *sc)
     HostRunPending();                       /* interrupt, event task */
     T(gHost.interruptsDelivered > 0);
     T(sc->port_enable_complete == 1 && sc->wait_for_port_enable == 0);
-    T(gIoc.ackCount == 1);                  /* topology event acknowledged (XNU) */
+    T(gIoc.ackCount == 0);                  /* no EVENT_ACK, as FreeBSD (D29) */
     T(Scans(0) == 1 && Scans(1) == 1);
     T(Present(sc, 0, 0x0009) && Present(sc, 1, 0x000A) && !mps_xnu_target_present(sc, 2, NULL));
     T(sc->sassc->targets[0].linkrate == 0xA && sc->sassc->targets[0].tid == 0);
@@ -438,7 +438,7 @@ static void TestFaultReinit(struct mps_softc *sc)
     T(gIoc.eventRegistrations == 3 && gIoc.portEnables == 2);
     T(Scans(0) == 1 && Scans(1) == 1);
     T(Present(sc, 0, 0x0009) && Present(sc, 1, 0x000A));   /* same target ids */
-    T(gIoc.ackCount == acks0 + 1);
+    T(gIoc.ackCount == acks0);             /* no EVENT_ACK (D29) */
     T(sc->sassc->startup_refcount == 0 && !(sc->sassc->flags & MPSSAS_IN_STARTUP));
     T(sc->sassc->sim->freeze == 0);
     T(QueueLen(&sc->req_list) == sc->num_reqs - sc->num_prireqs - 1);
@@ -477,7 +477,7 @@ static void TestRemoval(struct mps_softc *sc)
     int acks0 = gIoc.ackCount;
     gIoc.PostTopologyEvent({0x000A}, MPI2_EVENT_SAS_TOPO_RC_TARG_NOT_RESPONDING);
     HostRunPending();
-    T(gIoc.ackCount == acks0 + 1);
+    T(gIoc.ackCount == acks0);             /* no EVENT_ACK (D29) */
     T(gIoc.tms.size() == 1 && gIoc.tms[0].type == MPI2_SCSITASKMGMT_TASKTYPE_TARGET_RESET &&
       gIoc.tms[0].msgFlags == MPI2_SCSITASKMGMT_MSGFLAGS_LINK_RESET && gIoc.tms[0].dev == 0x000A &&
       gIoc.tms[0].descFlags == MPI2_REQ_DESCRIPT_FLAGS_HIGH_PRIORITY);

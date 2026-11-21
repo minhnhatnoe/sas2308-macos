@@ -516,13 +516,13 @@ int main()
     CHECK(g.ChainsTotal() == ioc.requestCredit * 29 && g.ChainsFree() == g.ChainsTotal());
     CHECK(ioc.him & MPI2_HIM_RIM);                  /* still masked */
 
-    printf("port enable + discovery event + ack\n");
+    printf("port enable + discovery event, no ack (FreeBSD never sends EVENT_ACK: D29)\n");
     g.Start();
     CHECK(!(ioc.him & MPI2_HIM_RIM));
     CHECK(ioc.portEnables == 1);
     CHECK(g.sc->port_enable_complete == 1);
     CHECK(g.Scans(0) == 1 && g.Present(0, 0x0009));
-    CHECK(ioc.ackCount == 1);
+    CHECK(ioc.ackCount == 0);
 
     printf("read IO, two segments, fast-path completion\n");
     Buf data = AllocBuf(ioc, 8192);
@@ -1465,8 +1465,7 @@ static void LoggingTests()
         CHECK(HasLog(mark, "PHY[0].LinkRate: 6.0Gbps (0xa0)") && HasLog(mark, "PHY[1].PhyStatus: NewTargetAdded"));
         CHECK(HasLog(mark, "Target id 0x0 added") || HasLog(mark, "Target id 0x0"));
         CHECK(HasLog(mark, "mpssas_startup_decrement releasing simq"));
-        CHECK(HasLog(mark, "ack event SasTopologyChangeList (context 0x1234)"));
-        CHECK(CountLog(mark, "no command for the ack") == 0 && g.Stats().event_ack_dropped == 0);
+        CHECK(!HasLog(mark, "ack event") && CountLog(mark, "no command for the ack") == 0);
     }
 
     printf("logging: failed-IO decode, rate limit with summary, counters, hot-path filter\n");
@@ -2684,19 +2683,18 @@ static void DeviationTests()
     }
 
     if (Want("D29")) {
-        /* every AckRequired event is acked and counted; each event code logged once at info */
+        /* FreeBSD never sends EVENT_ACK (AckRequired is only printed): discovery and a hot-add
+         * complete with no ack, nothing logged about acks */
         const size_t mark = LogMark();
         Rig g({0x0009});
         MockIocModel &m = g.ioc;
-        CHECK(m.ackCount >= 1 && g.Stats().event_acks == (uint32_t)m.ackCount);
+        CHECK(m.ackCount == 0 && g.Present(g.Tid(0x0009), 0x0009));
         m.devices.push_back(0x000B);
-        m.PostTopologyEvent({0x000B});                  /* a hot-add */
+        m.PostTopologyEvent({0x000B});                  /* a hot-add, AckRequired set */
         HostRunPending();
         g.Pump();
         CHECK(g.Present(g.Tid(0x000B), 0x000B));
-        CHECK(m.ackCount >= 2 && g.Stats().event_acks == (uint32_t)m.ackCount && g.Stats().event_ack_dropped == 0);
-        CHECK(CountLog(mark, "event SasTopologyChangeList (0x1c) asks for an ack: acked") == 1);
-        CHECK(LogClass(mark, "event SasTopologyChangeList (0x1c) asks for an ack") & MPS_INFO);
+        CHECK(m.ackCount == 0 && !HasLog(mark, "asks for an ack"));
     }
 
     if (Want("D55")) {
@@ -3367,7 +3365,7 @@ static void DeviationTests()
         CHECK(g.sc->mps_debug == (MPS_INFO | MPS_FAULT | MPS_ERROR));
         /* attach and discovery: no event field dumps, no doorbell polls, no per-PHY lines */
         CHECK(!HasLog(mark, "Doorbell=") && !HasLog(mark, "PHY[0]"));
-        CHECK(CountLog(mark, "SasTopologyChangeList") == 1 && HasLog(mark, "asks for an ack"));  /* D29's line only */
+        CHECK(!HasLog(mark, "SasTopologyChangeList") && !HasLog(mark, "asks for an ack"));    /* no ack line (D29) */
         CHECK(HasLog(mark, "Firmware: "));                                   /* FreeBSD's info lines stay */
         mark = LogMark();
         CHECK(g.ForceReinit() == 0);

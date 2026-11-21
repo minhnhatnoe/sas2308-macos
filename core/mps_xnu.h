@@ -183,7 +183,6 @@ struct mps_xnu {
 	int			 temp_queued;
 	int			 temp_absent;		/* units NOT_PRESENT: stop */
 	int			 temp_stopped;		/* a read timed out: stop until a reinit (D31) */
-	uint64_t		 event_ack_logged;	/* event codes < 64 whose ack was logged (D29) */
 	int			 temp_warned;		/* above the warning, not re-armed */
 	int			 temp_logged;		/* first reading logged */
 	uint64_t		 temp_last_us;
@@ -247,8 +246,6 @@ int	mps_xnu_target_present(struct mps_softc *sc, u_int tid,
 	    uint16_t *handle);
 /* all-ones register read: the controller is gone (surprise removal) */
 void	mps_xnu_gone(struct mps_softc *sc, uint32_t offset);
-/* EVENT_ACK for an event with AckRequired set */
-void	mps_xnu_event_ack(struct mps_softc *sc, void *event_reply);
 /* every reinit attempt failed: disable the controller (FreeBSD panics) */
 void	mps_xnu_disable(struct mps_softc *sc, int error);
 /* copy sc->chain_* / held counters into sc->xnu.stats */
