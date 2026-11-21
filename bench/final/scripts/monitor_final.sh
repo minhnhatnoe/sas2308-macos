@@ -2,7 +2,7 @@
 # Background sampler for the final run (root, bash 3.2): driver stats every 15 s -> monitor.csv;
 # SMART 194 of each drive + SoC sensors every 60 s -> drivetemps.csv, soc.csv.
 # Watchdog: IOC temp >= 90, drive >= 60, state != operational, or any increase of a watched counter
-# -> ALERT line in ALERTS.txt, and sasbench is killed (SIGINT) if OUT/abort_on_alert exists.
+# -> ALERT line in ALERTS.txt, and sasbench is killed (SIGTERM: a backgrounded sasbench ignores SIGINT) if OUT/abort_on_alert exists.
 OUT=${1:-~/sasbench/final}
 CTL=~/sas2308-dext/tools/sas2308ctl; SC=/opt/homebrew/bin/smartctl; SOC=~/sasbench/socsens
 F="$OUT/monitor.csv"; T="$OUT/drivetemps.csv"; S="$OUT/soc.csv"; Bf="$OUT/.monbase"
@@ -12,7 +12,7 @@ WATCH="IO timeouts|Family timeouts|Recoveries|Reinits|IOC faults|Diag resets|Err
 [ -s "$T" ] || echo "time,disk,serial,temp_C" > "$T"
 [ -s "$S" ] || echo "time,tdie_max,tdie_avg,n_tdie,all_max" > "$S"
 rm -f "$Bf"; n=0
-alert() { echo "$1" >> "$OUT/ALERTS.txt"; if [ -e "$OUT/abort_on_alert" ]; then pkill -INT -x sasbench; echo "$(date +%T) killed sasbench" >> "$OUT/ALERTS.txt"; fi; }
+alert() { echo "$1" >> "$OUT/ALERTS.txt"; if [ -e "$OUT/abort_on_alert" ]; then pkill -TERM -x sasbench; echo "$(date +%T) killed sasbench" >> "$OUT/ALERTS.txt"; fi; }
 while [ ! -e "$OUT/MONSTOP" ]; do
   ts=$(date +%H:%M:%S)
   $CTL stats 2>/dev/null > "$OUT/.stats"

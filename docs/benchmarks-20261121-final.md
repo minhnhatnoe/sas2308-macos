@@ -399,7 +399,7 @@ Plot of the whole run: `bench/final/temps.png`; 30 s ASCII view of the soak: `be
 3. **SIGINT does not stop a backgrounded sasbench.** Non-interactive bash starts `&` jobs with
    SIGINT ignored, so `monitor.sh`'s `pkill -INT -x sasbench` (also in the 2026-11-20 monitor)
    would not have stopped a benchmark. The soak was stopped with SIGTERM (sasbench rc 143, no
-   summary line; the 30 s interval CSV covers it). Fix: use SIGTERM in the watchdogs or trap INT.
+   summary line; the 30 s interval CSV covers it). Fix: use SIGTERM in the watchdogs or trap INT (done: the watchdog scripts send SIGTERM since 2026-11-21).
 4. **Write cache cannot be toggled** through this path (`smartctl -s wcache,off`: "Unsupported ATA
    feature"), see K.
 5. H pattern: random stream starved by the sequential stream on the same drive now that the

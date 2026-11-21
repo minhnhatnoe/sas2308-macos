@@ -21,7 +21,7 @@ sample() { local ph=$1 s t dt i n b la tc
   for i in 0 1 2 3 4 5 6; do tc=$($SC -A /dev/${D[$i]} 2>/dev/null | awk '$1==194 {print $10; exit}'); dtemps="$dtemps,${tc:-NA}"; [ -n "$tc" ] && [ "$tc" -ge 60 ] && hot=1; done
   local ioc=$(g "IOC temperature (C)") pr=$(powermetrics -n 1 -i 200 --samplers thermal 2>/dev/null | awk -F': ' '/pressure level/ {print $2; exit}')
   echo "$(date +%T),$ph,$ioc$dtemps,$($SOC -s | awk '{print $1","$2","$4}'),$pr,$mbps,$iops,$lavg,$(( $(g "Latency max us") / 1000 )),$(g "IO timeouts"),$(g "Family timeouts"),$(g "Reinits"),$(g "TM requests from OS"),$(g "Err SCSI status"),$(g "Err transport")" >> $C
-  if [ "${ioc:-0}" -ge 90 ] || [ $hot = 1 ]; then echo "$(date +%T) SOAK ABORT temp ioc=$ioc drives$dtemps" >> $OUT/ALERTS.txt; pkill -INT -x sasbench; touch $OUT/STOP; fi
+  if [ "${ioc:-0}" -ge 90 ] || [ $hot = 1 ]; then echo "$(date +%T) SOAK ABORT temp ioc=$ioc drives$dtemps" >> $OUT/ALERTS.txt; pkill -TERM -x sasbench; touch $OUT/STOP; fi
 }
 for k in 1 2 3 4 5; do sample idle; [ $k -lt 5 ] && sleep 30; done
 touch $OUT/abort_on_alert; umount7

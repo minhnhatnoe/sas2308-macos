@@ -26,7 +26,7 @@ while :; do
           for (i=1;i<=nw;i++) { k=W[i]; if (have && v[k]+0 > old[k]+0) a=a " [" k " " old[k] "->" v[k] "]" }
           printf "" > base; for (i=1;i<=nw;i++) print W[i] "\t" v[W[i]] >> base;
           if (a!="") { print ts " ALERT" a >> alerts; exit 1 } }' "$OUT/.stats"
-  if [ $? -ne 0 ] && [ -e "$OUT/abort_on_alert" ]; then pkill -INT -x sasbench; echo "$ts killed sasbench" >> "$OUT/ALERTS.txt"; fi
+  if [ $? -ne 0 ] && [ -e "$OUT/abort_on_alert" ]; then pkill -TERM -x sasbench; echo "$ts killed sasbench" >> "$OUT/ALERTS.txt"; fi
   if [ $((n % 4)) -eq 0 ]; then
     while read -r d ser tgt; do
       tc=$($SC -A /dev/$d 2>/dev/null | awk '$1==194 {print $10; exit}')
