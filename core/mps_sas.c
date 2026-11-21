@@ -2609,8 +2609,19 @@ mpssas_realloc_targets(struct mps_softc *sc, int maxtargets)
 			free(lun, M_MPT2);
 		}
 	}
-	free(sassc->targets, M_MPT2);
-
-	sassc->targets = malloc(sizeof(struct mpssas_target) * maxtargets,
+	/*
+	 * XNU: IOMalloc can return NULL (xnu IOLib.cpp: Z_WAITOK without
+	 * Z_NOFAIL; L13): allocate first and keep the old array, zeroed, if
+	 * that fails.  Either way the targets are a zeroed array of the old
+	 * size, as FreeBSD's.
+	 */
+	targ = malloc(sizeof(struct mpssas_target) * maxtargets,
 	    M_MPT2, M_WAITOK|M_ZERO);
+	if (targ == NULL) {
+		bzero(sassc->targets,
+		    sizeof(struct mpssas_target) * sassc->maxtargets);
+		return;
+	}
+	free(sassc->targets, M_MPT2);
+	sassc->targets = targ;
 }

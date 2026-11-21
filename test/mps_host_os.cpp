@@ -135,6 +135,11 @@ void *mps_os_malloc(size_t size, int canwait)
     (void)canwait;
     if (gHost.AllocFails())
         return nullptr;
+    if (gHost.failMallocSize != 0 && size == gHost.failMallocSize) {
+        gHost.failMallocSize = 0;
+        gHost.allocFailures++;
+        return nullptr;
+    }
     return malloc(size);
 }
 

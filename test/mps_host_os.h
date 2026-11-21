@@ -86,6 +86,7 @@ struct MpsHostOs {
     long allocs = 0;
     long failAllocAt = 0;                   /* fail allocation number failAllocAt (0: never) */
     int allocFailures = 0;
+    size_t failMallocSize = 0;              /* fail the next mps_os_malloc of this size (0: never) */
     bool AllocFails() {
         allocs++;
         if (failAllocAt != 0 && allocs == failAllocAt) { allocFailures++; return true; }

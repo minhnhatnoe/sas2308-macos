@@ -210,7 +210,9 @@ extern "C" {
  * is legal everywhere the core runs: no core path runs at primary interrupt
  * level or with preemption disabled (FilterInterruptRequest returns without
  * entering the core; the rest is work-loop, thread-call, taskqueue and client
- * threads). An M_WAITOK NULL is checked by every caller (FINAL L13).
+ * threads). IOMalloc can return NULL even for M_WAITOK (IOMalloc_internal:
+ * Z_WAITOK without Z_NOFAIL): every M_WAITOK caller checks it, FreeBSD's
+ * mpssas_realloc_targets included since L13.
  */
 void *mps_os_malloc(size_t size, int canwait)
 {

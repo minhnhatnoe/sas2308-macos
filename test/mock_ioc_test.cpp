@@ -2720,6 +2720,29 @@ static void DeviationTests()
         CHECK(mps_compat_malloc_count() == n0);
     }
 
+    if (Want("L13")) {
+        /* IOCFacts changed across a diag reset -> mpssas_realloc_targets; its allocation fails
+         * (IOMalloc can return NULL): the old array stays, zeroed, and rediscovery fills it */
+        Rig g({0x0009, 0x000A});
+        MockIocModel &m = g.ioc;
+        struct mpssas_target *old = g.sc->sassc->targets;
+        const int maxt = g.sc->sassc->maxtargets;
+        m.maxTargets = 40;                              /* the facts differ: reallocating */
+        const int fails = gHost.allocFailures;
+        gHost.failMallocSize = 32 + sizeof(struct mpssas_target) * maxt;   /* compat header + the array */
+        CHECK(g.ForceReinit() == 0);
+        CHECK(gHost.allocFailures == fails + 1 && gHost.failMallocSize == 0);
+        CHECK(g.sc->sassc->targets == old && (int)g.sc->sassc->maxtargets == maxt);
+        CHECK(g.sc->mps_flags & MPS_FLAGS_REALLOCATED);
+        HostAdvance(3000);
+        g.Pump();
+        CHECK(g.Present(g.Tid(0x0009), 0x0009) && g.Present(g.Tid(0x000A), 0x000A));
+        Io *r = g.Read(0x000A, 0, 5);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
     if (Want("D30")) {
         /* an interrupt that finds an empty queue reads no register; a fault is found by mps_periodic (1 s) */
         Rig g({0x0009});
