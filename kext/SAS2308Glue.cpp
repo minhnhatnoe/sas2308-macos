@@ -796,11 +796,11 @@ SAS2308Glue::ScheduleHotplug(void)
 }
 
 //-----------------------------------------------------------------------------
-//	HotplugCallBody - the hotplug thread call. xnu starts a second
-//	invocation when the call is entered while it runs (e.g. a removal
-//	during CreateTargetForID's probe); like the compat taskqueue's
-//	tq_active (4d64411), only one runs the loop: a re-entered invocation
-//	asks it to scan again and leaves (review H1).
+//	HotplugCallBody - the hotplug task. Since L10 it runs on its own
+//	taskqueue thread, so a request made while it runs (e.g. a removal
+//	during CreateTargetForID's probe) queues one more run instead of a
+//	second invocation; the re-entry guard (review H1, from the thread-call
+//	days) stays for a port that does nest.
 //-----------------------------------------------------------------------------
 
 void

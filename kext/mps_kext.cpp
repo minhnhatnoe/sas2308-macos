@@ -1249,4 +1249,56 @@ void mps_kext_unlock(void *lock) { mps_os_unlock(lock); }
 void mps_kext_sleep(void *lock, void *chan) { (void)mps_os_sleep(lock, chan, 0); }
 void mps_kext_wakeup(void *chan) { mps_os_wakeup(chan); }
 
+struct mps_kext_tq {
+    struct taskqueue *tq;
+    struct task       task;
+    void            (*fn)(void *);
+    void             *arg;
+};
+
+static void mps_kext_tq_run(void *context, int pending)
+{
+    struct mps_kext_tq *q = (struct mps_kext_tq *)context;
+    (void)pending;
+    q->fn(q->arg);
+}
+
+struct mps_kext_tq *mps_kext_tq_create(const char *name, void (*fn)(void *), void *arg)
+{
+    struct mps_kext_tq *q = (struct mps_kext_tq *)mps_kext_zalloc(sizeof(*q));
+    if (q == nullptr)
+        return nullptr;
+    q->fn = fn;
+    q->arg = arg;
+    TASK_INIT(&q->task, 0, mps_kext_tq_run, q);
+    q->tq = taskqueue_create(name, M_WAITOK | M_ZERO, taskqueue_thread_enqueue, &q->tq);
+    if (q->tq == nullptr || taskqueue_start_threads(&q->tq, 1, PRIBIO, "%s", name) != 0) {
+        if (q->tq != nullptr)
+            taskqueue_free(q->tq);
+        mps_kext_zfree(q, sizeof(*q));
+        return nullptr;
+    }
+    return q;
+}
+
+bool mps_kext_tq_enqueue(struct mps_kext_tq *q)
+{
+    return taskqueue_enqueue_flags(q->tq, &q->task, TASKQUEUE_FAIL_IF_PENDING) == EEXIST;
+}
+
+bool mps_kext_tq_cancel(struct mps_kext_tq *q)
+{
+    u_int pending = 0;
+    (void)taskqueue_cancel(q->tq, &q->task, &pending);
+    return pending != 0;
+}
+
+void mps_kext_tq_free(struct mps_kext_tq *q)
+{
+    if (q == nullptr)
+        return;
+    taskqueue_free(q->tq);
+    mps_kext_zfree(q, sizeof(*q));
+}
+
 } /* extern "C" */

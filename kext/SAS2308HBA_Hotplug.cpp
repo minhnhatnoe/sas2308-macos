@@ -54,8 +54,13 @@ SAS2308HBA::HostAsync(void *hba, int event, uint32_t tid, const uint8_t *present
 #pragma mark The hotplug thread
 #endif
 
+/*
+ * The hotplug taskqueue's task (L10): one kernel thread, as FreeBSD's
+ * event taskqueue and CAM's xpt_scanner_thread; CreateTargetForID's
+ * synchronous probe and the target drain block only it.
+ */
 void
-SAS2308HBA::HotplugThread(thread_call_param_t self, thread_call_param_t)
+SAS2308HBA::HotplugThread(void *self)
 {
     ((SAS2308HBA *)self)->fGlue.HotplugCallBody();
 }

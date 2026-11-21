@@ -274,6 +274,18 @@ void	 mps_kext_wakeup(void *chan);
 /* once per kext load (mps_xnu_os.cpp): logs, the wakeup lock; 0 = ok */
 int	 mps_kext_os_init(void);
 
+/*
+ * A compat taskqueue with one task and its own kernel thread (D39's
+ * taskqueues), for the glue's hotplug work: FreeBSD runs such work on a
+ * dedicated thread (mps's event taskqueue, CAM's xpt_scanner_thread), not
+ * on a shared high-priority thread-call pool (L10).
+ */
+struct mps_kext_tq;
+struct mps_kext_tq *mps_kext_tq_create(const char *name, void (*fn)(void *), void *arg);
+bool	 mps_kext_tq_enqueue(struct mps_kext_tq *q);	/* true: was already queued */
+bool	 mps_kext_tq_cancel(struct mps_kext_tq *q);	/* true: was queued, will not run */
+void	 mps_kext_tq_free(struct mps_kext_tq *q);	/* runs what is queued, waits for the thread */
+
 /* ---- targets, statistics, logging -------------------------------------- */
 
 int	 mps_kext_target_present(struct mps_kext *k, uint32_t tid);

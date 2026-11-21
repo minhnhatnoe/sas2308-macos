@@ -1004,8 +1004,19 @@ taskqueue_start_threads(struct taskqueue **tqp, int count, int pri,
 int
 taskqueue_enqueue(struct taskqueue *tq, struct task *task)
 {
+	return (taskqueue_enqueue_flags(tq, task, 0));
+}
+
+/* FreeBSD: EEXIST with TASKQUEUE_FAIL_IF_PENDING when already queued */
+int
+taskqueue_enqueue_flags(struct taskqueue *tq, struct task *task, int flags)
+{
 	mps_os_lock(tq->tq_lock);
 	if (task->ta_pending != 0) {
+		if (flags & TASKQUEUE_FAIL_IF_PENDING) {
+			mps_os_unlock(tq->tq_lock);
+			return (EEXIST);
+		}
 		if (task->ta_pending < 0xffff)
 			task->ta_pending++;
 		mps_os_unlock(tq->tq_lock);
@@ -1075,6 +1086,26 @@ mps_compat_taskqueue_thread(struct taskqueue *tq)
 	tq->tq_exited = 1;
 	mps_os_wakeup(&tq->tq_exited);
 	mps_os_unlock(tq->tq_lock);
+}
+
+/*
+ * FreeBSD: a queued task is removed (*pendp = its pending count); EBUSY if
+ * it is running.
+ */
+int
+taskqueue_cancel(struct taskqueue *tq, struct task *task, u_int *pendp)
+{
+	int error;
+
+	mps_os_lock(tq->tq_lock);
+	if (task->ta_pending > 0)
+		TAILQ_REMOVE(&tq->tq_queue, task, ta_link);
+	if (pendp != NULL)
+		*pendp = task->ta_pending;
+	task->ta_pending = 0;
+	error = tq->tq_running == task ? EBUSY : 0;
+	mps_os_unlock(tq->tq_lock);
+	return (error);
 }
 
 /* FreeBSD: sleeps until the task is neither queued nor running. */

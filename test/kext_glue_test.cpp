@@ -158,9 +158,24 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
     void DestroyTarget(uint32_t id) override {
         nubs.erase(id); destroys[id]++;
     }
-    bool CallEnter(int which) override { return calls[which].Enter(); }
-    bool CallCancel(int which) override { return calls[which].Cancel(); }
+    /* as SAS2308HBAPort: hotplug on its own taskqueue thread (L10), done on a thread call */
+    struct mps_kext_tq *hotplugTq = nullptr;
+    bool CallEnter(int which) override {
+        return which == kCallHotplug ? (hotplugTq ? mps_kext_tq_enqueue(hotplugTq) : true) : calls[which].Enter();
+    }
+    bool CallCancel(int which) override {
+        return which == kCallHotplug ? (hotplugTq ? mps_kext_tq_cancel(hotplugTq) : false) : calls[which].Cancel();
+    }
     void Log(uint32_t cls, const char *line) override { mps_kext_log(nullptr, cls, line); }
+
+    int hotplugBodies = 0, hotplugDepth = 0, hotplugNested = 0;
+    static void HotplugBody(void *hba) {
+        Family *f = (Family *)hba;
+        f->hotplugBodies++;
+        if (f->hotplugDepth++ > 0) f->hotplugNested++;
+        f->glue.HotplugCallBody();
+        f->hotplugDepth--;
+    }
 
     bool loseKicks = false;                 /* a done kick that never arrives (D43) */
     static void HostDoneKick(void *hba) {
@@ -180,9 +195,10 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         ioc = m;
         gHost.ioc = m;
         CHECK(glue.Init(this));
-        calls[kCallHotplug].fn = [this]() { glue.HotplugCallBody(); };
+        hotplugTq = mps_kext_tq_create("sas2308 hotplug", &Family::HotplugBody, this);   /* L10 */
+        CHECK(hotplugTq != nullptr);
         calls[kCallDone].fn = [this]() { glue.DoneCallBody(); };
-        gHost.threadCalls = {&calls[kCallHotplug], &calls[kCallDone]};
+        gHost.threadCalls = {&calls[kCallDone]};
         host.hba = this;
         host.io_done_kick = &Family::HostDoneKick;
         host.async = &Family::HostAsync;
@@ -208,6 +224,8 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
     void Detach() {
         glue.StopCore();
         glue.QuiesceHotplug();
+        mps_kext_tq_free(hotplugTq);                /* ReleaseResources */
+        hotplugTq = nullptr;
         glue.QuiesceDone();
         glue.DeliverCompletions();
         for (FakeTask *t : tasks) {
@@ -402,9 +420,32 @@ int main()
         f.Attach(&m);
         HostRunPending();
         CHECK(pulled);
-        CHECK(f.calls[SAS2308GluePort::kCallHotplug].concurrent >= 1);
+        /* L10: the hotplug work has one thread (a taskqueue): the removal queues a second run, none nests */
+        CHECK(f.hotplugNested == 0 && f.hotplugBodies >= 2);
         CHECK(f.nubs.empty());                      /* the nub of the removed disk is gone */
         f.Detach();
+    }
+
+    if (Want("L10")) {
+        /* the hotplug taskqueue: a request while queued coalesces, a cancel removes it, after the
+         * quiesce nothing runs and freeing the queue runs nothing either */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const int bodies = f.hotplugBodies;
+        CHECK(!mps_kext_tq_enqueue(f.hotplugTq) && mps_kext_tq_enqueue(f.hotplugTq));   /* new, then coalesced */
+        CHECK(mps_kext_tq_cancel(f.hotplugTq) && !mps_kext_tq_cancel(f.hotplugTq));
+        HostRunPending();
+        CHECK(f.hotplugBodies == bodies);
+        f.glue.Lock(); f.glue.ScheduleHotplug(); f.glue.Unlock();
+        HostRunPending();
+        CHECK(f.hotplugBodies == bodies + 1);
+        f.glue.QuiesceHotplug();
+        f.glue.Lock(); f.glue.ScheduleHotplug(); f.glue.Unlock();   /* stopped: not queued */
+        HostRunPending();
+        CHECK(f.hotplugBodies == bodies + 1);
+        f.Detach();
+        CHECK(f.hotplugBodies == bodies + 1);
     }
 
     if (Want("C2")) {

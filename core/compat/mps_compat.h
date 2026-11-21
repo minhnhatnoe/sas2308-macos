@@ -496,6 +496,11 @@ struct taskqueue *taskqueue_create(const char *name, int mflags,
 int	taskqueue_start_threads(struct taskqueue **tqp, int count, int pri,
 	    const char *name, ...) __printflike(4, 5);
 int	taskqueue_enqueue(struct taskqueue *tq, struct task *task);
+#define TASKQUEUE_FAIL_IF_PENDING	(1 << 0)
+int	taskqueue_enqueue_flags(struct taskqueue *tq, struct task *task,
+	    int flags);
+int	taskqueue_cancel(struct taskqueue *tq, struct task *task,
+	    u_int *pendp);
 void	taskqueue_drain(struct taskqueue *tq, struct task *task);
 void	taskqueue_free(struct taskqueue *tq);
 

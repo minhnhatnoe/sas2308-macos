@@ -172,7 +172,7 @@ private:
     /* ---- SAS2308HBA_Hotplug.cpp */
     static void HostAsync(void *hba, int event, uint32_t tid, const uint8_t *present, const uint32_t *gens,
                           uint32_t count);
-    static void HotplugThread(thread_call_param_t self, thread_call_param_t);
+    static void HotplugThread(void *self);
     OSDictionary *CopyTargetProperties(SCSITargetIdentifier targetID);
     void PublishTargetCharacteristics(SCSITargetIdentifier targetID);
     /* SAS2308GluePort on IOKit (SAS2308HBA.cpp, SAS2308HBA_Hotplug.cpp) */
@@ -201,7 +201,7 @@ private:
     IOPCIDevice   *fPCI   = nullptr;
     IOMemoryMap   *fMap   = nullptr;
     IOMapper      *fMapper = nullptr;   /* the DART in front of fPCI, or NULL */
-    thread_call_t  fHotplugCall = nullptr;
+    struct mps_kext_tq *fHotplugTq = nullptr;   /* hotplug work: its own kernel thread (L10) */
     thread_call_t  fDoneCall = nullptr; /* delivers completions queued by callouts / the reinit task */
     IOTimerEventSource *fStatsTimer = nullptr;
     bool           fBusLeadOff = false;     /* bus mastering cut after the IOC died */

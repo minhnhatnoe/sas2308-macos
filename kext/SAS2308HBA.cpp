@@ -228,12 +228,16 @@ bool SAS2308HBAPort::CreateTarget(uint32_t id) { return fHba->PortCreateTarget(i
 void SAS2308HBAPort::DestroyTarget(uint32_t id) { fHba->DestroyTargetForID(id); }
 bool SAS2308HBAPort::CallEnter(int which)
 {
-    thread_call_t c = which == kCallHotplug ? fHba->fHotplugCall : fHba->fDoneCall;
+    if (which == kCallHotplug)
+        return fHba->fHotplugTq ? mps_kext_tq_enqueue(fHba->fHotplugTq) : true;
+    thread_call_t c = fHba->fDoneCall;
     return c ? thread_call_enter(c) : true;         /* true: no new invocation */
 }
 bool SAS2308HBAPort::CallCancel(int which)
 {
-    thread_call_t c = which == kCallHotplug ? fHba->fHotplugCall : fHba->fDoneCall;
+    if (which == kCallHotplug)
+        return fHba->fHotplugTq ? mps_kext_tq_cancel(fHba->fHotplugTq) : false;
+    thread_call_t c = fHba->fDoneCall;
     return c ? thread_call_cancel(c) : false;
 }
 void SAS2308HBAPort::Log(uint32_t cls, const char *line) { fHba->Klog(cls, "%s", line); }
@@ -401,9 +405,9 @@ SAS2308HBA::InitializeController(void)
     fPCI->retain();
 
     fGluePort.fHba = this;
-    fHotplugCall = thread_call_allocate(&SAS2308HBA::HotplugThread, this);
+    fHotplugTq = mps_kext_tq_create("sas2308 hotplug", &SAS2308HBA::HotplugThread, this);
     fDoneCall = thread_call_allocate(&SAS2308HBA::DoneThread, this);
-    if (!fGlue.Init(&fGluePort) || !fHotplugCall || !fDoneCall)
+    if (!fGlue.Init(&fGluePort) || !fHotplugTq || !fDoneCall)
         goto fail;
 
     /* PCI command register: memory decode + bus mastering (DMA and MSI). */
@@ -602,10 +606,10 @@ SAS2308HBA::TerminateController(void)
 void
 SAS2308HBA::ReleaseResources(void)
 {
-    if (fHotplugCall) {
+    if (fHotplugTq) {
         fGlue.QuiesceHotplug();
-        thread_call_free(fHotplugCall);
-        fHotplugCall = nullptr;
+        mps_kext_tq_free(fHotplugTq);               /* the thread leaves (taskqueue_free) */
+        fHotplugTq = nullptr;
     }
     if (fDoneCall) {
         fGlue.QuiesceDone();
