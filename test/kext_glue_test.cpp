@@ -74,6 +74,7 @@ struct FakeTask {
     std::vector<uint8_t> td;
     uint64_t iova = 0;
     uint32_t timeoutMs = 30000;
+    int attr = MPSK_ATTR_SIMPLE;
     /* family state */
     bool outstanding = false, armed = false, mapped = false;
     uint64_t deadline = 0;
@@ -102,6 +103,7 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         d->dir = f->dir; d->length = f->len;
         d->td = f->td.data(); d->tdSize = f->td.size();
         d->timeoutMs = f->timeoutMs;
+        d->attr = f->attr;
         return true;
     }
     bool TaskMapBegin(void *t, uint64_t) override {
@@ -828,6 +830,26 @@ int main()
         CHECK(f.asyncCalls == calls);
         xpt_free_path(path);
         mps_unlock(sc);
+        f.Detach();
+    }
+
+    if (Want("D46")) {
+        /* the task attribute reaches the IOC as the request's queue type (da passes its tag_action) */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const struct { int attr; uint32_t control; } cases[] = {
+            {MPSK_ATTR_SIMPLE, MPI2_SCSIIO_CONTROL_SIMPLEQ}, {MPSK_ATTR_ORDERED, MPI2_SCSIIO_CONTROL_ORDEREDQ},
+            {MPSK_ATTR_HEAD, MPI2_SCSIIO_CONTROL_HEADOFQ}, {MPSK_ATTR_ACA, MPI2_SCSIIO_CONTROL_ACAQ},
+        };
+        for (const auto &c : cases) {
+            FakeTask *t = f.NewRead(f.Tid(0x0009));
+            t->attr = c.attr;
+            CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+            CHECK((m.lastControl & MPI2_SCSIIO_CONTROL_TASKATTRIBUTE_MASK) == c.control);
+            HostRunPending();
+            CHECK(t->completions == 1 && t->done == SAS2308GluePort::kDoneStatus);
+        }
         f.Detach();
     }
 

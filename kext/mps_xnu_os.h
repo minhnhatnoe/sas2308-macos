@@ -144,6 +144,8 @@ size_t	 mps_kext_task_size(struct mps_kext *k);	/* HBA data per task (after atta
 struct mps_kext_seg *mps_kext_task_segs(void *td);
 
 enum { MPSK_DIR_NONE, MPSK_DIR_IN, MPSK_DIR_OUT };
+/* the task attribute (SCSITaskAttribute order), CAM's tag_action in the ccb (D46) */
+enum { MPSK_ATTR_SIMPLE, MPSK_ATTR_ORDERED, MPSK_ATTR_HEAD, MPSK_ATTR_ACA };
 enum {
 	MPSK_IO_STATUS,			/* the device answered: scsi_status */
 	MPSK_IO_GONE,			/* no such device / controller gone */
@@ -173,7 +175,7 @@ enum { MPSK_SUBMIT_POSTED, MPSK_SUBMIT_HELD, MPSK_SUBMIT_DONE };
 int	 mps_kext_submit(struct mps_kext *k, void *td, void *os_task,
 	    uint64_t os_tag, uint32_t tid, uint64_t lun, const uint8_t *cdb,
 	    uint8_t cdblen,
-	    int dir, uint32_t nsegs, uint64_t len, uint32_t timeout_ms,
+	    int dir, int attr, uint32_t nsegs, uint64_t len, uint32_t timeout_ms,
 	    uint32_t gen, struct mps_kext_io_result *res);
 #define	MPSK_BACKSTOP_MS	10000	/* core timeout = task timeout + this */
 #define	MPSK_UNTIMED_BACKSTOP_MS 600000	/* core timeout of a task with none (D15) */

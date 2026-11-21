@@ -53,6 +53,7 @@ public:
         void    *td;                /* HBA data: the ccb (mps_kext_task_size) */
         size_t   tdSize;
         uint32_t timeoutMs;         /* the task's own timeout, 0 = none */
+        int      attr;              /* MPSK_ATTR_* (SCSITaskAttribute) */
     };
     enum { kCallHotplug, kCallDone };
 

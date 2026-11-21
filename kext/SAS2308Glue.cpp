@@ -265,7 +265,7 @@ SAS2308Glue::ProcessTask(void *task)
      */
     fPort->SetTimeoutForTask(task, 0);
     struct mps_kext_io_result res;
-    const int rc = mps_kext_submit(fMps, d.td, task, d.tag, d.target, d.lun, d.cdb, d.cdbLen, d.dir, nsegs,
+    const int rc = mps_kext_submit(fMps, d.td, task, d.tag, d.target, d.lun, d.cdb, d.cdbLen, d.dir, d.attr, nsegs,
                                    d.length, d.timeoutMs, gen, &res);
 
     Lock();

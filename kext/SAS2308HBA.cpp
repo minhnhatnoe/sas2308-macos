@@ -257,6 +257,12 @@ SAS2308HBA::PortTaskDescribe(SCSIParallelTaskIdentifier task, SAS2308GluePort::T
     d->td = GetHBADataPointer(task);
     d->tdSize = GetHBADataSize(task);
     d->timeoutMs = GetTimeoutDuration(task);
+    switch (GetTaskAttribute(task)) {                   /* D46: as da's tag_action */
+    case kSCSITask_ORDERED:         d->attr = MPSK_ATTR_ORDERED; break;
+    case kSCSITask_HEAD_OF_QUEUE:   d->attr = MPSK_ATTR_HEAD; break;
+    case kSCSITask_ACA:             d->attr = MPSK_ATTR_ACA; break;
+    default:                        d->attr = MPSK_ATTR_SIMPLE; break;
+    }
     return GetTargetIdentifier(task) < kMaxTargets;
 }
 

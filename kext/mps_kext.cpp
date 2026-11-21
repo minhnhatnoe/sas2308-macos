@@ -555,7 +555,7 @@ static void mps_kext_queue_done(struct mps_kext *k, struct mps_kext_task *t)
 }
 
 int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag, uint32_t tid,
-                    uint64_t lun, const uint8_t *cdb, uint8_t cdblen, int dir, uint32_t nsegs, uint64_t len,
+                    uint64_t lun, const uint8_t *cdb, uint8_t cdblen, int dir, int attr, uint32_t nsegs, uint64_t len,
                     uint32_t timeout_ms, uint32_t gen, struct mps_kext_io_result *res)
 {
     struct mps_softc *sc = &k->sc;
@@ -608,11 +608,15 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
     ccb->csio.cdb_len = cdblen;
     memcpy(ccb->csio.cdb_io.cdb_bytes, cdb, cdblen);
     /*
+     * The task's attribute, as da passes its tag_action (BIO_ORDERED ->
+     * ORDERED); mpssas_action_scsiio turns it into the request's queue type.
      * No periodic ORDERED tag (scsi_da.c's da_send_ordered): SATL has no
      * ordered NCQ, and the worst latency measured under random load was
-     * 1.22 s against the 30 s timeout (D46; the task's attribute: batch D).
+     * 1.22 s against the 30 s timeout (D46).
      */
-    ccb->csio.tag_action = MSG_SIMPLE_Q_TAG;
+    ccb->csio.tag_action = attr == MPSK_ATTR_ORDERED ? MSG_ORDERED_Q_TAG :
+                           attr == MPSK_ATTR_HEAD    ? MSG_HEAD_OF_Q_TAG :
+                           attr == MPSK_ATTR_ACA     ? MSG_ACA_TASK : MSG_SIMPLE_Q_TAG;
 
     /*
      * Not inline_owner: ProcessParallelTask does not deliver completions
