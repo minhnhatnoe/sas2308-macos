@@ -56,6 +56,7 @@ struct MpsHostOs {
     std::set<void *> woken;
     int sleeps = 0, delays = 0;
     std::function<void()> onOtherThreads;   /* test hook, runs inside HostRunPending */
+    std::function<void(uint64_t)> onDelay;  /* test hook, runs at the start of every DELAY/pause */
 
     /* callouts, taskqueues */
     std::set<struct mtx *> calloutMtx;      /* mutexes with an armed deadline */

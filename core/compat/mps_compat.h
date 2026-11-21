@@ -369,7 +369,6 @@ struct mtx {
 	const char		*mtx_name;
 	TAILQ_HEAD(, callout)	 mtx_callouts;	/* armed callouts, by deadline */
 	uint64_t		 mtx_armed_us;	/* deadline passed to mps_os_callout_arm */
-	struct mtx		*mtx_next;	/* all mutexes, for DELAY() */
 };
 
 #define MTX_DEF		0x0000
@@ -396,10 +395,7 @@ void	mtx_unlock(struct mtx *m);
 int	msleep(void *chan, struct mtx *mtx, int pri, const char *wmesg, int timo);
 void	wakeup(void *chan);
 void	pause(const char *wmesg, int timo);
-/*
- * XNU: DELAY() of 1 ms or more with a mutex held by the calling thread drops
- * that mutex while waiting (rule: no sleeping with mps_mtx held).
- */
+/* the caller's locks stay held (FreeBSD); 1 ms and more may sleep */
 void	DELAY(int us);
 
 /* ---- callout(9): a sorted list per mutex, run by mps_compat_callout_run -- */
@@ -605,7 +601,7 @@ void	*mps_os_curthread(void);
 /* drops `lock' while waiting on `chan'; 0 when woken, EWOULDBLOCK on timeout */
 int	 mps_os_sleep(void *lock, void *chan, uint64_t timo_us);
 void	 mps_os_wakeup(void *chan);
-/* waits without any core lock held by the caller (DELAY, pause) */
+/* DELAY (the caller's locks held), pause: IODelay below 1 ms, else IOSleep */
 void	 mps_os_delay(uint64_t us);
 
 /* clocks */

@@ -221,6 +221,8 @@ void mps_os_wakeup(void *chan)
 void mps_os_delay(uint64_t us)
 {
     gHost.delays++;
+    if (gHost.onDelay)
+        gHost.onDelay(us);
     gHost.ioc->nowUs += us;
     HostRunPending();                   /* no-op while a lock is held */
 }

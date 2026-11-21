@@ -2759,6 +2759,31 @@ static void DeviationTests()
         CHECK(HasLog(mark, "IOCCapabilities: 1c<ScsiTaskFull,DiagTrace,SnapBuf>"));
     }
 
+    if (Want("D16")) {
+        /* DELAY keeps mps_mtx, as FreeBSD's spin: the doorbell handshake of a reinit is atomic */
+        Rig g;
+        struct mps_softc *sc = g.sc;
+        int lockedLong = 0, droppedLong = 0;
+        gHost.onDelay = [&](uint64_t us) {
+            if (us < 1000) return;
+            if (mtx_owned(&sc->mps_mtx)) lockedLong++;
+            else if (gHost.locksHeld == 0) droppedLong++;
+        };
+        mps_lock(sc);
+        DELAY(2000);
+        CHECK(mtx_owned(&sc->mps_mtx));
+        mps_unlock(sc);
+        CHECK(lockedLong == 1);
+        CHECK(g.ForceReinit() == 0);                    /* IOCFacts/IOCInit handshakes: DELAY(2000) per word */
+        gHost.onDelay = nullptr;
+        CHECK(lockedLong > 1);
+        HostAdvance(5000);                              /* the rediscovery */
+        Io *r = g.Read(0x0009, 0, 2);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
     if (Want("D18")) {
         /*
          * An "impossible" SGL state (no room left for a chain element):

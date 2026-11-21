@@ -512,7 +512,7 @@ mps_compat_device_init(device_t dev, const char *name, int unit, void *softc,
 	dev->dv_dmat.dt_maxsegsz = BUS_SPACE_MAXSIZE;
 }
 
-/* ---- global lock (mutex registry, intrhooks) ------------------------------ */
+/* ---- global lock (intrhooks) ---------------------------------------------- */
 
 static void *mps_compat_glock;
 
@@ -655,8 +655,6 @@ ratecheck(struct timeval *lasttime, const struct timeval *mininterval)
 
 /* ---- mutex(9), sleep(9) ------------------------------------------------------ */
 
-static struct mtx *mps_compat_mutexes;
-
 void
 mtx_init(struct mtx *m, const char *name, const char *type, int opts)
 {
@@ -666,28 +664,14 @@ mtx_init(struct mtx *m, const char *name, const char *type, int opts)
 	m->mtx_name = name;
 	m->mtx_os = mps_os_lock_alloc(name);
 	TAILQ_INIT(&m->mtx_callouts);
-	mps_compat_global_lock();
-	m->mtx_next = mps_compat_mutexes;
-	mps_compat_mutexes = m;
-	mps_compat_global_unlock();
 }
 
 void
 mtx_destroy(struct mtx *m)
 {
-	struct mtx **pp;
-
 	KASSERT(m->mtx_owner == NULL, ("mtx_destroy: %s owned", m->mtx_name));
 	KASSERT(TAILQ_EMPTY(&m->mtx_callouts),
 	    ("mtx_destroy: %s has armed callouts", m->mtx_name));
-	mps_compat_global_lock();
-	for (pp = &mps_compat_mutexes; *pp != NULL; pp = &(*pp)->mtx_next) {
-		if (*pp == m) {
-			*pp = m->mtx_next;
-			break;
-		}
-	}
-	mps_compat_global_unlock();
 	if (m->mtx_armed_us != 0)
 		mps_os_callout_arm(m, 0);
 	mps_os_lock_free(m->mtx_os);
@@ -741,30 +725,20 @@ pause(const char *wmesg, int timo)
 	mps_os_delay((uint64_t)(timo > 0 ? timo : 1) * 1000);
 }
 
+/*
+ * As FreeBSD's DELAY(9), the caller's locks stay held: every FreeBSD caller
+ * that holds mps_mtx across it (the doorbell handshake in mps_wait_db_int,
+ * mps_transition_ready, the NO_SLEEP branches of the diag reset) relies on
+ * nothing else running in between.  The platform may sleep for 1 ms and
+ * more instead of spinning (lck_mtx may be held across a sleep); the long
+ * waits FreeBSD writes as msleep()/pause() drop the lock as there.
+ */
 void
 DELAY(int us)
 {
-	struct mtx *m, *held = NULL;
-	void *self;
-
 	if (us <= 0)
 		return;
-	if (us >= 1000) {
-		self = mps_os_curthread();
-		mps_compat_global_lock();
-		for (m = mps_compat_mutexes; m != NULL; m = m->mtx_next) {
-			if (m->mtx_owner == self) {
-				held = m;
-				break;
-			}
-		}
-		mps_compat_global_unlock();
-	}
-	if (held != NULL)
-		mtx_unlock(held);
 	mps_os_delay((uint64_t)us);
-	if (held != NULL)
-		mtx_lock(held);
 }
 
 /* ---- callout(9) ----------------------------------------------------------- */
