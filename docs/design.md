@@ -107,12 +107,13 @@ FreeBSD `maxio` arithmetic), independent of the 16 KiB arm64 page.
   IO failed `CAM_DEV_NOT_THERE`); reinit runs on a thread (taskqueue), not in callout
   context, and retries the reset on a nested fault (≤ 3 attempts); waits drop `mps_mtx`
   (reinit sets `MPS_FLAGS_DIAGRESET` first; `mps_intr_locked` and new IO honour it);
-  all-ones register reads = surprise removal (`MPS_FLAGS_XNU_GONE`), checked by every
+  all-ones register reads = surprise removal (`MPS_FLAGS_XNU_GONE`) once confirmed (D11:
+  doorbell and PCI vendor id re-read 5 times 20 ms apart), checked by every
   wait loop; `MPS_FLAGS_SHUTDOWN` abandons a sleeping reinit; reply-descriptor hardening
   (SMID range, reply address range/alignment, idle SMID ignored and counted); a target
   recovery that finds no free high-priority SMID waits for one instead of being dropped;
-  OS-requested TMs (abort task, abort task set, clear task set, clear ACA, LUN reset,
-  target reset) complete asynchronously; IOs held during recovery (CAM requeue);
+  OS-requested TMs go FreeBSD's ways (D10: target/LUN reset = `XPT_RESET_DEV`, abort = the
+  task's timeout recovery, the rest rejected); IOs held during recovery (CAM requeue);
   SAS Device Page 0 / persistent mapping not read (simple target-id mapping).
 - Tunable defaults for XNU in `mps_get_tunables`: `max_io_pages` 256 (1 MiB); the queue
   sizes are FreeBSD's since branch queue-freebsd (see "Queue sizes as FreeBSD"; before:
@@ -165,7 +166,7 @@ XNU deviations (all marked in the code):
   counted as late (`tm_late_replies`) and ignored; the reinit's `mpssas_complete_all_commands`
   frees the TM. An OS TM's ccb completes at the timeout with `CAM_CMD_TIMEOUT`.
 - Recoveries that found no free TM start from `mpssas_free_tm` (`mpssas_xnu_retry_recovery`).
-- OS task management: `XPT_XNU_TM` ccb (`struct ccb_xnu_tm`: task_type, abort_ccb; results
+- OS task management (replaced in batch B, D10: `XPT_RESET_DEV` / the timeout recovery): `XPT_XNU_TM` ccb (`struct ccb_xnu_tm`: task_type, abort_ccb; results
   ioc_status/response_code/termination_count), all six types, FreeBSD's TM timeouts (abort 5 s,
   resets 30 s); an abort of a ccb still held by the thin CAM completes it (`CAM_REQ_ABORTED`)
   without the IOC. OS timeout of a task: `mps_xnu_ccb_timeout(sc, ccb)` (held → `CAM_CMD_TIMEOUT`
@@ -261,7 +262,7 @@ to `core/mps_xnu_stats.h` (only `<stdint.h>`) so the class can read a snapshot.
   from a thread call kicked when a callout or the reinit task completed ccbs.
 - Completion mapping: `CAM_REQ_CMP` / `CAM_SCSI_STATUS_ERROR` → SCSI status byte, transfer count
   (`dxfer_len − resid`), autosense when `CAM_AUTOSNS_VALID`; `CAM_DEV_NOT_THERE`/`SEL_TIMEOUT`/
-  `TID_INVALID`/`PATH_INVALID` → `DeviceNotPresent`; `CAM_CMD_TIMEOUT` → `ProtocolTimeoutOccurred`;
+  `TID_INVALID`/`PATH_INVALID` → `DeviceNotPresent`; `CAM_CMD_TIMEOUT` → `TaskTimeoutOccurred` (D44; before: `ProtocolTimeoutOccurred`);
   `CAM_AUTOSENSE_FAIL` → CHECK CONDITION without sense (cam_periph_error: EIO, no retry; D20a);
   everything else (`CAM_SCSI_BUS_RESET` after the 4th reset in a row, `CAM_REQ_ABORTED` from an
   OS TM, transport errors) → `DeliveryFailure` (retryable); all non-status results with
@@ -330,8 +331,8 @@ to `core/mps_xnu_stats.h` (only `<stdint.h>`) so the class can read a snapshot.
   pending; `mpssas_prepare_for_tm` freezes the whole target once per TM, released by
   `mpssas_free_tm`; an escalation reuses the TM's ccb; a timed-out TM stays owned until the reinit
   (late reply counted); recoveries without a free TM wait for one; no TM into a reset.
-- *OS interface*: `XPT_XNU_TM` (six TM types, asynchronous), `mps_xnu_ccb_timeout` (OS timer,
-  `timeout` 0 = no core callout), `AC_XNU_SCAN` for rescans, `mps_xnu_target_present`.
+- *OS interface*: `XPT_XNU_TM` (six TM types, asynchronous; removed in batch B, D10), `mps_xnu_ccb_timeout` (OS timer,
+  `timeout` 0 = no core callout; batch B, D15: 10 min except FORMAT UNIT / SANITIZE), `AC_XNU_SCAN` for rescans, `mps_xnu_target_present`.
 - *Observability*: M4 statistics, trace lines, rate-limited decoded failed-IO line, TM line,
   periodic summaries (`mps_xnu.c`).
 
@@ -406,9 +407,14 @@ The family controller has no PM (only its target nubs: `IOSCSIParallelInterfaceD
   source. Targets keep their nubs. The target nubs are our power children, so the disks have been
   synced/stopped through us before this runs.
 - `setPowerState(on)` → `ResumeController` → interrupt source on, `mps_xnu_resume`: flags cleared,
-  `mps_periodic` restarted, `mps_xnu_request_reinit("resume")` — the reinit (diag reset, IOCFacts,
-  IOCInit, events, port enable = rediscovery) runs on the core's taskqueue, as Linux
-  `scsih_resume` does a hard reset; `setPowerState` returns `kIOPMAckImplied` at once. Held IO
+  `mps_periodic` restarted, `mps_xnu_request_reinit("resume")` — the reinit runs on the core's
+  taskqueue with FreeBSD's attach sequence first (D12, batch B: `mps_transition_ready` leaves the
+  READY IOC our suspend's MUR left alone, then IOCFacts, IOCInit, events, port enable =
+  rediscovery; no diag reset, so no PHY reset of the disks and no UNIT ATTENTION 29/00), the diag
+  reset only if that fails (Linux `scsih_resume` likewise tries a MUR before a diag reset). Each
+  wake logs `resume: controller reinitialized without a reset` or `... with a diag reset` and
+  counts it (`Resumes without reset`, `Resumes with diag reset`); `setPowerState` returns
+  `kIOPMAckImplied` at once. Held IO
   goes to the IOC when the rediscovery releases the SIM queue; targets found again keep their IDs
   (`mps_xnu_get_tid` prefers the last handle) and nubs; a target not found is destroyed by the
   wildcard rescan; a controller that disappeared while asleep is disabled by the reinit (held IO
@@ -757,6 +763,40 @@ answer the first command with 29/00 (7 per wake, all re-sent); 5 sleep/wake cycl
 F_FULLFSYNC writers on two mounted JHFS+ volumes: 0 errors, no eject, 0 identity changes, volumes
 verify OK. Random 4K QD32 1770 IOPS, seq 1 MiB 1945.5 MB/s, verify 0 mismatches.
 
+## FreeBSD deviation fixes, batch B (branch fix-batch-B, 2026-11-20)
+Timeouts, recovery, resume and stop items of `docs/reviews/2026-11-freebsd-deviations.md` (final
+fixes in `docs/reviews/2026-11-decisions.md`). Each host test failed on the code before its fix
+(`MOCK_ONLY=<id>` / `KGLUE_ONLY=<id>` runs one; D43's did not build).
+
+| id | fix | host test |
+|---|---|---|
+| D4 | the family timer counts from the post to the IOC, as FreeBSD's callout: `HandleTimeout` re-arms (`SetTimeoutForTask(task, rest)`, never 0) a task still held or owned by the IOC (`qos.sim_data`) for less than its timeout; re-armed in the work-loop gate, before any completion of the task can reach the family. Counter `Family timer re-arms` | glue `D4` (held 25 s, then 10 s in the IOC: no TM; held then stuck: exactly one timeout 30 s after the post; a re-armed task is not expired again in the same timer loop) |
+| D15 | timeout 0 (SAM's START STOP UNIT, pass-through) keeps no family timer, but the core's callout fires after 10 min, except FORMAT UNIT and SANITIZE; 30 s Read/Write Time Out kept (Linux sd default, the macOS SAS HBA value; FreeBSD da 60 s), reason in Info.plist | glue `D15` |
+| D44 | a timed-out task completes `TaskTimeoutOccurred`, the family's own status for its timer | none (IOKit class) |
+| D10 | OS task management as FreeBSD: LUN and target reset → `XPT_RESET_DEV` (`mpssas_action_resetdev`, with `mpssas_send_reset`'s 30 s TM timeout because the OS waits synchronously), held by the thin CAM behind a frozen device or SIM queue as CAM's devq does; abort of a posted task → its timeout recovery (`mps_xnu_ccb_timeout`, one TM per target), the request returns when the task is back; abort of a held task → completed `CAM_REQ_ABORTED`; ABORT TASK SET, CLEAR TASK SET, CLEAR ACA → FUNCTION_REJECTED. `XPT_XNU_TM`, `struct ccb_xnu_tm`, `mpssas_action_xnu_tm` deleted (review L6 gone) | glue `D10`; the mock's OS-TM scenarios now use `XPT_RESET_DEV` |
+| D11 | an all-ones register read is confirmed before "gone": `mps_xnu_gone` arms a callout that re-reads the doorbell and asks whether the PCI config space answers (vendor id), 5 times 20 ms apart; gone only if every try fails, else `Transient all-ones reads` +1. `willTerminate` (`mps_kext_check_present`) and `mps_reinit` wait for the verdict | core `D11` (one bad read: no disable; unplug: disabled) |
+| D12 | resume: FreeBSD's attach sequence (`mps_transition_ready`, IOCFacts, IOCInit, port enable), the diag reset as the fallback; logged and counted per wake (Power management above) | core `D12` (READY: no diag reset, same ids; IOCInit faults: diag reset) |
+| D13 | `saveDeviceState(kIOPCIConfigShadowPermanent)` in `StartController` (after the interrupt source is enabled: MSI programmed; Permanent = save only, no power-state change, stays valid across restores); `HostPciRestore` calls `restoreDeviceState` plus the two command bits as before. PCI command, MSI control/address/data and restore counts are published with the statistics | none (IOKit class); hardware check below |
+| D19 | `mps_pci_restore` after every diag reset of a reinit (was: the first only) | core `D19` |
+| D18 | `mps_add_chain` / `mps_push_sge`: after the "Need SGE Error Code" panic line (our `panic()` returns) EFBIG instead of an SGE written into the next request frame; such a command is failed `CAM_REQ_TOO_BIG` (`MPS_CM_FLAGS_XNU_SGL_FAILED`), not requeued as a chain shortage | core `D18` (guard pattern in the next frame; segment cap = `max_io_pages` + 1) |
+| D51 | `mps_free` polls the reply queue once (`mps_intr_locked`) after setting SHUTDOWN, before the MUR: IO the IOC completed whose interrupt was not delivered (ours is off before `mps_free`: the family owns the source, nothing like `bus_teardown_intr` waits for a running handler) completes with its real status. Order documented in `StopController` | core `D51` |
+| D43 | pumps kept (FreeBSD's NO_SLEEP waits poll; completions are delivered in the work-loop gate), comments on both; the 1 s statistics timer delivers only when no done call is pending and counts what it delivers (`Lost completion kicks`, logged once) | glue `D43` |
+
+Debug triggers for the hardware tests (`sas2308ctl reinit | hold <ms> | lose <n>`, properties
+`SAS2308DebugReinit`, `SAS2308DebugHoldMs`, `SAS2308DebugLose`; admin only): a reinit (diag
+reset), new IO held with the SIM queue frozen, the next n SCSI IOs marked posted but never given to
+the IOC (one hook in `mps_enqueue_request`). Host test: glue `debug`.
+
+The host sleep model now lets time pass in 1 ms steps during a long `msleep`, so callouts due
+meanwhile run first, as on a real kernel (needed by D11's callout).
+
+Verified on the Mac (build 9E6663B6, 2026-11-20; details in the deviations plan): 7 resumes under
+IO all by the READY path (0 diag resets), but every drive still answers the first command after a
+wake with 29/00 (the MUR / port enable resets the links), so D3 stays essential; MSI address/data
+unchanged across a forced diag reset; a task held 35 s is re-armed, not timed out; a lost command
+times out once and recovers through the whole escalation; unload under IO is clean. Random 4K QD32
+1768 IOPS, seq 1 MiB 1945.4 MB/s, verify 0 mismatches.
+
 ## What is implemented (M1 – M4)
 > **Names after M5.** The tables and sections below are the M1–M4 history and use the names of
 > the deleted C++ core. Old → new: `MpsCore::Attach/Detach/Shutdown` → `mps_attach`/`mps_free`;
@@ -903,9 +943,11 @@ reinit succeeds (FreeBSD: `CAM_REQUEUE_REQ` with the device or SIM queue frozen,
 returning `SERVICE_DELIVERY_OR_TARGET_FAILURE` would make IOSCSIBlockCommandsDevice
 retry a few times without delay and then fail the IO, turning a recoverable reset into IO
 errors; a BUSY/TASK SET FULL status is the device's to give, not the HBA's. The family's
-per-task timeout keeps running for held tasks (a held task that times out is completed
-with `ProtocolTimeoutOccurred`), and an `AbortTaskRequest` for a held task cancels it
-(`CancelHeldIo`, FUNCTION_COMPLETE). IO failed by a reinit completes with
+per-task timer runs from `ProcessParallelTask`, but since batch B (D4) `HandleTimeout`
+re-arms it for a task that is held or that the IOC has owned for less than its timeout
+(FreeBSD's callout runs from the post), so held time never counts; a timed-out task
+completes `TaskTimeoutOccurred` (D44), and an `AbortTaskRequest` for a held task completes it
+aborted (FUNCTION_COMPLETE). IO failed by a reinit completes with
 `DeliveryFailure` (retryable); the retry arrives as new IO and is held until the reinit is done.
 
 ### Locking rules

@@ -53,6 +53,18 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | A | D14 | done | 705347e | glue `D14`, `D14-cap` | still to run (disk pull) |
 | A | D20 | done | 3715d37 | glue `D20a`; core `D20b`, `D20c` | regression OK |
 | A | KEEP comments D28, D43, D46 | done | 51b85a5 | none (comments) | |
+| B | D4 | done | 4e6f7bd | glue `D4` | IO held 35 s (`sas2308ctl hold`): 4 family timeouts, 4 re-arms, 0 IO timeouts, 0 TMs, 0 errors; a lost command times out once |
+| B | D15 | done | ae0e70b | glue `D15` | regression OK |
+| B | D44 | done | dcbfeef | none (IOKit class) | regression OK |
+| B | D10 | done | 6101d7e | glue `D10`; mock OS-TM scenarios on `XPT_RESET_DEV` | recovery path on hardware (lost command: abort, LUN reset, target reset, reinit, IO re-sent, 0 errors); family TM requests: still to run (no unattended trigger) |
+| B | D11 | done | bcafc51 | core `D11` | still to run (dock unplug: test 2 below) |
+| B | D12 | done | c75c9b2 | core `D12` | 5x sleep/wake under IO (7 resumes incl. 2 dark wakes): all by the READY path, 0 diag resets, 0 re-IDENTIFYs; the 29/00 UNIT ATTENTION still came on every wake (7 per resume, all re-sent by D3) |
+| B | D13 | done | a857195 | none (IOKit class) | forced diag reset: MSI control 0x81, address 0xFFFFF000, data 0x64, command 0x406 identical before/after; 1 restore, 0 failures; IO at full rate after |
+| B | D19 | done | 784c280 | core `D19` | forced diag resets: restore called each time, IO fine |
+| B | D18 | done | d916e4e | core `D18` | regression OK |
+| B | D51 | done | d75366f | core `D51` | `kmutil unload` under 64K QD16 reads on all 7 raw drives: unloaded in ~2 s, no panic, no outstanding-IO or fault line, the reads end with errors; reload: 7 drives |
+| B | D43 | done | 1414bbc | glue `D43` | `Lost completion kicks` 0 through all batch B tests |
+| B | debug triggers (`sas2308ctl reinit/hold/lose`) | done | 3fc7ac5 | glue `debug` | used below |
 
 ### Batch A hardware results
 
@@ -73,6 +85,38 @@ Build **DDA7E6AD** (fix-batch-A bb3a24c), installed 2026-11-20 18:23, 7 drives, 
   seq 1 MiB read QD2 all 7, 60 s: **1945.5 MB/s** (before 1941.5); verify 64 KiB random QD64,
   256 MiB per drive: **0 mismatches, 0 errors**. `sas2308ctl stats` after all: 0 timeouts, 0 TMs,
   0 recoveries, 0 held timeouts, 0 stale/bad replies; Reinits/Diag resets 5 (the 5 wakes); IOC 61 C.
+
+### Batch B hardware results
+
+Build **9E6663B6** (fix-batch-B 3fc7ac5 code), installed 2026-11-20 19:17, 7 drives, 0 config page
+failures, IOC 57 C. Debug triggers: `sas2308ctl reinit | hold <ms> | lose <n>`.
+
+- **D12, 5x sleep/wake under IO** (batch A's harness in `~/hwB`: F_FULLFSYNC writers on the two
+  JHFS+ volumes, 4K random reads QD8 on the other 5): 7 suspend/resume pairs (5 cycles, 2 extra
+  around Thunderbolt dark wakes). **Every resume took the READY path** (log `resume: controller
+  reinitialized without a reset`; `Resumes without reset` 7, `with diag reset` 0, `Diag resets` 0).
+  0 F_FULLFSYNC/write errors, volumes stayed mounted, `verifyVolume` OK on both, 0 IO timeouts /
+  TMs / recoveries, 0 re-IDENTIFYs or identity changes. Finding: **all 7 drives still answer the
+  first command after every wake with UNIT ATTENTION 29/00** (49 = 7 per resume, all re-sent by D3):
+  the link reset comes from the suspend's MUR / the port enable, not from the diag reset, so D3
+  stays essential. `Err check condition` 35 per wake, as in batch A (unchanged).
+- **D13 / D19, forced diag reset** (`sas2308ctl reinit`): PCI command 0x0406, MSI control 0x0081,
+  address 0xFFFFF000, data 0x0064 before and after; `PCI state restores` 1, failures 0; random 4K
+  QD32 on two drives right after: 376 IOPS, 0 errors (interrupts work).
+- **D4, IO held 35 s** (`sas2308ctl hold 35000` under QD1 reads): 4 family timeouts, 4 re-arms
+  (`family timer after 0 ms with the IOC (held), re-armed`), 0 IO timeouts, 0 TMs, 0 errors, the
+  held read completed after 35.0 s. The real SCSIParallelTimer accepts a re-arm from HandleTimeout.
+- **Lost command** (`sas2308ctl lose 1` under QD1 reads): one IO timeout 30 s after the post (the
+  re-armed task timed out exactly once), ABORT_TASK, LUN reset, target reset (nothing returned, as
+  expected for a command the IOC never saw), reinit; the READ re-sent (D20b) and completed: 0 errors,
+  max latency 38.7 s; 7 UAs re-sent after that reinit.
+- **D51, unload under IO** (all 7 raw drives, 64K random reads QD16): `kmutil unload` rc 0 in ~2 s,
+  log `stopping controller`, `mps_free entered/exit`, no error/fault lines; the reads ended with
+  errors (device gone), no panic; `kmutil load` rc 0, 7 drives back.
+- **Regression** (after the reload, drives unmounted): random 4K read QD32 all 7, 60 s: **1768
+  IOPS**; seq 1 MiB read QD2 all 7, 60 s: **1945.4 MB/s**; verify 64 KiB random QD64, 256 MiB per
+  drive: **0 mismatches, 0 errors**. `sas2308ctl stats` after: 0 timeouts, 0 TMs, 0 recoveries,
+  0 reinits, 0 stale/bad replies, 0 lost kicks, 0 transient all-ones reads; IOC 58 C.
 
 ### Hardware tests still to run
 
@@ -99,11 +143,19 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
 4. **D1, SATA SSD.** Attach a SATA SSD to a free breakout port; with IO on it, pull or reset another
    drive (any TM is freed). Expect: the SSD keeps its target (no `starting the queued removal`,
    no REMOVE_DEVICE for it); `MPS_TARGET_IS_SATA_SSD` is only used at shutdown (batch D, D9).
-5. **D3, forced target reset.** No unattended trigger exists (`sas2308ctl` has no TM command); the
-   target-reset path is covered by the host test (glue `D3`); the reinit path is confirmed on
-   hardware (sleep/wake above). With a TM trigger (pulled-and-reinserted cable while a drive is
-   busy, or a later debug hook): F_FULLFSYNC right after it must succeed and `Unit attentions after
-   reset retried` must go up.
+5. **D3, forced target reset.** The batch B trigger `sas2308ctl lose 1` (under reads on a raw
+   drive) now drives a recovery to a target reset and a reinit unattended (done above, raw reads
+   only). Still to do by hand: the same with a mounted JHFS+ volume under F_FULLFSYNC writes on that
+   drive (`~/hwA/fsyncw`): no write error, `Unit attentions after reset retried` goes up.
+6. **D10, OS task management from the family.** Nothing unattended makes SAM send AbortTask /
+   LogicalUnitReset / TargetReset. If a tool or a stuck drive does: expect `OS requests ...` log
+   lines, a target or LUN reset as one TARGET_RESET (`TM target reset` +1, `TM requests from OS`
+   +1), an abort as the task's recovery (`IO timeouts` +1), ABORT TASK SET / CLEAR TASK SET /
+   CLEAR ACA rejected; never two TMs on one target at once.
+7. **D11, dock unplug** (with test 2): the log must show `register 0x.. reads 0xffffffff: checking
+   whether the controller is still there`, then `... PCI config space does not answer: controller
+   gone` about 100 ms later; a link blip without an unplug shows `transient, ignored` and
+   `Transient all-ones reads` +1 instead.
 
 ## Ranked table: changes (CHANGE)
 
