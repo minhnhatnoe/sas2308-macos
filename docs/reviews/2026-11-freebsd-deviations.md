@@ -38,6 +38,7 @@ log-noise); items FINAL.md already fixed.
 | **E. Logging (after log-noise is merged)** | D22, D23, D24, D25, D26, D49(b) | captured log types: default mask info,fault,error; XINFO lines DEBUG; FAULT type only for IOC fault / disabled; iolog fallback for device-less lines; per-target limiter | 5 min idle + hot-plug: persisted line counts by type |
 | **F. Shutdown timeout cap (new, after E)** | F1 | SSU (timeout 0) and read with lost replies, halt begins -> both done 10-15 s later, no diag reset; IO after the halt -> 10 s; no TM answered -> done < 16 s; a 30 s LUN reset pending -> 3 s; a reinit stuck in its diag reset -> stopped < 5 s | `sas2308ctl lose 1` + `sas2308ctl halt` (deterministic); `lose 1` right before `shutdown -r now` with a mounted volume; a normal mounted restart; regression |
 | **G1. Code fixes and reverts to FreeBSD (after F)** | D29, D22, D15a, D55b, D58, L12, L13, L4, L11, L3, L17, L7, L10, D43 | per item in design.md "Batch G1" (each failed before: ack asserts, default mask, plist value, one diag reset, max tasks, ASan bad-free, NULL target array, unreleased freeze, no KASSERT, QMD fault, HIS ignored, lock gone after Fini, nested hotplug, pump while not in the gate) | standard regression; `lose 1` + `reinit` under IO on all 7; sleep/wake under IO; `shutdown -r now` with a mounted JHFS+ volume; default log at idle and in the recovery |
+| **G2. FreeBSD defaults decided by experiments (after G1)** | D46, D21, D50, D15b, D65, core-callout IO timer, wake log class | per item in design.md "Batch G2" (D46 ORDERED cadence, D21 hot-add under a full pool, D15 SSU 60 s, D50 attach from OPERATIONAL, C1/D4 without the family timer, D43 kick, G2-wake) | D65 QD1 next to QD1024/2000 and D15b spin-up (before the install); D46 A/B (H soak, random 4K QD32), IO timer A/B (F1 4K point), D50 restart without the MUR (attach state, DART), restarts with spun-down drives; regression |
 
 Comment-only changes (no behaviour change) ride with whichever batch touches the file: listed in the last table.
 
@@ -63,6 +64,12 @@ FreeBSD's internal chatter, not CAM's periph errors; D15a's 30 s had no source; 
 never used on hardware and Linux does not retry either; D58's arithmetic kept 7, not 8) and port
 bugs fixed to FreeBSD's semantics (L3, L4, L7, L10, L11, L12, L13, L17, D43). G2 (D46, D21, D50,
 D15b, D65 and the core-callout IO timer) waits for its experiments. Design: `design.md` "Batch G1".
+
+**Batch G2 rationale** (2026-11-21). Same rule as G1: FreeBSD's behaviour is the default, and each
+item's experiment either backs it or is the evidence for the deviation (recorded either way;
+evaluations in working notes, not in this repo; the timer change is
+`docs/perf-profile-20261121.md` proposal 2). Switches are port tunables (boot-arg / personality key,
+`sas2308ctl set` at runtime), so the A/B runs needed no extra install. Design: `design.md` "Batch G2".
 
 Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace) after batch B; D75
 (kIOMapPostedWrite A/B) after batch D; D29 decided by batch D's counter.
@@ -144,6 +151,15 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | G1 | L7 (glue lock until free(); snapshots under it) | done | 0d7fc95 | glue `L7` | see "Batch G1 hardware results" |
 | G1 | L10 (hotplug on its own taskqueue thread) | done | ddddb5a | glue `H1`, `L10` | see "Batch G1 hardware results"; hot-plug: still to run, test 13 |
 | G1 | D43 (TM pump only in the gate; timer detects only) | done | bca741f | glue `D43` | see "Batch G1 hardware results"; hot-plug: still to run, test 13 |
+| G2 | D46 (da's periodic ORDERED tag; `sas2308_send_ordered`, default 1) | done | c760612 | glue `D46-otag` | A/B: no cost, no effect on the H pattern; kept on (see "Batch G2 hardware results") |
+| G2 | D21 (one normal frame kept, not 8: 2046 OS tasks) | done | cbdc3eb | glue `D21` (FreeBSD's sizing loses the hot-add under a full pool; 1 or 8 frames do not) | regression; hot-add under a full pool: still to run, test 15 |
+| G2 | D15b (untimed START STOP UNIT 60 s) | done | ca24b59 | glue `D15` | spin-up measured 10.5-11.7 s |
+| G2 | D15b (halt cap 15 s, not 10 s) | done | 3679398 | glue `F`, `F-new`, `F-spinup` | restarts with spun-down disks 17-18 s on 21A171AA, no panic |
+| G2 | wake log ("IOC in unexpected reset state" INIT on resume) | done | acc56e5 | mock `G2-wake` | see "Batch G2 hardware results" |
+| G2 | D50 (no MUR at shutdown; `sas2308_shutdown_stop`, default 0) | done | 3a2a62b | mock `D50` | 7 restarts without the MUR: next attach READY, no DART line; power off: still to run, test 14 |
+| G2 | IO timer (core callout; `sas2308_family_timer`, default 0) | done | 8df1186 | glue `C1`, `C1-family`, `C1-backstop`, `D4`, `D43` | F1 4K point +7.2 % (7 drives QD2), +14.5 % (QD1) |
+| G2 | D65 (no per-device cap, KEEP-WITH-EVIDENCE) | done | bee8d0b | none (comment) | QD1 drive unchanged next to QD 1024 / 2000 |
+| G2 | build fixes (Mac build) | done | ee94a31 | n/a | n/a |
 
 ### Batch A hardware results
 
@@ -402,6 +418,80 @@ docs only). Raw outputs: Mac `~/hwG1`.
 - **Regression:** random 4K read QD32 all 7, 60 s: **1757 IOPS**; seq 1 MiB read all 7, 60 s:
   **1945.3 MB/s**; verify **0 mismatches, 0 errors**; 0 timeouts / reinits beyond the tests.
 
+### Batch G2 hardware results
+
+Before the install (build 430A4B8A, the G1 code), on build **4746DE60-BFFE-3991-B29A-822AD3810EBE**
+(ee94a31) and on the final build **21A171AA-980F-3D71-9714-E9503E8B0A25** (3679398, the 15 s halt
+cap); rollback copies `~/sas2308-rollback-430A4B8A`, `~/sas2308-rollback-4746DE60`. Raw outputs: Mac `~/hwG2` (scripts `pre.sh`, `exp1.sh`, `rs.sh`, `postboot.sh`, `reg.sh`)
+and `~/sasbench/profile/<tag>` for the 4K point.
+- **D65, one deep queue next to a QD1 drive** (430A4B8A, random 4K read, full LBA range): drive B at
+  QD1 alone 84 IOPS, p50 11.5 ms, p99 20.5 ms, max 27.8 ms; next to drive A at QD 1024: 84 IOPS, p99
+  20.0 ms, max 26.4 ms; next to A at QD 2000: 84 IOPS, p99 20.5 ms, max 49.0 ms. A: 203 IOPS at QD 1024
+  (p50 4.98 s, max 5.75 s), 202 IOPS at QD 2000 (p50 9.70 s, max 10.6 s): Little's law, the IOC queues
+  past NCQ's 32 without loss. 0 errors, 0 rejected tasks, 0 SCSI status errors, 0 timeouts. Decision:
+  no per-device cap (KEEP-WITH-EVIDENCE): nothing for it to fix here, and the family allocates its
+  controller-wide task pool before the SIM sees a task, so a SIM-side cap could not give CAM's
+  per-device guarantee anyway.
+- **D15b, spin-up from standby** (430A4B8A, `pmset -a disksleep 1`, SAM's power states down to
+  standby): the first 4K read took 10.84-11.70 s on 7 drives at once, 10.50 s on one drive alone
+  (the second read 1 ms). The 10.89 s / 10.99 s `Latency max` of earlier runs were spin-ups. The
+  untimed START STOP UNIT gets da's 60 s (5x the slowest).
+- **D46, ORDERED tag A/B** (4746DE60, `sas2308ctl set sas2308_send_ordered`, ABBA on one boot; H =
+  1 MiB seq QD2 write 0-1.5 % on 4 drives + read 98-99.5 % on 3, with 64 KiB random 70/30 QD8 on all
+  7 at 2-50 %, 180 s; then random 4K read QD32 all 7 full range, 120 s, 60 s after the writes):
+
+  | send_ordered | H seq MB/s | H rand IOPS | H rand p99 / max | rr4K QD32 IOPS | rr4K max |
+  |---|---|---|---|---|---|
+  | 1 (run 1) | 1227.3 | 301 | 2.49 s / 2.589 s | 1400 | 0.848 s |
+  | 0 (run 2) | 1232.6 | 285 | 2.49 s / 2.588 s | 1402 | 0.999 s |
+  | 0 (run 3) | 1250.2 | 257 | 2.49 s / 2.595 s | 1403 | 0.985 s |
+  | 1 (run 4) | 1224.0 | 282 | 2.49 s / 2.617 s | 1402 | 1.005 s |
+
+  "Ordered tags sent" 70 per round with 1 (one per drive per 30 s of continuous IO, 7 drives x
+  300 s), 0 with 0; 0 errors, 0 timeouts. No cost (throughput within run-to-run noise, -1.3 % to
+  +0.2 %) and no effect on the H pattern's starvation either (its worst case, 2.6 s, is far inside
+  the 15 s interval). Decision: FreeBSD's default 1 kept.
+- **IO timer A/B** (4746DE60, `sas2308ctl set sas2308_family_timer`, F1 4K point `repro.sh`, order
+  0 1 0 1 on one boot; 7 drives = 4K seq read QD2 on 7 drives, 3 x 30 s):
+
+  | scheme | 7 drives QD2 (IOPS, p50) | 1 drive QD2 | 1 drive QD1 | 7 drives QD1 |
+  |---|---|---|---|---|
+  | 430A4B8A before the install (family timer) | 158,426 / 160,530 / 160,324 (82 us) | 37,272 | 18,526 | 111,437 |
+  | core callout (0), run 5 | 166,971 / 171,529 / 171,213 (74-78 us) | 37,492 | 18,633 | 126,531 |
+  | family timer (1), run 6 | 160,232 / 159,876 / 159,580 (82 us) | 37,194 | 18,546 | 110,626 |
+  | core callout (0), run 7 | 173,161 / 172,972 / 173,129 (74 us) | 37,462 | 18,638 | 126,611 |
+  | family timer (1), run 8 | 160,660 / 159,380 / 160,066 (82 us) | 37,287 | 18,494 | 110,561 |
+
+  Core callout +7.2 % on 7 drives QD2 (mean 171.5k vs 160.0k), +14.5 % on 7 drives QD1, p50 82 →
+  74 us; one drive (no gate contention) +0.5 %. The 11-20 ceiling (170.3k) is back. "Family
+  timeouts" 0, "Family timer re-arms" 0, "Lost completion kicks" 0, "Tasks rejected" 0.
+- **D50, restart without the MUR** (4746DE60, drives spinning, `shutdown -r now`): 12 s from the
+  request to the next boot (G1 with the MUR: 13 s). Next attach: `IOC state at attach` **READY**
+  (doorbell 0x10000000): the Thunderbolt link-down across the restart resets the IOC by itself,
+  the MUR had nothing left to stop. No DART line in the kernel log or `dmesg`, "Diag resets" 0,
+  "Reinits" 0, 7 drives, "Config page failures" 0. Decision: FreeBSD's no-stop kept. (The install
+  restart, with the old kext's MUR, also attached READY.) Every later restart (6 on 4746DE60 and
+  21A171AA) also attached READY with no DART line and 0 diag resets.
+- **D15b, restarts with the disks spun down** (`pmset -a disksleep 1` until SAM had all 7 below
+  its idle state, then `shutdown -r now`; request → `kern.boottime`): spinning 13 s (G1), 12 s
+  (4746DE60), 12 s (21A171AA); spun down 17 s and 24 s with the 10 s halt cap (4746DE60), 18 s and
+  17 s with the 15 s cap (21A171AA). The persisted log ends about 1 s after the request (logd stops
+  first), so the command that waits is not visible; the extra 5-12 s and the 10.5-11.7 s spin-up
+  are what the cap has to allow for. The SMART Start_Stop_Count was not usable as a witness (+1 or
+  +2 per cycle depending on SAM's power-state path). Install restarts take 28-35 s (kernel
+  collection rebuild) and are not counted. Decision: halt cap 15 s (26 s worst case inside the 30 s
+  watchdog), second install (21A171AA).
+- **Boot log persistence** (every reboot of this batch: the two install restarts and R2-R4, R6-R8):
+  0 driver lines persisted for the boot, also not the `IOC state at attach` line logged during
+  attach; the registry property `IOC state at attach` is what records it.
+- **Sleep/wake under IO** (21A171AA, random 4K QD8 on all 7, `pmset sleepnow` + scheduled wake):
+  2 suspend/resume cycles (one a dark wake), both without a reset (reinit 340 / 397 ms), 0 IO
+  timeouts, 0 errors (14 UNIT ATTENTIONs after our reset re-sent, D3). Default log: 28 lines, **0
+  fault-type lines and no "IOC in unexpected reset state"** (G1: 4 FAULT lines per wake).
+- **Regression** (21A171AA): random 4K read QD32 all 7, 60 s: **1767 IOPS**; seq 1 MiB read all 7,
+  60 s: **1945.2 MB/s**; verify 256 MiB per drive **0 mismatches, 0 errors**; 0 IO timeouts, 0
+  recoveries, 0 diag resets, 0 KASSERT hits, 0 lost kicks, 0 rejected tasks; "Ordered tags sent" 86.
+
 ### Hardware tests still to run
 
 Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found with
@@ -480,6 +570,19 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
     "TM waits in gate" (D43: 0 expected; non-zero means the family sends TMs inside our work-loop
     gate, the only case where the waiter still pumps the reply queue), "Lost completion kicks" 0,
     "KASSERT hits" 0.
+
+14. **Batch G2, D50 at power off with the dock left on** (build 4746DE60 or later). Needs someone to
+    press the power button. `sudo shutdown -h now` with the drives idle; leave the dock powered
+    for at least 1 min; power the Mac on. Then `ioreg -r -c SAS2308HBA -l | grep "IOC state at
+    attach"` (READY, OPERATIONAL or RESET: all fine; FAULT or all-ones: report),
+    `sudo dmesg | grep -i dart` and `/usr/bin/log show --last boot --predicate 'sender == "kernel"' |
+    grep -i dart` (no fault lines expected), all 7 drives present, `sas2308ctl stats` "Diag resets"
+    0 or 1, "Config page failures" 0. The restart variant ran unattended (hardware results).
+
+15. **Batch G2, D21 hot-add under a full task pool** (optional, with test 1's breakout). Start
+    `sasbench -b 4K -q 320 -p rand -t 300` on 6 raw drives (6 x 320 = 1920 tasks plus the seventh
+    drive's re-add; 2046 OS tasks) and pull and re-insert the seventh drive. Expect the nub to come
+    back, "Device re-adds given up" 0, "Config page failures" 0.
 
 ## Ranked table: changes (CHANGE)
 

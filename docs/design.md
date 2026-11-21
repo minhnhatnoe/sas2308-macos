@@ -436,7 +436,10 @@ The family controller has no PM (only its target nubs: `IOSCSIParallelInterfaceD
   benefit.
 
 ### Shutdown / restart
-The dock has its own PSU: across a Mac restart the IOC would keep running and could DMA into
+Since batch G2 (D50) as FreeBSD: `systemWillShutdown` leaves the IOC running (IO is served until
+the power goes, under batch F's caps) and the next attach takes it over (`mps_transition_ready`:
+MUR of an OPERATIONAL IOC before any queue is set up). With `sas2308_shutdown_stop` 1, the stop
+described next. The dock has its own PSU: across a Mac restart the IOC would keep running and could DMA into
 memory the next kernel owns. `systemWillShutdown(kIOMessageSystemWillRestart | …WillPowerOff)`:
 `fShutdown`, `QuiesceController(2 s)` (the same stop: drain, MUR), then `super`. The IOC stays
 stopped (`setPowerState(on)` does not resume after a shutdown). FreeBSD has only an IR
@@ -897,7 +900,8 @@ Not a FreeBSD deviation item: a gap the 2026-11-20 03:17 "Halt/Restart Timed Out
   `RootDomain.h` does not compile outside xnu): our handler runs right after the watchdog is armed
   and before any `systemWillShutdown`. `systemWillShutdown` does the same if the registration
   failed. Sleep messages are ignored: sleep keeps D15's backstop (no watchdog there).
-- **Cap** (`mps_xnu_halt_begin`, `mpssas_xnu_halt_caps`): every posted SCSI IO not already in
+- **Cap** (`mps_xnu_halt_begin`, `mpssas_xnu_halt_caps`; 15 s since batch G2, D15b: a spin-up from
+  standby takes 10.5-11.7 s): every posted SCSI IO not already in
   recovery gets at most 10 s left (an untimed one too), every new one at most 10 s
   (`mpssas_action_scsiio`), every TM at most 3 s (posted ones re-armed, new ones capped at
   `callout_reset`). 10 s is FreeBSD's own shutdown figure (`mpssas_SSU_to_SATA_devices` sends each
@@ -960,8 +964,72 @@ drives without SMART after `smartctl -x` recovered at reboot: not a driver issue
 state" FAULT lines (FreeBSD's `mps_transition_ready`), now visible by default, although RESET after
 sleep is expected. Details: the deviations plan, "Batch G1 hardware results".
 
-Not changed here (batch G2, experiments decide): D46, D21, D50, D15b, D65. KEEP-WITH-EVIDENCE items of
+Not changed here: D46, D21, D50, D15b, D65 (batch G2, below). KEEP-WITH-EVIDENCE items of
 the evaluations (L16c, D56, D58's post-queue lines, D63) stay as they are.
+
+## Batch G2: experiment-decided FreeBSD defaults (branch fix-batch-G2, 2026-11-21)
+
+Rule: FreeBSD's mps/CAM behaviour is the default; an experiment either backs it or
+produces the evidence for a deviation, and the evidence is recorded either way. Evaluations:
+working notes, not in this repo (D15, D21, D46, D65, D50); the timer
+change is `docs/perf-profile-20261121.md` proposal 2. Hardware numbers: the deviations plan, "Batch
+G2 hardware results".
+
+| ID | Decision | Evidence | Host test (failed before) |
+|---|---|---|---|
+| D46 | FreeBSD: da's periodic ORDERED tag. Per target (LUN 0 and the other LUNs: no allocation per LUN) the kext keeps da's pending count of READ/WRITE/SYNCHRONIZE CACHE and NEED/WAS flags; one callout every 15 s (DA_DEFAULT_TIMEOUT / DA_ORDEREDTAG_INTERVAL) runs `dasendorderedtag`; the next SIMPLE bio command after a NEED goes ORDERED. Tunable `sas2308_send_ordered` (kern.cam.da.send_ordered), counter `Ordered tags sent` | A/B on one boot (ABBA): H soak seq 1224-1227 vs 1233-1250 MB/s, random 4K QD32 1400-1402 vs 1402-1403 IOPS, H random max 2.59-2.62 vs 2.59-2.60 s; 70 ORDERED tags per round (one per drive per 30 s): no cost, kept on | glue `D46-otag` (continuous IO: ORDERED at 17 s and 47 s; idle none; OS ORDERED counts; knob 0 none) |
+| D21 | 1 normal frame kept from the OS (FreeBSD's reqs − 1 = 2046 tasks on the 9207-8i), not 8 | host experiment: with every frame given to the OS (FreeBSD's sizing) and the pool kept full (refilled at completion, or kept by the IOC), the hot-add's page 0 read is retried 18 times, re-added 8 times and given up; 1 or 8 frames: the add works at once; removals (high-priority frames) work in all cases | glue `D21` (sizing check failed before) |
+| D15b | untimed START STOP UNIT: da's 60 s (was 10 min); other untimed commands keep 10 min, FORMAT UNIT / SANITIZE none | spin-up from standby 10.5 s (one drive), 10.8-11.7 s (7 at once): the 10.89-10.99 s `Latency max` of earlier runs | glue `D15` (SSU done at 60-70 s; pass-through at 10 min) |
+| D15b (halt) | the halt's IO cap is 15 s, not 10 s (worst case of a lost reply 15 + 3 x 3 + 2 = 26 s, inside the 30 s watchdog) | spin-up 10.5-11.7 s > 10 s; FreeBSD's 10 s is the shutdown SSU it sends to SATA SSDs only; restarts with the disks spun down 17-24 s vs 12-13 s spinning (the log stops before the halt, so the waiting command is not visible) | glue `F`, `F-new` (15 s), `F-spinup` (a 12 s command at the halt completes, no TM) |
+| D50 | FreeBSD: no MUR at `systemWillShutdown`; the next attach's `mps_transition_ready` takes over an OPERATIONAL IOC with a MUR before any queue is set up. Tunable `sas2308_shutdown_stop` 1 restores the stop; the doorbell before `mps_attach` is published as `IOC state at attach` | restart without the MUR: 12 s to the next boot, next attach READY (the Thunderbolt link-down resets the IOC), no DART line, 0 diag resets | mock `D50` (attach from OPERATIONAL: one MUR, no diag reset, IO works); the class change itself is IOKit-only |
+| D65 | kept: no per-device openings cap in the thin CAM (comment in `cam_compat.h`) | QD1 random read on one drive 84 IOPS, p99 20.0-20.5 ms alone and next to QD 1024 / 2000 on another; the deep drive kept 203 / 202 IOPS; the family allocates its controller-wide task pool before the SIM sees a task, so a SIM cap could not do CAM's job | none (no code change) |
+| IO timer | the core's per-command callout is the IO timer (task timeout, armed at the post), no `SetTimeoutForTask` per IO; tunable `sas2308_family_timer` 1 = the old scheme for A/B | F1 4K point on one boot: 7 drives QD2 171.5k IOPS mean (core callout) vs 160.0k (family timer per IO), +7.2 %; 7 drives QD1 +14.5 %; p50 82 → 74 us | glue `C1` (no family timer, abort at the timeout), `C1-family`, `C1-backstop`, `D4` both schemes, `D43` kick |
+| wake log | `mps_transition_ready` on resume: "IOC in unexpected reset state" is `MPS_INIT`, not `INIT|FAULT` (`sc->xnu.resuming`); every other caller keeps FreeBSD's class | G1: 4 FAULT lines per wake | mock `G2-wake` |
+
+Port tunables: `sas2308_send_ordered`, `sas2308_shutdown_stop`, `sas2308_family_timer` are read at
+attach from the boot-arg, else the personality key of the same name (Info.plist), like
+`sas2308_posted_write`, and can be changed at runtime with `sas2308ctl set <key> <n>` (FreeBSD's
+CTLFLAG_RWTUN sysctls); the current values are published as properties of the same names.
+
+Verified (2026-11-21, builds 4746DE60 and 21A171AA): D46 A/B no cost, kept on; IO timer +7.2 % on the
+F1 4K point (171.5k vs 160.0k IOPS, same boot); 7 restarts without the MUR, next attach READY, no
+DART line; spin-up 10.5-11.7 s, restarts with spun-down disks 17-24 s, halt cap 15 s; 2 sleep/wake
+cycles without a reset and without the RESET-state fault lines; regression 1767 IOPS, 1945.2 MB/s,
+0 mismatches. Details: the deviations plan, "Batch G2 hardware results".
+
+### Design note: the IO timer after review C1
+Review C1 found that no IO ever timed out: the family times only tasks given to
+`SetTimeoutForTask`, and the core's callout was not armed (timeout 0). The fix armed both: the
+family timer at the task's timeout (`HandleTimeout` → `mps_kext_timeout` → `mps_xnu_ccb_timeout`,
+re-armed while the task is held or the IOC has owned it for less than the timeout, D4) and the core
+callout 10 s later as a backstop. G2 makes the callout the timer, as in FreeBSD mps, where
+`mpssas_action_scsiio` arms `cm_callout` with `ccb_h.timeout` when it posts the command:
+
+- **Every posted task is still timed.** `mps_kext_submit` sets `ccb_h.timeout` to the task's own
+  timeout (Read/Write Time Out 60 s), START STOP UNIT 60 s, another untimed command 10 min,
+  FORMAT UNIT / SANITIZE none, exactly the cases the C1 backstop covered, without the + 10 s.
+  `mpssas_scsiio_timeout` runs the same recovery the family path ran (`mps_xnu_ccb_timeout` only
+  added the held case and a reply-queue pass that the callout does itself), and the task completes
+  `CAM_CMD_TIMEOUT` → `TaskTimeoutOccurred` (D44) as before.
+- **D4 is the callout's own semantics.** The callout starts at the post to the IOC (`qos.sim_data`),
+  so time held behind a recovery, a reinit or a sleep does not count, and a requeued task is timed
+  again from its re-post. A task held by the thin CAM is not timed, as a ccb in CAM's queues; the
+  family timer did not time it either (it re-armed while held).
+- **What still needs the family timer.** A task waiting for a DMA mapping (D47) is not in the core
+  yet, so it gets `SetTimeoutForTask` when it starts waiting (FreeBSD's callout runs from before
+  `mps_map_command`) and keeps the family timer, with the callout as backstop, once posted.
+- **C1's completion rule holds.** Only `CompleteParallelTask` removes a timer entry, and every
+  accepted task completes through it; `RemoveTask` of a task that was never on the list returns
+  at its first `require` (`SCSIParallelTimer.cpp:393-395`, chain links NULL from `InitWithSize` /
+  the last `queue_remove`), without taking the gate.
+- **The halt cap is unchanged.** Batch F caps the core callouts of posted commands, new ones at
+  `mpssas_action_scsiio` and TMs; it never relied on the family timer.
+- **Lost completion kick.** The family timer used to deliver a completion stranded on the done
+  queue (D43's fallback). The 1 s timer now kicks the done call when it detects one (two ticks),
+  still counted and logged once; the delivery stays on the done call.
+- **Cost removed.** One contended gate acquisition per submit (`SetTimeout`) and one
+  `RemoveTask` + `Rearm` per completion inside the gate (perf profile: 0.89 timer reprogrammings
+  per IO); the callout costs what it cost before (it was armed as the backstop already).
 
 ## What is implemented (M1 – M4)
 > **Names after M5.** The tables and sections below are the M1–M4 history and use the names of
