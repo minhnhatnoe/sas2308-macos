@@ -82,20 +82,20 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | C | D78 | done | 08c020f | core `D78`; whole suite with QUEUE_MACRO_DEBUG_TRASH/ASSERTIONS | n/a (host only) |
 | C | D6 | done | b8e6b94 | core `D6` (2 page reads during a stuck IDENTIFY; 1000 reads -> 0 mappings) | see "Batch C hardware results"; M5c retries / re-add slots kept: still to run, test 8 |
 | C | KEEP comments D38, D65, D69, D17 | done | 0e8927d, 7080f64, afe2fc5 | none (comments) | |
-| D | D52 | done | 9620c91 | `test/plist_test.sh` | HW-D52 |
-| D | D48 | done | 5340603 | none (IOKit class) | HW-D48 |
-| D | D30 | done | fe1ea5b | core `D30` | HW-D30 |
-| D | D31 | done | a0fbc9b | core temperature `D31` | HW-D31 |
-| D | D29 (counter) | done | dd50951 | core `D29` | HW-D29 |
-| D | D55 (counter) | done | e322813 | core `D55` | HW-D55 |
-| D | D46 | done | 1f30ae6 | glue `D46` | HW-D46 |
-| D | D45 | done | 35d0029 | glue `D45` (did not build before) | HW-D45 |
-| D | D47 | done | 01f164a | glue `D47` (zero-length part failed before; the rest did not build) | HW-D47 |
-| D | D7 | done | b121c7f | core `D7` (failed at the 65th device before), glue `D7`, targets 1024 ids | HW-D7 |
-| D | D9 | done | 987f693 | glue `D9` (failed before) | HW-D9 |
-| D | D73, D74 | done | bc5bfea | none (IOKit) | HW-D73 |
-| D | PCIe Link property (feature request) | done | 6d5b57a | `kext_pcie_test` | HW-PCIE |
-| D | D75 (switch for the A/B) | done | fb15323 | none (IOKit) | HW-D75 |
+| D | D52 | done | 9620c91 | `test/plist_test.sh` | loads on 0x0087 (the other two ids: no card to test) |
+| D | D48 | done | 5340603 | none (IOKit class) | registry IOMinimumSegmentAlignmentByteCount = 1 |
+| D | D30 | done | fe1ea5b | core `D30` | regression OK; faults would show in mps_periodic (none) |
+| D | D31 | done | a0fbc9b | core temperature `D31` | temperature read every 30 s, 0 timeouts / failures; IOC 61 C |
+| D | D29 (counter) | done | dd50951 | core `D29` | **"Event acks sent" 0 over 4 boots (25 events each), recovery tests included: D29 decided for boot; hot-plug: still to run, test 10** |
+| D | D55 (counter) | done | e322813 | core `D55` | "KASSERT hits" 0 through every batch D test |
+| D | D46 | done | 1f30ae6 | glue `D46` | regression OK (SAM sends SIMPLE) |
+| D | D45 | done | 35d0029 | glue `D45` (did not build before) | random 4K QD32 1767 / 1762 / 1763 IOPS vs 1765 before (batch C): unchanged |
+| D | D47 | done | 01f164a | glue `D47` (zero-length part failed before; the rest did not build) | "Tasks waiting for a mapping" 0 (no IOVA shortage seen) |
+| D | D7 | done | b121c7f | core `D7` (failed at the 65th device before), glue `D7`, targets 1024 ids | MaxTargets 1024 (+ 0 volumes): initiator id 1024, the 7 drives keep ids 0-6 |
+| D | D9 | done | 987f693 | glue `D9` (failed before) | no SATA SSD attached: still to run, test 9 |
+| D | D73, D74 | done | bc5bfea | none (IOKit) | every DMA allocation and config page map succeeded (14 page 0 reads, temperature, 0 failures) |
+| D | PCIe Link property (feature request) | done | 6d5b57a | `kext_pcie_test` | **8.0 GT/s (Gen3) x4** of the card's Gen3 x8; MPS **128** B (supports 4096), MRRS 512 B; same after forced reinits |
+| D | D75 (switch for the A/B, then the default) | done | fb15323, ed91e3b | none (IOKit) | A/B below: posted writes faster on the host-bound load, 0 errors -> default (ed91e3b) |
 | D | KEEP comment D46 (no periodic ORDERED) | done | 51b85a5, 1f30ae6 | none (comment) | |
 
 ### Batch A hardware results
@@ -185,6 +185,48 @@ failures, IOC 59 C. Rollback: `~/sas2308-rollback-9E6663B6` (batch B build).
   mismatches, 0 errors**. `sas2308ctl stats` after: 0 timeouts, 0 TMs, 0 recoveries, 0 reinits
   (this boot), 0 stale replies, 0 lost kicks, 0 transient all-ones reads, 0 config page
   failures/retries; no error or fault log line in this boot.
+
+### Batch D hardware results
+
+Builds **EBB85578** (fix-batch-D fb15323, BAR1 non-posted by default) and **509E19D3** (ed91e3b,
+posted writes by default; the batch's final build), installed 2026-11-20 21:27 and 21:55, 7 drives,
+0 config page failures, IOC 61 C. Rollback: `~/sas2308-rollback-6DD7CE42` (batch C build, master).
+`tools/diff-vs-freebsd.sh -s`: 1281 added / 3595 removed lines (batch C: 1198 / 3836; the
+use_phynum block, the SSU functions and the INQUIRY/SSU_refcount lines are FreeBSD's text again,
+D31's timeout handler and the D7 table hooks are new XNU lines).
+
+- **PCIe link** (`sas2308ctl show`, "PCIe Link", from the card's own config space): Link Status
+  0x1043 = **8.0 GT/s (Gen3) x4**; Link Capabilities 0x00400483 = the card can do Gen3 x8 (the
+  JHL7440 tunnel is x4); Device Control 0x291F = **Max Payload Size 128 B**, Max Read Request Size
+  512 B; Device Capabilities 0x10008025 = **MPS supported 4096 B**; 128 B in use, as expected below the
+  JHL7440 bridge (15ef), which supports 128 B only (its own registers not read here). Unchanged after 2 forced diag resets (re-read with "Controller Limits").
+- **D29**: "Event acks sent" **0** on every boot (4 boots this batch, 25 events each: port enable
+  discovery of 7 drives) and through the recovery test below; the 9207's IT firmware never set
+  AckRequired so far. Hot-plug events still to see: still to run, test 10, then the ack code goes
+  (FreeBSD) if still 0.
+- **D31 / temperature**: polled every 30 s ("IOC temperature reads" 2 right after boot, 9 after
+  ~5 min, 21 after the A regression), "IOC Temperature (C)" property 61 C, 0 failures, 0 timeouts.
+- **D75, BAR1 mapping A/B** (boot-arg `sas2308_posted_write=1` on EBB85578, then the personality
+  default on 509E19D3): sequential 4K reads QD32 on all 7 (drive read-ahead, host-bound):
+  non-posted **173081, 173343** IOPS, posted **177563, 177153** (+2.5 %); random 4K QD32 (drive-bound)
+  1767 vs 1762 / 1763; seq 1 MiB 1944.9 vs 1945.5 / 1945.3 MB/s; verify 0 errors, 0 mismatches
+  either way. Posted writes are the default now (`sas2308_posted_write` 1 in Info.plist;
+  boot-arg `sas2308_posted_write=0` reverts).
+- **Forced recovery with posted writes** (509E19D3; 64K random reads QD16 on all 7, 70 s;
+  `sas2308ctl reinit` at 15 s, `lose 1` at 35 s): 2 reinits (diag resets, PCI restores 2), the lost
+  command went abort -> LUN reset -> target reset -> reinit, 14 UAs re-sent, held 255 released;
+  **0 errors, 0 mismatches**, 1080 IOPS (batch C: 1082), max latency 39.0 s (the lost command).
+- **D45 / D46 / D47 / D48 / D7 / D73**: random 4K QD32 1763 IOPS (batch C 1765: the slot table's
+  scans cost nothing visible at this rate); registry IOMinimumSegmentAlignmentByteCount 1; SCSI
+  Initiator Identifier 1024, MaxTargets 1024, drives on ids 0-6; "Tasks waiting for a mapping" 0;
+  every DMA allocation and bufmap succeeded (no bounce); "KASSERT hits" 0 throughout.
+- **Regression** (509E19D3, drives unmounted): random 4K read QD32 all 7, 60 s: **1763 IOPS**; seq
+  1 MiB read QD2 all 7, 60 s: **1945.3 MB/s**; verify 64 KiB random QD64, 256 MiB per drive: **0
+  mismatches, 0 errors**. `sas2308ctl stats` after: 1 IO timeout, 1 recovery, 2 reinits, 1 target
+  reset (all from the forced recovery test), 0 temperature timeouts, 0 stale replies, 0 lost kicks,
+  0 transient all-ones reads, 0 config page failures, 0 KASSERT hits.
+- **Not tested here**: D9 (no SATA SSD: still to run, test 9), D52's other two ids (no such card),
+  D7 beyond 64 devices (no expander: host tests only).
 
 ### Hardware tests still to run
 

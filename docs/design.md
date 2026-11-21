@@ -839,8 +839,8 @@ corrupt (D34). Random 4K QD32 1765 IOPS, seq 1 MiB 1944.6 MB/s, verify 0 mismatc
 Kext glue and IO path items of `docs/reviews/2026-11-freebsd-deviations.md` (final fixes in
 `docs/reviews/2026-11-decisions.md`), the agreed counters, and the card's PCIe link in the registry.
 Each host test failed before its fix (`MOCK_ONLY=<id>` / `KGLUE_ONLY=<id>`), except where noted.
-`tools/diff-vs-freebsd.sh -s`: 1198 added / 3836 removed lines before; after: see the deviations plan
-(D9 and use_phynum bring FreeBSD code back, D31 adds to an XNU-only function).
+`tools/diff-vs-freebsd.sh -s`: 1198 added / 3836 removed lines before, 1281 / 3595 after (common
+7147 -> 7383: D9 and use_phynum bring FreeBSD code back; D31's handler and D7's hooks are new).
 
 | id | fix | host test |
 |---|---|---|
@@ -858,9 +858,16 @@ Each host test failed before its fix (`MOCK_ONLY=<id>` / `KGLUE_ONLY=<id>`), exc
 | D73 | `mps_os_dmamem_alloc` / `mps_os_dmamap_load_buf` refuse an IODMACommand that bounces (`getIOMemoryDescriptor` is the copy): `bus_dmamap_sync` is a no-op. Task buffers are safe either way (prepare/complete synchronize) | none (IOKit) |
 | D74 | the tag's alignment goes to `withSpecification`; the DMA hook no longer zeroes, `bus_dmamem_alloc` does for BUS_DMA_ZERO (FreeBSD) | none (IOKit) |
 | PCIe | "PCIe Link" next to "Controller Limits": negotiated speed/width (Link Status) vs the card's (Link Capabilities), MPS and MRRS in use (Device Control), MPS supported (Device Capabilities), raw registers, BAR1 mapping; at attach (one log line) and after every reinit/resume; `sas2308ctl show` prints it | `kext_pcie_test` |
-| D75 | `sas2308_posted_write` (boot-arg or personality key, default 0) maps BAR1 `kIOMapPostedWrite` for the hardware A/B | none (IOKit) |
+| D75 | `sas2308_posted_write` (boot-arg or personality key) maps BAR1 `kIOMapPostedWrite`; after the hardware A/B, 1 in Info.plist (boot-arg `=0` reverts) | none (IOKit) |
 
 Hardware tests and results: the deviations plan (Status, "Batch D hardware results").
+
+Verified on the Mac (builds EBB85578 and 509E19D3, 2026-11-20): PCIe link 8.0 GT/s x4 (card x8),
+MPS 128 B (card supports 4096), MRRS 512 B; "Event acks sent" 0 over 4 boots and a forced recovery
+(D29 still needs hot-plug events); BAR1 posted writes +2.5 % on host-bound sequential 4K reads
+(177.4k vs 173.2k IOPS), so they are the default; a forced reinit and a lost command under IO
+recover with 0 errors on posted writes. Random 4K QD32 1763 IOPS, seq 1 MiB 1945.3 MB/s, verify 0
+mismatches.
 
 ## What is implemented (M1 – M4)
 > **Names after M5.** The tables and sections below are the M1–M4 history and use the names of
