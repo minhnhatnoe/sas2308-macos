@@ -1,0 +1,37 @@
+samples 50777 = 3.230 us/IO under IOWorkLoop::runEventSources (holder on CPU)
+-- by owning component (nearest non-kernel frame):
+  1.758 DART/SPTM
+  0.582 SAM
+  0.505 IOStorageFamily
+  0.204 kext
+  0.115 kernel
+  0.058 IOSCSIParallelFamily
+  0.008 AppleT8152CLPC
+-- by leaf component:
+  1.460 DART/SPTM
+  0.521 kernel:0xfffffe0040e9a858
+  0.406 kernel:0xfffffe0040ea9800
+  0.195 kernel:clock_get_uptime
+  0.138 kernel:0xfffffe0040e33754
+  0.120 kernel:mach_absolute_time
+  0.074 SAM
+  0.052 kernel:0xfffffe0040e8afd8
+  0.051 kernel:0xfffffe0040d980e8
+  0.041 kernel:IOLockUnlock
+  0.030 kernel:preemption_enabled
+  0.026 kernel:OSMetaClassBase::safeMetaCast
+  0.026 kernel:IOCommandGate::runAction
+  0.014 kernel:0xfffffe0040e3a7dc
+  0.013 kernel:IOLockLock
+-- inclusive steps:
+  1.793 DMA complete/unmap (IODMACommand::complete)
+  1.072 SAM completion
+  0.512 IOStorage completion
+  0.058 CompleteParallelTask
+-- innermost frame of ours on stack (inclusive of callees):
+  2.946 OURS`SAS2308Glue::DeliverCompletions
+  0.081 OURS`mps_complete_command
+  0.053 OURS`mps_intr_msi
+  0.014 OURS`mtx_lock
+  0.008 OURS`SAS2308HBA::HandleInterruptRequest
+  0.003 OURS`mpssas_scsiio_complete

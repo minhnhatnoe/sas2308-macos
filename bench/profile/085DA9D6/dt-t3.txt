@@ -1,0 +1,265 @@
+=== counts
+SCSIParallelTimer::Rearm 806765
+CompleteParallelTask 902406
+SCSIParallelTimer::RemoveTask 902406
+SCSIParallelTimer::SetTimeout 902406
+IODMACommand::complete 902587
+IODMACommand::prepare 902587
+=== closeGate by workloop
+f1fffe1a82393d80 120
+f7fffe1a82391a30 300
+fefffe1a820d1260 300
+f2fffe1a820cdd50 10911
+fcfffe1f4bd69c60 5512490
+=== checkForWork by source
+fbfffe2be6488700 10911
+fcfffe2be6017680 10911
+fdfffe2be6489400 10911
+f3fffe261a6b6e00 193685
+=== irq by source
+f6fffe261a6b6d80 5
+f3fffe261a6b6e00 434949
+=== thread_call by caller
+thread_call_enter1 fffffe0040e4d380 1
+thread_call_enter1 fffffe00416f3c4c 2
+thread_call_cancel fffffe004165c9b8 63879
+=== IOLockLock by caller
+=== distinct tasks
+f7fffe1a83eae620 64430
+fbfffe1a83ebebe0 64431
+f2fffe1a83eb4230 64450
+f4fffe1a83ec6d50 64452
+fbfffe1a83ebf760 64453
+f9fffe1a83e99e40 64456
+f7fffe1a83e9f1a0 64460
+fafffe1a83e885d0 64461
+fafffe1a83ed36b0 64462
+fcfffe1a83eaf5f0 64462
+fcfffe1a83ed5ef0 64466
+f4fffe1a83ec2b30 64469
+fefffe1a83ecb0f0 64476
+fefffe1a83f2d930 64478
+=== gate stacks
+f9fffe1a820c9850 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+kernel.release.t8152`0xfffffe00416aa09c+0x2b0
+kernel.release.t8152`0xfffffe0040f73d7c+0x180
+kernel.release.t8152`0xfffffe0040e23124+0x6e0
+ 10
+f9fffe1a820c9850 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.driver.AppleSMC`AppleSMCSensorDispatcher::_timeoutOccurredGated(OSObject*, IOTimerEventSource*)+0x20
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0xf4
+kernel.release.t8152`0xfffffe004165d208+0x7c
+ 10
+f9fffe1a820c9850 
+kernel.release.t8152`0xfffffe004165d008+0x7c
+kernel.release.t8152`0xfffffe0040e8a804+0x240
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 10
+fcfffe1f4bd69c60 
+kernel.release.t8152`0xfffffe004165d008+0x7c
+kernel.release.t8152`0xfffffe0040e8a804+0x240
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 10
+fefffe1a82387fb0 
+kernel.release.t8152`0xfffffe004165d008+0x7c
+kernel.release.t8152`0xfffffe0040e8a804+0x240
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 10
+fefffe1a82399670 
+kernel.release.t8152`IOEventSource::closeGate()+0x3c
+kernel.release.t8152`IOWorkLoop::runEventSources()+0xc0
+kernel.release.t8152`IOWorkLoop::threadMain()+0x60
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 10
+f5fffe1a8239c590 
+kernel.release.t8152`0xfffffe004165d008+0x7c
+kernel.release.t8152`0xfffffe0040e8a804+0x240
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 12
+f1fffe1a82393d80 
+kernel.release.t8152`IOWorkLoop::runEventSources()+0x40
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 15
+f1fffe1a82393d80 
+kernel.release.t8152`0xfffffe004165d008+0x7c
+kernel.release.t8152`0xfffffe0040e8a804+0x240
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 15
+f2fffe1a820d0f40 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+kernel.release.t8152`IOWorkLoop::runEventSources()+0xc0
+kernel.release.t8152`IOWorkLoop::threadMain()+0x60
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 20
+f2fffe1a82392700 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+kernel.release.t8152`IOWorkLoop::runEventSources()+0xc0
+kernel.release.t8152`IOWorkLoop::threadMain()+0x60
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 20
+f4fffe1a82391080 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.driver.AppleTypeCRetimer`AppleTypeCRetimer::readReg(unsigned char, unsigned char*, unsigned long long, bool)+0x174
+com.apple.driver.AppleTypeCRetimer`AppleTypeCRetimer::onTimer(IOTimerEventSource*)+0x2ec
+kernel.release.t8152`0xfffffe004165d208+0x7c
+ 20
+f7fffe1a820d38d0 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+kernel.release.t8152`IOWorkLoop::runEventSources()+0xc0
+kernel.release.t8152`IOWorkLoop::threadMain()+0x60
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 20
+f8fffe1a8239d3f0 
+kernel.release.t8152`0xfffffe004165d008+0x7c
+kernel.release.t8152`0xfffffe0040e8a804+0x240
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 20
+fefffe1a820d1260 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.driver.AppleT8152PCIeC`APCIECPort::configRead16(IOPCIAddressSpace, unsigned char, unsigned short*)+0x110
+com.apple.driver.AppleT8152PCIeC`AppleTunneledPCIE::configRead16(IOPCIAddressSpace, unsigned char)+0x35c
+0xfffffe0043958560
+ 20
+fefffe1a820d1260 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.driver.AppleT8152PCIeC`APCIECPort::configRead16(IOPCIAddressSpace, unsigned char, unsigned short*)+0x110
+com.apple.driver.AppleT8152PCIeC`AppleTunneledPCIE::configRead16(IOPCIAddressSpace, unsigned char)+0x35c
+0xfffffe00439585b8
+ 20
+fefffe1a820d1260 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.driver.AppleT8152PCIeC`APCIECPort::configRead16(IOPCIAddressSpace, unsigned char, unsigned short*)+0x110
+com.apple.driver.AppleT8152PCIeC`AppleTunneledPCIE::configRead16(IOPCIAddressSpace, unsigned char)+0x35c
+0xfffffe00439584fc
+ 20
+fefffe1a820d1260 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.driver.AppleT8152PCIeC`APCIECPort::configRead32(IOPCIAddressSpace, unsigned char, unsigned int*)+0x110
+com.apple.driver.AppleT8152PCIeC`AppleTunneledPCIE::configRead32(IOPCIAddressSpace, unsigned char)+0x35c
+0xfffffe0043958574
+ 20
+fefffe1a820d1260 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.driver.AppleT8152PCIeC`APCIECPort::configRead32(IOPCIAddressSpace, unsigned char, unsigned int*)+0x110
+com.apple.driver.AppleT8152PCIeC`AppleTunneledPCIE::configRead32(IOPCIAddressSpace, unsigned char)+0x35c
+0xfffffe004395859c
+ 20
+fefffe1a820d1260 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.driver.AppleT8152PCIeC`APCIECPort::configRead32(IOPCIAddressSpace, unsigned char, unsigned int*)+0x110
+com.apple.driver.AppleT8152PCIeC`AppleTunneledPCIE::configRead32(IOPCIAddressSpace, unsigned char)+0x35c
+com.apple.iokit.IOPCIFamily`invocation function for block in IOPCIDevice::lookupCapability(unsigned int, unsigned int*, unsigned short*)+0x120
+ 20
+fefffe1a82399670 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+kernel.release.t8152`IOWorkLoop::runEventSources()+0xc0
+kernel.release.t8152`IOWorkLoop::threadMain()+0x60
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 20
+f1fffe1a82393d80 
+kernel.release.t8152`IOEventSource::closeGate()+0x3c
+kernel.release.t8152`IOWorkLoop::runEventSources()+0xc0
+kernel.release.t8152`IOWorkLoop::threadMain()+0x60
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 30
+fefffe1a820d1260 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.driver.AppleT6020PCIeCPIODMA`ApplePCIeCPIODMA::deviceToHost(IOMemoryDescriptor*, unsigned long long, void*, unsigned long long)+0x74
+com.apple.driver.AppleT8152PCIeC`APCIECPort::configRead16(IOPCIAddressSpace, unsigned char, unsigned short*)+0x110
+com.apple.driver.AppleT8152PCIeC`AppleTunneledPCIE::configRead16(IOPCIAddressSpace, unsigned char)+0x35c
+ 30
+fefffe1a820d1260 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.driver.AppleT6020PCIeCPIODMA`ApplePCIeCPIODMA::deviceToHost(IOMemoryDescriptor*, unsigned long long, void*, unsigned long long)+0x74
+com.apple.driver.AppleT8152PCIeC`APCIECPort::configRead32(IOPCIAddressSpace, unsigned char, unsigned int*)+0x110
+com.apple.driver.AppleT8152PCIeC`AppleTunneledPCIE::configRead32(IOPCIAddressSpace, unsigned char)+0x35c
+ 30
+f4fffe1a82391080 
+kernel.release.t8152`IOWorkLoop::runEventSources()+0x40
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 38
+f1fffe1a82393d80 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+kernel.release.t8152`IOWorkLoop::runEventSources()+0xc0
+kernel.release.t8152`IOWorkLoop::threadMain()+0x60
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 60
+f1fffe1f4ba2c5e0 
+kernel.release.t8152`IOWorkLoop::runEventSources()+0x40
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 80
+f7fffe1a82391a30 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.driver.AppleT8152CLPC`clpc::CLPC::sampleMain(unsigned long long, unsigned int)+0x438
+com.apple.driver.AppleT8152CLPC`clpc::CLPC::timerInterruptHandler(bool)+0x94
+kernel.release.t8152`0xfffffe004165d208+0x7c
+ 100
+f7fffe1a82391a30 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.driver.AppleT8152CLPC`clpc::CLPC::sampleMain(unsigned long long, unsigned int)+0x478
+com.apple.driver.AppleT8152CLPC`clpc::CLPC::timerInterruptHandler(bool)+0x94
+kernel.release.t8152`0xfffffe004165d208+0x7c
+ 100
+f7fffe1a82391a30 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.driver.AppleT8152CLPC`clpc::CLPC::sampleMain(unsigned long long, unsigned int)+0x3fc
+com.apple.driver.AppleT8152CLPC`clpc::CLPC::timerInterruptHandler(bool)+0x94
+kernel.release.t8152`0xfffffe004165d208+0x7c
+ 100
+fefffe1a820d1260 
+kernel.release.t8152`IOWorkLoop::runEventSources()+0x40
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 120
+f2fffe1a820cdd50 
+kernel.release.t8152`IOWorkLoop::runEventSources()+0x40
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 10911
+fcfffe1f4bd69c60 
+kernel.release.t8152`IOEventSource::closeGate()+0x3c
+com.apple.iokit.IOSCSIParallelFamily`SCSIParallelTimer::SetTimeout(OSObject*, unsigned int)+0x100
+0xfffffe0043960870
+0xfffffe004395a0c0
+ 63839
+fcfffe1f4bd69c60 
+kernel.release.t8152`IOWorkLoop::runEventSources()+0x40
+kernel.release.t8152`0xfffffe0040d98300+0xd8
+ 193685
+fcfffe1f4bd69c60 
+kernel.release.t8152`IOEventSource::closeGate()+0x3c
+com.apple.iokit.IOSCSIParallelFamily`SCSIParallelTimer::RemoveTask(OSObject*)+0xd0
+com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceController::CompleteParallelTask(OSObject*, SCSITaskStatus, SCSIServiceResponse)+0x84
+0xfffffe00439601dc
+ 742926
+fcfffe1f4bd69c60 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.iokit.IOStorageFamily`IOBlockStorageDriver::executeRequest(unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, IOStorageCompletion*, IOBlockStorageDriver::Context*)+0x1ac
+com.apple.iokit.IOStorageFamily`IOBlockStorageDriver::prepareRequest(unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, IOStorageCompletion*)+0x2b0
+com.apple.iokit.IOStorageFamily`IOStorage::read(IOService*, unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, unsigned long long*)+0x9c
+ 902406
+fcfffe1f4bd69c60 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+0xfffffe00439601dc
+kernel.release.t8152`IOInterruptEventSource::checkForWork()+0xe8
+kernel.release.t8152`IOWorkLoop::runEventSources()+0xc0
+ 902406
+fcfffe1f4bd69c60 
+kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceController::GetSCSIParallelTask(bool)+0x3c
+com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceDevice::SendSCSICommand(OSObject*, SCSIServiceResponse*, SCSITaskStatus*)+0xd4
+com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::SendSCSITasksFromQueue()+0xe8
+ 902406
+fcfffe1f4bd69c60 
+kernel.release.t8152`IOEventSource::closeGate()+0x3c
+0xfffffe0043960870
+0xfffffe004395a0c0
+com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceDevice::SendSCSICommand(OSObject*, SCSIServiceResponse*, SCSITaskStatus*)+0x1c8
+ 902406
+fcfffe1f4bd69c60 
+kernel.release.t8152`IOEventSource::closeGate()+0x3c
+com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceController::CompleteParallelTask(OSObject*, SCSITaskStatus, SCSIServiceResponse)+0x84
+0xfffffe00439601dc
+kernel.release.t8152`IOInterruptEventSource::checkForWork()+0xe8
+ 902406
+

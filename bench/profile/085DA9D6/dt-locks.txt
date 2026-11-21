@@ -1,0 +1,173 @@
+=== time
+adaptive-block fffffe0041c6e540 5900
+adaptive-spin f9fffe1a848659c0 5903
+adaptive-block fffffe0041d78d20 7138
+adaptive-spin f7fffe1a84866ce0 7356
+adaptive-spin fdfffe204e90d558 7585
+adaptive-block f2fffe31b42aade0 421675
+adaptive-spin f2fffe31b42aade0 932000
+adaptive-block fcfffe251782f850 1022906
+adaptive-spin fffffe0041c6e540 1126807
+adaptive-spin f8fffe204e84b230 5303616
+adaptive-block f3fffe31b435f080 5395506
+adaptive-spin fcfffe251782f850 10291917
+adaptive-spin f3fffe31b435f080 46205709
+adaptive-block f2fffe251782fd30 233086296
+adaptive-spin f2fffe251782fd30 2206165759
+=== count
+adaptive-spin fcfffe1a82a087b0 281
+adaptive-spin f1fffe1a84864f20 293
+adaptive-spin f2fffe1a84417010 304
+adaptive-spin f9fffe1a848659c0 318
+adaptive-spin f7fffe1a84866ce0 370
+adaptive-block f2fffe31b42aade0 1301
+adaptive-block fcfffe251782f850 2473
+adaptive-block f3fffe31b435f080 12651
+adaptive-spin f2fffe31b42aade0 47685
+adaptive-spin fffffe0041c6e540 52351
+adaptive-spin f8fffe204e84b230 102715
+adaptive-spin fcfffe251782f850 318011
+adaptive-block f2fffe251782fd30 331427
+adaptive-spin f3fffe31b435f080 515086
+adaptive-spin f2fffe251782fd30 6207831
+=== stacks
+
+  adaptive-spin                                     
+              kernel.release.t8152`0xfffffe004143cd24+0x26c
+              kernel.release.t8152`0xfffffe004143d370+0x12c
+              kernel.release.t8152`0xfffffe0041575afc+0x2c8
+              kernel.release.t8152`0xfffffe0040fba228+0x304
+              kernel.release.t8152`0xfffffe0040d975bc+0x48
+              0x1820955ec
+          2206273
+  adaptive-block                                    
+              0xfffffe004395a0c0
+              com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceDevice::SendSCSICommand(OSObject*, SCSIServiceResponse*, SCSITaskStatus*)+0x1c8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::SendSCSITasksFromQueue()+0xe8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::ExecuteCommand(OSObject*)+0xdc
+              com.apple.iokit.IOSCSIBlockCommandsDevice`IOSCSIBlockCommandsDevice::IssueReadInternal(IOMemoryDescriptor*, unsigned long long, unsigned long long, unsigned long long, IOStorageAttributes*, unsigned int, void*)+0x128
+              com.apple.iokit.IOSCSIBlockCommandsDevice`IOBlockStorageServices::doAsyncReadWrite(IOMemoryDescriptor*, unsigned long long, unsigned long long, IOStorageAttributes*, IOStorageCompletion*)+0x154
+              com.apple.iokit.IOStorageFamily`IOBlockStorageDriver::executeRequest(unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, IOStorageCompletion*, IOBlockStorageDriver::Context*)+0x1ac
+              com.apple.iokit.IOStorageFamily`IOBlockStorageDriver::prepareRequest(unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, IOStorageCompletion*)+0x2b0
+          2550289
+  adaptive-block                                    
+              0xfffffe004396094c
+              0xfffffe004395a0c0
+              com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceDevice::SendSCSICommand(OSObject*, SCSIServiceResponse*, SCSITaskStatus*)+0x1c8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::SendSCSITasksFromQueue()+0xe8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::ExecuteCommand(OSObject*)+0xdc
+              com.apple.iokit.IOSCSIBlockCommandsDevice`IOSCSIBlockCommandsDevice::IssueReadInternal(IOMemoryDescriptor*, unsigned long long, unsigned long long, unsigned long long, IOStorageAttributes*, unsigned int, void*)+0x128
+              com.apple.iokit.IOSCSIBlockCommandsDevice`IOBlockStorageServices::doAsyncReadWrite(IOMemoryDescriptor*, unsigned long long, unsigned long long, IOStorageAttributes*, IOStorageCompletion*)+0x154
+              com.apple.iokit.IOStorageFamily`IOBlockStorageDriver::executeRequest(unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, IOStorageCompletion*, IOBlockStorageDriver::Context*)+0x1ac
+          2616346
+  adaptive-spin                                     
+              0xfffffe004395a06c
+              kernel.release.t8152`IOInterruptEventSource::checkForWork()+0xe8
+              kernel.release.t8152`IOWorkLoop::runEventSources()+0xc0
+              kernel.release.t8152`IOWorkLoop::threadMain()+0x60
+              kernel.release.t8152`0xfffffe0040d98300+0xd8
+          2890367
+  adaptive-spin                                     
+              kernel.release.t8152`0xfffffe004143d370+0x12c
+              kernel.release.t8152`0xfffffe0041575afc+0x2c8
+              kernel.release.t8152`0xfffffe0040fba228+0x304
+              kernel.release.t8152`0xfffffe0040d975bc+0x48
+              0x1820955ec
+          3097343
+  adaptive-spin                                     
+              com.apple.driver.IODARTFamily`IODARTMapper::_iovmAllocDMACommand(IODMACommand*, IOMemoryDescriptor*, unsigned int, unsigned long long, unsigned long long, unsigned long long*, unsigned int)+0x1c8
+              com.apple.driver.IODARTFamily`IODARTMapper::iovmMapMemory(IOMemoryDescriptor*, unsigned long long, unsigned long long, unsigned int, IODMAMapSpecification const*, IODMACommand*, IODMAMapPageList const*, unsigned long long*, unsigned long long*)+0x2f0
+              kernel.release.t8152`0xfffffe0041670b14+0x208
+              kernel.release.t8152`IOGeneralMemoryDescriptor::dmaCommandOperation(unsigned int, void*, unsigned int) const+0x410
+              kernel.release.t8152`IODMACommand::prepare(unsigned long long, unsigned long long, bool, bool)+0x2f4
+              0xfffffe0043958a34
+              0xfffffe0043960324
+              0xfffffe00439607ec
+          8630281
+  adaptive-spin                                     
+              0xfffffe004396094c
+              0xfffffe004395a0c0
+              com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceDevice::SendSCSICommand(OSObject*, SCSIServiceResponse*, SCSITaskStatus*)+0x1c8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::SendSCSITasksFromQueue()+0xe8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::ExecuteCommand(OSObject*)+0xdc
+              com.apple.iokit.IOSCSIBlockCommandsDevice`IOSCSIBlockCommandsDevice::IssueReadInternal(IOMemoryDescriptor*, unsigned long long, unsigned long long, unsigned long long, IOStorageAttributes*, unsigned int, void*)+0x128
+              com.apple.iokit.IOSCSIBlockCommandsDevice`IOBlockStorageServices::doAsyncReadWrite(IOMemoryDescriptor*, unsigned long long, unsigned long long, IOStorageAttributes*, IOStorageCompletion*)+0x154
+              com.apple.iokit.IOStorageFamily`IOBlockStorageDriver::executeRequest(unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, IOStorageCompletion*, IOBlockStorageDriver::Context*)+0x1ac
+         17599887
+  adaptive-spin                                     
+              0xfffffe004395a0c0
+              com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceDevice::SendSCSICommand(OSObject*, SCSIServiceResponse*, SCSITaskStatus*)+0x1c8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::SendSCSITasksFromQueue()+0xe8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::ExecuteCommand(OSObject*)+0xdc
+              com.apple.iokit.IOSCSIBlockCommandsDevice`IOSCSIBlockCommandsDevice::IssueReadInternal(IOMemoryDescriptor*, unsigned long long, unsigned long long, unsigned long long, IOStorageAttributes*, unsigned int, void*)+0x128
+              com.apple.iokit.IOSCSIBlockCommandsDevice`IOBlockStorageServices::doAsyncReadWrite(IOMemoryDescriptor*, unsigned long long, unsigned long long, IOStorageAttributes*, IOStorageCompletion*)+0x154
+              com.apple.iokit.IOStorageFamily`IOBlockStorageDriver::executeRequest(unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, IOStorageCompletion*, IOBlockStorageDriver::Context*)+0x1ac
+              com.apple.iokit.IOStorageFamily`IOBlockStorageDriver::prepareRequest(unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, IOStorageCompletion*)+0x2b0
+         22404097
+  adaptive-block                                    
+              kernel.release.t8152`IOWorkLoop::closeGate()+0x1c
+              kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+              com.apple.iokit.IOSCSIBlockCommandsDevice`IOBlockStorageServices::doAsyncReadWrite(IOMemoryDescriptor*, unsigned long long, unsigned long long, IOStorageAttributes*, IOStorageCompletion*)+0x11c
+              com.apple.iokit.IOStorageFamily`IOBlockStorageDriver::executeRequest(unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, IOStorageCompletion*, IOBlockStorageDriver::Context*)+0x1ac
+              com.apple.iokit.IOStorageFamily`IOBlockStorageDriver::prepareRequest(unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, IOStorageCompletion*)+0x2b0
+              com.apple.iokit.IOStorageFamily`IOStorage::read(IOService*, unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, unsigned long long*)+0x9c
+              com.apple.iokit.IOStorageFamily`dkreadwrite(void*, dkrtype_t)+0x600
+              com.apple.iokit.IOStorageFamily`dkread+0x2c
+         58586181
+  adaptive-block                                    
+              kernel.release.t8152`IOWorkLoop::closeGate()+0x1c
+              kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+              kernel.release.t8152`IOCommandPool::getCommand(bool)+0xa0
+              com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceController::GetSCSIParallelTask(bool)+0x3c
+              com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceDevice::SendSCSICommand(OSObject*, SCSIServiceResponse*, SCSITaskStatus*)+0xd4
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::SendSCSITasksFromQueue()+0xe8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::ExecuteCommand(OSObject*)+0xdc
+              com.apple.iokit.IOSCSIBlockCommandsDevice`IOSCSIBlockCommandsDevice::IssueReadInternal(IOMemoryDescriptor*, unsigned long long, unsigned long long, unsigned long long, IOStorageAttributes*, unsigned int, void*)+0x128
+         70013066
+  adaptive-block                                    
+              kernel.release.t8152`IOWorkLoop::closeGate()+0x1c
+              kernel.release.t8152`IOEventSource::closeGate()+0x3c
+              com.apple.iokit.IOSCSIParallelFamily`SCSIParallelTimer::SetTimeout(OSObject*, unsigned int)+0x30
+              0xfffffe0043960870
+              0xfffffe004395a0c0
+              com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceDevice::SendSCSICommand(OSObject*, SCSIServiceResponse*, SCSITaskStatus*)+0x1c8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::SendSCSITasksFromQueue()+0xe8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::ExecuteCommand(OSObject*)+0xdc
+        103584775
+  adaptive-spin                                     
+              kernel.release.t8152`IOWorkLoop::closeGate()+0x1c
+              kernel.release.t8152`IOWorkLoop::runEventSources()+0x40
+              kernel.release.t8152`IOWorkLoop::threadMain()+0x60
+              kernel.release.t8152`0xfffffe0040d98300+0xd8
+        129341120
+  adaptive-spin                                     
+              kernel.release.t8152`IOWorkLoop::closeGate()+0x1c
+              kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+              com.apple.iokit.IOSCSIBlockCommandsDevice`IOBlockStorageServices::doAsyncReadWrite(IOMemoryDescriptor*, unsigned long long, unsigned long long, IOStorageAttributes*, IOStorageCompletion*)+0x11c
+              com.apple.iokit.IOStorageFamily`IOBlockStorageDriver::executeRequest(unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, IOStorageCompletion*, IOBlockStorageDriver::Context*)+0x1ac
+              com.apple.iokit.IOStorageFamily`IOBlockStorageDriver::prepareRequest(unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, IOStorageCompletion*)+0x2b0
+              com.apple.iokit.IOStorageFamily`IOStorage::read(IOService*, unsigned long long, IOMemoryDescriptor*, IOStorageAttributes*, unsigned long long*)+0x9c
+              com.apple.iokit.IOStorageFamily`dkreadwrite(void*, dkrtype_t)+0x600
+              com.apple.iokit.IOStorageFamily`dkread+0x2c
+        658292737
+  adaptive-spin                                     
+              kernel.release.t8152`IOWorkLoop::closeGate()+0x1c
+              kernel.release.t8152`IOCommandGate::runAction(int (*)(OSObject*, void*, void*, void*, void*), void*, void*, void*, void*)+0x84
+              kernel.release.t8152`IOCommandPool::getCommand(bool)+0xa0
+              com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceController::GetSCSIParallelTask(bool)+0x3c
+              com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceDevice::SendSCSICommand(OSObject*, SCSIServiceResponse*, SCSITaskStatus*)+0xd4
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::SendSCSITasksFromQueue()+0xe8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::ExecuteCommand(OSObject*)+0xdc
+              com.apple.iokit.IOSCSIBlockCommandsDevice`IOSCSIBlockCommandsDevice::IssueReadInternal(IOMemoryDescriptor*, unsigned long long, unsigned long long, unsigned long long, IOStorageAttributes*, unsigned int, void*)+0x128
+        704693202
+  adaptive-spin                                     
+              kernel.release.t8152`IOWorkLoop::closeGate()+0x1c
+              kernel.release.t8152`IOEventSource::closeGate()+0x3c
+              com.apple.iokit.IOSCSIParallelFamily`SCSIParallelTimer::SetTimeout(OSObject*, unsigned int)+0x30
+              0xfffffe0043960870
+              0xfffffe004395a0c0
+              com.apple.iokit.IOSCSIParallelFamily`IOSCSIParallelInterfaceDevice::SendSCSICommand(OSObject*, SCSIServiceResponse*, SCSITaskStatus*)+0x1c8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::SendSCSITasksFromQueue()+0xe8
+              com.apple.iokit.IOSCSIArchitectureModelFamily`IOSCSIProtocolServices::ExecuteCommand(OSObject*)+0xdc
+        710552953
+

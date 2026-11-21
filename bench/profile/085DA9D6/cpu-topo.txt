@@ -1,0 +1,6 @@
+hw.perflevel0.logicalcpu: 2
+hw.perflevel1.logicalcpu: 4
+hw.perflevel2.logicalcpu: 6
+hw.perflevel0.name: Super
+hw.perflevel1.name: Performance
+hw.perflevel2.name: Efficiency

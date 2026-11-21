@@ -1,0 +1,114 @@
+window 20.0 s, IOs 3146000 = 157300 IOPS; samples 1197769 (12 cpus), kernel 1144084; 1 sample = 0.064 ns/IO
+stacks kept: 1063200 of 1144084 kernel samples (92.9 %)
+user-mode samples 53685 = 3.41 us/IO
+
+## exclusive (leaf frame) by component: us CPU per IO
+kernel other                                             1006185  64.004
+unknown module                                             26623   1.694
+kernel scheduler/locks/wakeups                             10743   0.683
+kernel interrupt/work loop                                  7321   0.466
+DART/IOMMU (mapping)                                        4075   0.259
+SAM (IOSCSIArchitectureModelFamily/BlockCommands)           3820   0.243
+kext SAS2308HBA                                             2404   0.153
+kernel VM/IOMD/DMA mapping                                   984   0.063
+IOStorageFamily                                              440   0.028
+IOSCSIParallelFamily                                         373   0.024
+other kext: com.apple.driver.AppleT8152CLPC                  232   0.015
+
+## inclusive (frame anywhere in the stack): us CPU per IO
+work loop (IOWorkLoop/checkForWork)                       156898   9.980
+any frame in our kext                                     126615   8.054
+submit (SendSCSICommand)                                  110466   7.027
+completion (CompleteParallelTask)                            904   0.058
+
+## top leaf functions (non-idle)
+ 26.508  416722 kernel other                 0xfffffe0040fb5678
+ 20.576  323465 kernel other                 0xfffffe0040fc0d90
+  4.141   65097 kernel other                 0xfffffe0040e3a7dc
+  3.634   57130 kernel other                 0xfffffe0040e33754
+  3.054   48009 kernel other                 0xfffffe0040fc01ac
+  0.921   14472 kernel other                 0xfffffe0040e58094
+  0.864   13584 unknown module               0xfffffe001c29c81c
+  0.740   11628 kernel other                 0xfffffe0040ea9800
+  0.612    9617 kernel other                 0xfffffe0040e5d598
+  0.578    9090 kernel other                 clock_get_uptime
+  0.521    8198 kernel other                 0xfffffe0040e9a858
+  0.454    7132 unknown module               0xfffffe001c29c814
+  0.338    5308 kernel scheduler/locks/wakeu IOLockUnlock
+  0.320    5036 kernel other                 mach_absolute_time
+  0.281    4418 kernel interrupt/work loop   IOWorkLoop::threadMain()
+  0.278    4373 kernel other                 0xfffffe0040f2d08c
+  0.186    2931 kernel scheduler/locks/wakeu IORecursiveLockLock
+  0.153    2406 kernel other                 0xfffffe0040e3878c
+  0.149    2349 kernel scheduler/locks/wakeu IOLockLock
+  0.124    1953 kernel other                 0xfffffe0040e9cd3c
+  0.120    1889 kernel other                 0xfffffe0040e37844
+  0.105    1656 kernel other                 ml_static_ptovirt
+  0.102    1600 kernel other                 0xfffffe0040e34340
+  0.094    1475 kernel interrupt/work loop   IOInterruptEventSource::checkForWork()
+  0.088    1389 kernel other                 0xfffffe004163c7ec
+  0.085    1330 kernel other                 microuptime
+  0.084    1327 kernel other                 clock_interval_to_deadline
+  0.075    1172 unknown module               0xfffffe001c2c8854
+  0.069    1088 DART/IOMMU (mapping)         IODARTVMAllocator::vmspaceTree_RB_INSERT(IODARTVMAllocator::vmspaceTree*, IODARTVMSpace*)
+  0.064    1009 kernel other                 0xfffffe0040d980e8
+  0.061     964 kernel other                 0xfffffe004143cd24
+  0.059     924 kernel other                 0xfffffe0040e33c90
+  0.056     876 unknown module               0xfffffe001c2a1c4c
+  0.055     857 kernel other                 0xfffffe00410731d4
+  0.054     846 unknown module               0xfffffe001c2aa590
+  0.052     814 kernel other                 0xfffffe0040e8afd8
+  0.051     804 unknown module               0xfffffe001c2a0990
+  0.051     794 kernel other                 0xfffffe0040ddf97c
+  0.048     760 kernel other                 OSMetaClassBase::safeMetaCast(OSMetaClassBase const*, OSMetaClass const*)
+  0.045     712 kernel other                 0xfffffe0040f6677c
+
+## our kext, PCs by symbol (all samples, from @ours)
+total 5186 = 0.330 us/IO
+  0.041     647 SAS2308Glue::MapTask
+  0.039     610 callout_reset_us
+  0.028     437 mps_xnu_halt_begin.cold.1
+  0.027     425 SAS2308Glue::ProcessTask
+  0.024     372 SAS2308HBAPort::TaskMapNext
+  0.017     271 mps_kext_submit
+  0.014     221 xpt_setup_ccb
+  0.012     195 SAS2308HBA::PortTaskDescribe
+  0.011     180 SAS2308Glue::Post
+  0.011     168 mps_intr_locked
+  0.010     158 mps_os_unlock
+  0.009     141 mpssas_action
+  0.009     136 mpssas_scsiio_complete
+  0.008     132 mps_enqueue_request
+  0.008     131 mtx_unlock
+  0.008     119 mps_push_sge
+  0.006      99 xpt_action
+  0.003      50 mps_os_uptime_us
+  0.003      44 mps_xnu_io_start
+  0.003      40 mps_xnu_target_gen
+  0.002      36 SAS2308HBAPort::TaskMapBegin
+  0.002      32 mps_kext_unlock
+  0.002      31 SAS2308Glue::Leave
+  0.002      31 mps_os_lock
+  0.002      30 mpssas_log_command
+  0.002      29 SAS2308HBA::ProcessParallelTask
+  0.002      29 mps_data_cb
+  0.002      28 mps_xnu_io_done
+  0.002      27 bus_dmamap_load_ccb
+  0.001      23 SAS2308Glue::DeliverCompletions
+
+## kernel threads (top)
+kernel_task          tid      736    91515   91.6 % of a CPU
+kernel_task          tid      735    90553   90.6 % of a CPU
+kernel_task          tid      734    82034   82.1 % of a CPU
+kernel_task          tid      731    80254   80.3 % of a CPU
+kernel_task          tid      733    79060   79.1 % of a CPU
+kernel_task          tid      730    79053   79.1 % of a CPU
+kernel_task          tid      729    78053   78.1 % of a CPU
+kernel_task          tid      728    73652   73.7 % of a CPU
+kernel_task          tid     3694    69304   69.3 % of a CPU
+kernel_task          tid      727    54626   54.7 % of a CPU
+kernel_task          tid      726    30228   30.2 % of a CPU
+audiomxd             tid     4077    21388   21.4 % of a CPU
+configd              tid    77422    18622   18.6 % of a CPU
+sasbench             tid    77682    17947   18.0 % of a CPU
+sasbench             tid    77679    17882   17.9 % of a CPU

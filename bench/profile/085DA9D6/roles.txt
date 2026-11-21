@@ -1,0 +1,29 @@
+IOs 3146000; kernel samples 1144084, in stacks 1063200; 1 sample = 0.0636 ns/IO
+
+idle: 47.084 us/IO
+    47.084  idle
+
+submitting threads (pread): 12.837 us/IO
+     6.861  spin on the work-loop gate
+     2.377  IOStorageFamily
+     1.535  DART/SPTM (map/unmap)
+     0.735  kext SAS2308HBA
+     0.662  kernel memory descriptor/wiring
+     0.419  SAM
+     0.248  IOSCSIParallelFamily
+
+other kernel: 3.875 us/IO
+     2.613  kernel other (syscall, VFS, unsymbolised)
+     1.262  DART/SPTM (map/unmap)
+
+work loop thread (completion): 3.742 us/IO
+     1.797  DART/SPTM (map/unmap)
+     0.582  SAM
+     0.512  IOStorageFamily
+     0.403  kernel other (syscall, VFS, unsymbolised)
+     0.224  spin on the work-loop gate
+     0.165  kext SAS2308HBA
+     0.058  IOSCSIParallelFamily
+
+interrupt context: 0.094 us/IO
+     0.094  kernel other (syscall, VFS, unsymbolised)

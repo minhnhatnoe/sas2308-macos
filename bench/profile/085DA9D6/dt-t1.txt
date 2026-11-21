@@ -1,0 +1,46 @@
+=== count
+send 112047
+=== vns_sum
+send 901289644
+=== wall_sum
+send 1080209494
+=== irq (this)
+f6fffe261a6b6d80 10
+f3fffe261a6b6e00 1571997
+=== checkForWork count
+f6fffe2be6012e00 2
+fefffe2be6014f80 2
+f7fffe2be63f8900 36
+fbfffe2be6488700 898
+fcfffe2be6017680 898
+fdfffe2be6489400 898
+fbfffe2be6004600 901
+f3fffe261a6b6e00 45622
+=== checkForWork vns
+fefffe2be6014f80 208
+f6fffe2be6012e00 250
+f7fffe2be63f8900 57203
+fbfffe2be6488700 157172
+fdfffe2be6489400 167794
+fcfffe2be6017680 194298
+fbfffe2be6004600 519961
+f3fffe261a6b6e00 424576637
+=== CompleteParallelTask callers
+fffffe00439601dc 2942144
+=== thread_call_enter callers
+fffffe0040e4d380 1
+fffffe00416f3c4c 2
+fffffe003ed64e88 5
+
+  send vns                                          
+           value  ------------- Distribution ------------- count    
+             512 |                                         0        
+            1024 |@                                        2511     
+            2048 |@@@@@@@@@@@@@                            35907    
+            4096 |@@@@@@@@@@@@@@                           39300    
+            8192 |@@@@@@@                                  19386    
+           16384 |@@@@@                                    14487    
+           32768 |                                         456      
+           65536 |                                         0        
+
+

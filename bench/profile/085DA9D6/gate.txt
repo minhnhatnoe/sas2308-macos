@@ -1,0 +1,10 @@
+in-gate (gate held, holder on CPU): 3.275 us/IO
+  3.195 K`IOWorkLoop::runEventSources <- K`IOWorkLoop::threadMain
+  0.026 K`IOCommandGate::runAction <- K`IOInterruptEventSource::checkForWork
+  0.023 K`IOCommandGate::runAction <- IOSCSIBlockCommandsDevice`IOBlockStorageServices::doAsyncReadWrite
+  0.021 K`IOCommandGate::runAction <- K`IOCommandPool::getCommand
+  0.009 K`IOWorkLoop::runEventSources <- -
+acquiring (spinning in closeGate): 4.416 us/IO
+  2.304 K`IOCommandGate::runAction <- IOSCSIBlockCommandsDevice`IOBlockStorageServices::doAsyncReadWrite
+  1.905 K`IOCommandGate::runAction <- K`IOCommandPool::getCommand
+  0.207 K`IOWorkLoop::runEventSources <- K`IOWorkLoop::threadMain

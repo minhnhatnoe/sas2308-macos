@@ -1,0 +1,78 @@
+=== cpu exec
+0 AppleCentauriAlpha 1
+0 airportd 1
+1 runningboardd 1
+1 thirdparty-daemon 1
+2 AppleCentauriAlpha 1
+2 airportd 1
+2 mds 1
+2 mdworker_shared 1
+2 thirdparty-daemon 1
+3 airportd 1
+4 AppleCentauriAlpha 1
+4 mds_stores 1
+4 thirdparty-daemon 1
+5 airportd 1
+5 mdworker_shared 1
+5 wifip2pd 1
+0 thirdparty-daemon 2
+2 WindowServer 2
+5 SecurityAgent 2
+0 WindowServer 3
+1 WindowServer 6
+3 SecurityAgent 6
+4 SecurityAgent 6
+2 SecurityAgent 11
+1 SecurityAgent 14
+0 SecurityAgent 18
+3 logd 19
+4 logd 19
+5 logd 21
+2 logd 49
+0 logd 70
+1 logd 70
+5 configd 309
+4 configd 341
+3 configd 390
+5 audiomxd 407
+4 audiomxd 447
+2 configd 511
+3 audiomxd 564
+2 audiomxd 770
+1 configd 858
+11 sasbench 1029
+5 sasbench 1189
+0 configd 1205
+4 sasbench 1209
+3 sasbench 1354
+2 sasbench 1515
+10 sasbench 1631
+1 audiomxd 1884
+1 sasbench 1945
+9 sasbench 2083
+8 sasbench 2720
+0 sasbench 2808
+0 kernel_task 2859
+0 audiomxd 2999
+7 kernel_task 4506
+6 kernel_task 4599
+1 kernel_task 5187
+6 sasbench 5367
+7 sasbench 5460
+2 kernel_task 7103
+8 kernel_task 7246
+3 kernel_task 7632
+9 kernel_task 7883
+4 kernel_task 7941
+5 kernel_task 8035
+10 kernel_task 8335
+11 kernel_task 8937
+=== wl runEventSources by cpu
+11 2
+8 3
+9 8
+7 352155
+6 357287
+=== wl tid
+3694 709455
+
