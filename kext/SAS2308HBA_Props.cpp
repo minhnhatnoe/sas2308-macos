@@ -419,6 +419,8 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Chain free low", st.chain_free_low);
     SetNumber(d, "Suspends", st.suspends);
     SetNumber(d, "Resumes", st.resumes);
+    SetNumber(d, "Resumes without reset", st.resume_ready);
+    SetNumber(d, "Resumes with diag reset", st.resume_diag_reset);
     SetNumber(d, "Suspend drain left", st.suspend_drain_left);
     SetNumber(d, "Config page reads", st.config_reads);
     SetNumber(d, "Config page failures", st.config_failures);

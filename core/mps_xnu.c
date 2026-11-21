@@ -1026,6 +1026,23 @@ mps_xnu_tm_done(struct mps_softc *sc, struct mps_command *tm)
 	    reply->ResponseCode, le32toh(reply->TerminationCount));
 }
 
+/* D12: log and count which way a wake reinitialized the IOC */
+void
+mps_xnu_resume_done(struct mps_softc *sc, int diag_reset)
+{
+	if (diag_reset) {
+		sc->xnu.stats.resume_diag_reset++;
+		mps_dprint(sc, MPS_INIT|MPS_INFO, "resume: controller "
+		    "reinitialized with a diag reset (the READY path failed "
+		    "or the IOC was not READY)\n");
+	} else {
+		sc->xnu.stats.resume_ready++;
+		mps_dprint(sc, MPS_INIT|MPS_INFO, "resume: controller "
+		    "reinitialized without a reset (IOC READY: FreeBSD's "
+		    "attach sequence)\n");
+	}
+}
+
 void
 mps_xnu_reinit_done(struct mps_softc *sc)
 {

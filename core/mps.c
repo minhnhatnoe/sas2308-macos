@@ -854,7 +854,8 @@ mps_reinit(struct mps_softc *sc)
 {
 	int error;
 	struct mpssas_softc *sassc;
-	int attempt;			/* XNU */
+	int attempt, resume;		/* XNU */
+	uint32_t diag_resets;		/* XNU */
 
 	sassc = sc->sassc;
 
@@ -880,6 +881,8 @@ mps_reinit(struct mps_softc *sc)
 	 */
 	for (attempt = 0; sc->xnu.gone_tries != 0 && attempt < 50; attempt++)
 		msleep(&sc->xnu.gone_tries, &sc->mps_mtx, 0, "mpsgone", 1);
+	resume = sc->xnu.resume_ready;	/* XNU: D12 */
+	sc->xnu.resume_ready = 0;
 	if (sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_SHUTDOWN)) {
 		if ((sc->mps_flags & MPS_FLAGS_XNU_GONE) && !sc->xnu.disabled)
 			mps_xnu_disable(sc, ENXIO);
@@ -906,8 +909,20 @@ mps_reinit(struct mps_softc *sc)
 	 * during the sequence, restarts it with a new diag reset, up to
 	 * MPS_XNU_REINIT_TRIES attempts; then the controller is disabled.
 	 */
+	diag_resets = sc->xnu.stats.diag_resets;
 	for (attempt = 1; ; attempt++) {
-		error = mps_diag_reset(sc, CAN_SLEEP);
+		/*
+		 * XNU: on resume, FreeBSD's attach sequence first (D12):
+		 * mps_transition_ready leaves a READY IOC alone (our suspend
+		 * stopped it with a MUR, and the dock kept it powered), MURs an
+		 * OPERATIONAL one and diag-resets only a FAULT or unknown state;
+		 * then IOCFacts, IOCInit, port enable.  No PHY reset of every
+		 * disk on every wake.  The diag reset stays the fallback.
+		 */
+		if (attempt == 1 && resume)
+			error = mps_transition_ready(sc);
+		else
+			error = mps_diag_reset(sc, CAN_SLEEP);
 		if (error != 0)
 			mps_dprint(sc, MPS_INIT|MPS_FAULT, "%s hard reset "
 			    "failed with error %d\n", __func__, error);
@@ -983,6 +998,8 @@ mps_reinit(struct mps_softc *sc)
 	    sc, sc->replypostindex, sc->replyfreeindex);
 
 	mpssas_release_simq_reinit(sassc);
+	if (resume)			/* XNU: which way the wake went (D12) */
+		mps_xnu_resume_done(sc, sc->xnu.stats.diag_resets != diag_resets);
 	mps_xnu_reinit_done(sc);	/* XNU: statistics */
 	sc->xnu.reinit_running = 0;
 	wakeup(&sc->xnu.reinit_running);
@@ -1009,9 +1026,14 @@ mps_reinit_task(void *arg, int pending)
 
 /*
  * XNU: system sleep and shutdown.  FreeBSD's mps_pci_suspend/resume return
- * EINVAL; this follows Linux mpt3sas (scsih_suspend: block requests, stop
- * the IOC; scsih_resume: hard reset, unblock).  Called with mps_mtx held;
- * both sleep (the lock is dropped meanwhile).
+ * EINVAL; this follows Linux mpt3sas in shape (scsih_suspend: block
+ * requests, stop the IOC; scsih_resume: reset, unblock).  Linux resumes
+ * with a SOFT_RESET (MUR to READY first, diag reset as the fallback); we
+ * run FreeBSD's attach sequence (mps_transition_ready, IOCFacts, IOCInit,
+ * port enable) with mps_reinit's diag reset as the fallback (D12; the
+ * 498 ms measured for a wake before was the reinit alone, not the cost of
+ * the UNIT ATTENTIONs and re-IDENTIFYs a diag reset causes).  Called with
+ * mps_mtx held; both sleep (the lock is dropped meanwhile).
  *
  * Suspend: new SCSI IO is requeued (held, SIM queue frozen) and OS task
  * management is refused (CAM_BUSY); outstanding commands get up to
@@ -1170,6 +1192,7 @@ mps_xnu_resume(struct mps_softc *sc)
 		    hz / 10);
 	}
 	mps_periodic(sc);
+	sc->xnu.resume_ready = 1;	/* FreeBSD's attach sequence first (D12) */
 	mps_xnu_request_reinit(sc, "resume");
 	return (0);
 }

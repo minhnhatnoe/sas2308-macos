@@ -2154,7 +2154,7 @@ static void SleepTests()
         CHECK(g.Present(t9, 0x0009) && g.Present(tA, 0x000A));       /* targets kept while asleep */
         CHECK(Resume(g) == 0);
         CHECK(!(g.sc->mps_flags & (MPS_FLAGS_XNU_SUSPENDED | MPS_FLAGS_DIAGRESET)) && !g.ReinitQueued());
-        CHECK(m.diagResetCount == resets + 1 && m.portEnables == pe + 1);   /* Linux scsih_resume: hard reset */
+        CHECK(m.diagResetCount == resets && m.portEnables == pe + 1);       /* READY: FreeBSD attach sequence (D12) */
         CHECK(m.state == MPI2_IOC_STATE_OPERATIONAL && !(m.him & MPI2_HIM_RIM));
         CHECK(g.Tid(0x0009) == t9 && g.Tid(0x000A) == tA);           /* same ids after the rediscovery */
         CHECK(g.Stats().suspends == 1 && g.Stats().resumes == 1 && g.Stats().suspend_drain_left == 0);
@@ -2684,6 +2684,37 @@ static void DeviationTests()
         HostAdvance(5000);
         CHECK(!g.Gone() && m.diagResetCount == resets + 2);
         CHECK(gHost.pciRestores == restores + 2);
+    }
+
+    if (Want("D12")) {
+        /* wake: the IOC kept power and is READY (our suspend's MUR): FreeBSD's attach sequence, no diag reset */
+        Rig g({0x0009, 0x000A});
+        MockIocModel &m = g.ioc;
+        const target_id_t t9 = g.Tid(0x0009);
+        const uint32_t g9 = Gen(g, t9);
+        int resets = m.diagResetCount, inits = m.iocInits, pe = m.portEnables;
+        CHECK(Suspend(g, 1000) == 0 && m.state == MPI2_IOC_STATE_READY);
+        CHECK(Resume(g) == 0);
+        HostAdvance(3000);
+        CHECK(m.diagResetCount == resets && m.iocInits == inits + 1 && m.portEnables == pe + 1);
+        CHECK(g.Stats().resume_ready == 1 && g.Stats().resume_diag_reset == 0);
+        CHECK(g.Tid(0x0009) == t9 && Gen(g, t9) == g9);
+        Io *r = g.Read(0x0009, 0, 2);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+        /* that sequence fails (IOCInit faults): the diag reset as before */
+        resets = m.diagResetCount;
+        CHECK(Suspend(g, 1000) == 0);
+        m.faultOnIocInitOnce = true;
+        CHECK(Resume(g) == 0);
+        HostAdvance(5000);
+        CHECK(m.diagResetCount == resets + 1 && !g.Gone());
+        CHECK(g.Stats().resume_ready == 1 && g.Stats().resume_diag_reset == 1);
+        Io *r2 = g.Read(0x000A, 0, 3);
+        CHECK(g.Go(r2) == kPosted);
+        g.Pump();
+        CHECK(r2->done && r2->status == CAM_REQ_CMP);
     }
 
     if (Want("D20b")) {

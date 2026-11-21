@@ -25,8 +25,10 @@
  *        power children, so the disks have already been spun down / synced
  *        through us before this runs.
  *   on:  interrupt source enabled, the core reinitializes the IOC on its
- *        taskqueue (diag reset, IOCFacts, IOCInit, events, port enable =
- *        rediscovery) and releases the held IO when discovery is done.
+ *        taskqueue with FreeBSD's attach sequence (D12: a READY IOC is not
+ *        reset; IOCFacts, IOCInit, events, port enable = rediscovery), the
+ *        diag reset only as the fallback, and releases the held IO when
+ *        discovery is done.
  *        Targets that are found again keep their IDs and nubs.
  *
  * Shutdown / restart: the dock has its own power supply, so the IOC keeps
