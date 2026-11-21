@@ -354,6 +354,11 @@ void mps_os_log(device_t, uint32_t cls, const char *line)
 
 void mps_os_assert_fail(const char *msg)
 {
+    if (gHost.panicsAllowed > 0) {
+        gHost.panicsAllowed--;
+        gHost.panics++;
+        return;
+    }
     printf("FAIL: KASSERT/panic: %s\n", msg);
     gHost.DumpTail();
     exit(1);

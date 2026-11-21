@@ -2717,6 +2717,38 @@ static void DeviationTests()
         CHECK(r2->done && r2->status == CAM_REQ_CMP);
     }
 
+    if (Want("D18")) {
+        /*
+         * An "impossible" SGL state (no room left for a chain element):
+         * FreeBSD panics; our panic() returns, so the IO must fail with
+         * EFBIG instead of writing past its request frame.
+         */
+        Rig g;
+        struct mps_softc *sc = g.sc;
+        CHECK(g.MaxSegs() == (int)sc->max_io_pages + 1);     /* the cap the chain logic is built for */
+        mps_lock(sc);
+        struct mps_command *cm = mps_alloc_command(sc);
+        CHECK(cm != nullptr);
+        uint8_t *next = (uint8_t *)cm->cm_req + sc->reqframesz;   /* the next SMID's frame */
+        uint8_t guard[32];
+        memcpy(guard, next, sizeof(guard));
+        cm->cm_sge = (MPI2_SGE_IO_UNION *)(next - 4);
+        cm->cm_sglsize = 4;
+        gHost.panicsAllowed = 2;
+        const int panics = gHost.panics;
+        const int rc = mps_add_dmaseg(cm, 0x10000, 4096, 0, 2);
+        gHost.panicsAllowed = 0;
+        CHECK(rc == EFBIG && gHost.panics == panics + 1);
+        CHECK(memcmp(guard, next, sizeof(guard)) == 0);      /* nothing written past the frame */
+        mps_free_command(sc, cm);
+        mps_unlock(sc);
+        /* the IO path still works */
+        Io *r = g.Read(0x0009, 0, 2);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
     if (Want("D20b")) {
         /* READ/WRITE killed by our own reset: re-sent (CAM requeues it uncounted), bounded */
         Rig g;

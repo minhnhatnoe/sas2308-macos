@@ -1858,6 +1858,10 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 
 	/* XNU: no START STOP UNIT at shutdown (SSU_refcount) */
 
+	/* XNU: an SGL that did not fit its frame (D18): never posted */
+	if (cm->cm_flags & MPS_CM_FLAGS_XNU_SGL_FAILED)
+		mpssas_set_ccbstatus(ccb, CAM_REQ_TOO_BIG);
+
 	/* Take the fast path to completion */
 	if (cm->cm_reply == NULL) {
 		if (mpssas_get_ccbstatus(ccb) == CAM_REQ_INPROG) {

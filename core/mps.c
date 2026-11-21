@@ -2784,8 +2784,10 @@ mps_add_chain(struct mps_command *cm)
 	struct mps_chain *chain;
 	u_int space;
 
-	if (cm->cm_sglsize < MPS_SGC_SIZE)
+	if (cm->cm_sglsize < MPS_SGC_SIZE) {
 		panic("MPS: Need SGE Error Code\n");
+		return (EFBIG);	/* XNU: panic() returns: no overrun (D18) */
+	}
 
 	chain = mps_alloc_chain(cm->cm_sc);
 	if (chain == NULL)
@@ -2874,8 +2876,10 @@ mps_push_sge(struct mps_command *cm, void *sgep, size_t len, int segsleft)
 	 * There should be room for at least a chain element, or this
 	 * code is buggy.  Case (5).
 	 */
-	if (cm->cm_sglsize < MPS_SGC_SIZE)
+	if (cm->cm_sglsize < MPS_SGC_SIZE) {
 		panic("MPS: Need SGE Error Code\n");
+		return (EFBIG);	/* XNU: panic() returns: no overrun (D18) */
+	}
 
 	if (segsleft >= 1 && cm->cm_sglsize < len + MPS_SGC_SIZE) {
 		/*
@@ -3064,7 +3068,10 @@ mps_data_cb(void *arg, bus_dma_segment_t *segs, int nsegs, int error)
 			if (ratecheck(&sc->lastfail, &mps_chainfail_interval))
 				mps_dprint(sc, MPS_INFO, "Out of chain frames, "
 				    "consider increasing hw.mps.max_chains.\n");
-			cm->cm_flags |= MPS_CM_FLAGS_CHAIN_FAILED;
+			/* XNU: EFBIG, the SGL does not fit (D18): fail it */
+			cm->cm_flags |= (error == EFBIG) ?
+			    MPS_CM_FLAGS_XNU_SGL_FAILED :
+			    MPS_CM_FLAGS_CHAIN_FAILED;
 			/*
 			 * mpr_complete_command can only be called on commands
 			 * that are in the queue. Since this is an error path

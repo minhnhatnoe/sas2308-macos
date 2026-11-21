@@ -242,6 +242,7 @@ struct mps_command {
 #define MPS_CM_FLAGS_ON_RECOVERY	(1 << 12)
 #define MPS_CM_FLAGS_TIMEDOUT		(1 << 13)
 #define MPS_CM_FLAGS_XNU_TM_TIMEDOUT	(1 << 14)	/* XNU: late reply */
+#define MPS_CM_FLAGS_XNU_SGL_FAILED	(1 << 15)	/* XNU: EFBIG, never posted (D18) */
 	u_int				cm_state;
 #define MPS_CM_STATE_FREE		0
 #define MPS_CM_STATE_BUSY		1

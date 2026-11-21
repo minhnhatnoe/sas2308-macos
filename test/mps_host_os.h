@@ -83,6 +83,7 @@ struct MpsHostOs {
 
     /* platform events */
     int interruptsSetUp = 0, interruptsFreed = 0, pciRestores = 0, dead = 0;
+    int panicsAllowed = 0, panics = 0;      /* a test that provokes panic() (D18): it returns, as on xnu */
     int interruptsDelivered = 0;
 
     /* log */
