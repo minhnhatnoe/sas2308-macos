@@ -138,6 +138,7 @@ uint64_t mps_kext_max_seg_bytes(void);			/* one SGE */
 /* ---- interrupts -------------------------------------------------------- */
 
 void	 mps_kext_intr(struct mps_kext *k);		/* mps_intr_msi */
+void	 mps_kext_intr_intx(struct mps_kext *k);	/* mps_intr: INTx fallback (L17) */
 
 /* ---- SCSI IO: an XPT_SCSI_IO ccb in the task's HBA data ---------------- */
 

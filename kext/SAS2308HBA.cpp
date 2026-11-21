@@ -800,6 +800,8 @@ SAS2308HBA::CreateDeviceInterrupt(IOInterruptEventSource::Action action,
             break;
         }
     }
+    /* INTx: FreeBSD's mps_intr, which checks HIS (mps_pci.c picks it for INTx; L17) */
+    fIntx = index < 0;
     if (index < 0) {
         Klog(MPSK_FAULT | MPSK_INIT, "no MSI/MSI-X interrupt source on the provider, falling back to index 0");
         index = 0;
@@ -816,13 +818,20 @@ SAS2308HBA::FilterInterruptRequest(void)
     return true;
 }
 
-/* mps_intr_msi(): runs on the work loop. */
+/*
+ * mps_intr_msi() (mps_intr() on the INTx fallback, as mps_pci.c): runs on
+ * the work loop. The filter always schedules, as FreeBSD's ithread without a
+ * filter.
+ */
 void
 SAS2308HBA::HandleInterruptRequest(void)
 {
     if (!Enter())
         return;
-    mps_kext_intr(fGlue.fMps);
+    if (fIntx)
+        mps_kext_intr_intx(fGlue.fMps);
+    else
+        mps_kext_intr(fGlue.fMps);
     Leave();
     DeliverCompletions();
 }

@@ -579,6 +579,16 @@ void mps_kext_intr(struct mps_kext *k)
     k->inline_owner = nullptr;
 }
 
+/* INTx (no message-signalled source): FreeBSD's mps_intr, which checks HIS (L17) */
+void mps_kext_intr_intx(struct mps_kext *k)
+{
+    if (!k->attached)
+        return;
+    k->inline_owner = mps_os_curthread();
+    mps_intr(&k->sc);
+    k->inline_owner = nullptr;
+}
+
 /* the family sizes its tasks after InitializeController (mps_attach): segments for buffer_dmat */
 size_t mps_kext_task_size(struct mps_kext *k)
 {

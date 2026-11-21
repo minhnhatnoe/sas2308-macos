@@ -210,6 +210,7 @@ private:
     uint32_t       fPciRestoreFailures = 0;
     bool           fTunnelled = false;      /* IOPCITunnelled: behind Thunderbolt */
     bool           fPostedWrite = false;    /* BAR1 mapped kIOMapPostedWrite (sas2308_posted_write, D75) */
+    bool           fIntx = false;           /* INTx fallback: mps_intr (HIS checked), as mps_pci.c (L17) */
 
     /* power management (SAS2308HBA_PM.cpp) */
     bool           fPMInitialized = false;

@@ -925,6 +925,28 @@ int main()
         f.Detach();
     }
 
+    if (Want("L17")) {
+        /* the INTx fallback runs FreeBSD's mps_intr: a line raised with HIS REPLY_DESCRIPTOR_INTERRUPT
+         * clear (another device on a shared pin) processes nothing; with it set, the replies */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        FakeTask *a = f.NewRead(f.Tid(0x0009));
+        CHECK(f.Submit(a) == SAS2308Glue::kInProcess);
+        const uint32_t post = m.hostPost;
+        CHECK(m.iocPost != post);                   /* the reply is posted */
+        m.hisRdiOff = true;
+        mps_kext_intr_intx(f.k);
+        CHECK(m.hostPost == post && a->completions == 0);
+        m.hisRdiOff = false;
+        CHECK(f.glue.Enter());                      /* HandleInterruptRequest */
+        mps_kext_intr_intx(f.k);
+        f.glue.Leave();
+        f.glue.DeliverCompletions();
+        CHECK(m.hostPost != post && a->completions == 1);
+        f.Detach();
+    }
+
     if (Want("D43")) {
         /*
          * The 1 s statistics timer still delivers completions nobody

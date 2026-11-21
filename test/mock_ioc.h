@@ -47,6 +47,7 @@ struct MockIocModel {
     /* ---- registers ---- */
     uint32_t state = MPI2_IOC_STATE_OPERATIONAL;   /* as left by a boot ROM: forces a MUR */
     uint32_t dbData = 0, his = 0, him = 0;
+    bool hisRdiOff = false;                    /* HIS reads REPLY_DESCRIPTOR_INTERRUPT clear (shared INTx line) */
     bool used = false, dead = false;
     enum { Idle, RxReq, TxReply } hs = Idle;
     unsigned expect = 0;
@@ -194,7 +195,8 @@ struct MockIocModel {
         case MPI2_DOORBELL_OFFSET:
             doorbellReads++;
             return state | (used ? MPI2_DOORBELL_USED : 0) | dbData;
-        case MPI2_HOST_INTERRUPT_STATUS_OFFSET: return his;
+        case MPI2_HOST_INTERRUPT_STATUS_OFFSET:   /* RDI: descriptors the host has not consumed */
+            return his | (!hisRdiOff && pq && iocPost != hostPost ? MPI2_HIS_REPLY_DESCRIPTOR_INTERRUPT : 0);
         case MPI2_HOST_INTERRUPT_MASK_OFFSET: return him;
         case MPI2_HOST_DIAGNOSTIC_OFFSET:
             return (diagWE ? MPI2_DIAG_DIAG_WRITE_ENABLE : 0) | (diagStuck ? MPI2_DIAG_RESET_ADAPTER : 0);
