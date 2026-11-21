@@ -203,6 +203,7 @@ int	 mps_kext_submit(struct mps_kext *k, void *td, void *os_task,
 	    uint32_t gen, struct mps_kext_io_result *res);
 #define	MPSK_BACKSTOP_MS	10000	/* core timeout = task timeout + this */
 #define	MPSK_UNTIMED_BACKSTOP_MS 600000	/* core timeout of a task with none (D15) */
+#define	MPSK_SSU_TIMEOUT_MS	60000	/* ... of an untimed START STOP UNIT: da's 60 s (D15b) */
 /* pop one completed task (NULL: none); usable until mps_kext_destroy */
 void	*mps_kext_next_done(struct mps_kext *k, struct mps_kext_io_result *res);
 bool	 mps_kext_done_waiting(struct mps_kext *k);	/* the done queue is not empty */

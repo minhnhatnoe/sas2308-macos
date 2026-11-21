@@ -725,8 +725,10 @@ int main()
     if (Want("D15")) {
         /*
          * SAM sends START STOP UNIT with timeout 0 (no family timer). Its
-         * reply is lost: the core's callout recovers it after 10 min, so
-         * the PM thread does not hang. FORMAT UNIT keeps no timer.
+         * reply is lost: the core's callout recovers it after 60 s (da's
+         * DA_DEFAULT_TIMEOUT; a spin-up measured 10.5-11.7 s, D15b), so the
+         * PM thread does not hang. Another untimed command (a pass-through)
+         * gets 10 min; FORMAT UNIT keeps no timer.
          */
         MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
         m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
@@ -741,11 +743,18 @@ int main()
         };
         m.holdIo = true;
         FakeTask *ssu = nodata(f.Tid(0x0009), 0x1B);
-        FakeTask *fmt = nodata(f.Tid(0x000A), 0x04);
-        f.Run(590000);
-        CHECK(ssu->completions == 0 && fmt->completions == 0);
-        f.Run(15000);
+        FakeTask *tur = nodata(f.Tid(0x000A), 0x00);
+        f.Run(55000);
+        CHECK(ssu->completions == 0);
+        f.Run(15000);                               /* 70 s */
         CHECK(ssu->completions == 1 && ssu->done == SAS2308GluePort::kDoneTimeout);
+        CHECK(tur->completions == 0);
+        f.Run(520000);                              /* 590 s */
+        CHECK(tur->completions == 0);
+        FakeTask *fmt = nodata(f.Tid(0x0009), 0x04);
+        f.Run(25000);                               /* 615 s */
+        CHECK(tur->completions == 1 && tur->done == SAS2308GluePort::kDoneTimeout);
+        f.Run(600000);
         CHECK(fmt->completions == 0);               /* runs for hours on an 18 TB disk */
         m.holdIo = false;
         m.ReleasePending();
