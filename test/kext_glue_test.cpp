@@ -827,9 +827,9 @@ int main()
         f.Run(5000);
         const int diags = m.diagResetCount;
         mps_kext_halt_begin(f.k);
-        f.Run(9000);
+        f.Run(14000);
         CHECK(ssu->completions == 0 && rd->completions == 0);     /* capped, not failed */
-        f.Run(6000);                                /* 15 s after the halt began */
+        f.Run(6000);                                /* 20 s after the halt began */
         HostRunPending();
         CHECK(ssu->completions == 1 && ssu->done != SAS2308GluePort::kDoneStatus);
         CHECK(rd->completions == 1 && rd->done != SAS2308GluePort::kDoneStatus);
@@ -844,7 +844,7 @@ int main()
     }
 
     if (Want("F-new")) {
-        /* IO after the halt began gets 10 s; an abort that works keeps the controller */
+        /* IO after the halt began gets 15 s; an abort that works keeps the controller */
         MockIocModel m; haltRig(m);
         Family f; f.Attach(&m);
         mps_kext_halt_begin(f.k);
@@ -852,7 +852,7 @@ int main()
         FakeTask *rd = f.NewRead(f.Tid(0x0009));
         CHECK(f.Submit(rd) == SAS2308Glue::kInProcess);
         FakeTask *fmt = noData(f, f.Tid(0x000A), 0x04);   /* FORMAT UNIT: untimed (D15), capped too */
-        f.Run(9500);
+        f.Run(14500);
         CHECK(rd->completions == 0 && fmt->completions == 0);
         f.Run(1500);
         HostRunPending();
@@ -867,6 +867,29 @@ int main()
         f.Detach();
     }
 
+    if (Want("F-spinup")) {
+        /*
+         * D15b: a command at the halt that waits for a spin-up from standby
+         * (10.5-11.7 s measured) completes normally: no abort, no TM.
+         */
+        MockIocModel m; haltRig(m);
+        Family f; f.Attach(&m);
+        mps_kext_halt_begin(f.k);
+        m.holdIo = true;
+        FakeTask *ssu = noData(f, f.Tid(0x0009), 0x1B);
+        FakeTask *rd = f.NewRead(f.Tid(0x000A));
+        CHECK(f.Submit(rd) == SAS2308Glue::kInProcess);
+        f.Run(12000);                               /* the drives spin up */
+        CHECK(m.tms.empty() && ssu->completions == 0 && rd->completions == 0);
+        m.holdIo = false;
+        m.ReleasePending();
+        HostRunPending();
+        CHECK(ssu->completions == 1 && ssu->done == SAS2308GluePort::kDoneStatus);
+        CHECK(rd->completions == 1 && rd->done == SAS2308GluePort::kDoneStatus);
+        CHECK(m.tms.empty() && gHost.sc->xnu.stats.halt_stops == 0 && gHost.sc->xnu.stats.io_timeouts == 0);
+        f.Detach();
+    }
+
     if (Want("F-tm")) {
         /* the IOC answers no TM: the abort's timeout (3 s) leads to the stop */
         MockIocModel m; haltRig(m);
@@ -877,7 +900,7 @@ int main()
         f.Run(2000);
         const int diags = m.diagResetCount;
         mps_kext_halt_begin(f.k);
-        f.Run(16000);                               /* 10 s + 3 s + the stop (<= 2 s) */
+        f.Run(21000);                               /* 15 s + 3 s + the stop (<= 2 s) */
         HostRunPending();
         CHECK(rd->completions == 1 && rd->done != SAS2308GluePort::kDoneStatus);
         CHECK(m.diagResetCount == diags && gHost.sc->xnu.stats.halt_stops == 1);

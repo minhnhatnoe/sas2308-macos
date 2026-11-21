@@ -43,12 +43,15 @@ struct mps_softc;
 /*
  * The halt (restart / power off) has a 30 s watchdog (PEHaltRestartInternal,
  * "Halt/Restart Timed Out") over all of it.  Once it begins a SCSI IO has
- * at most 10 s left, FreeBSD's own shutdown figure (the START STOP UNIT
- * timeout of mpssas_SSU_to_SATA_devices), a TM at most 3 s, so a lost
- * reply's timeout, abort, LUN reset, target reset and the stop that takes
- * the place of the reinit end within 10 + 3 x 3 + 2 = 21 s (batch F).
+ * at most 15 s left, a TM at most 3 s, so a lost reply's timeout, abort,
+ * LUN reset, target reset and the stop that takes the place of the reinit
+ * end within 15 + 3 x 3 + 2 = 26 s (batch F).  XNU: FreeBSD's own shutdown
+ * figure is 10 s (mpssas_SSU_to_SATA_devices), but it sends that SSU only to
+ * SATA SSDs; a disk spinning up from standby took 10.5-11.7 s here, and
+ * restarts with the disks spun down took 17-24 s instead of 12-13 s, so
+ * 10 s would abort a command that is only waiting for the spin-up (D15b).
  */
-#define MPS_XNU_HALT_IO_MS	10000
+#define MPS_XNU_HALT_IO_MS	15000
 #define MPS_XNU_HALT_TM_S	3
 #define	MPS_XNU_HALT_CAP(sc, t, max)					\
 	((sc)->xnu.halting && ((t) == 0 || (t) > (max)) ? (max) : (t))

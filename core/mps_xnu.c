@@ -1016,7 +1016,8 @@ mps_xnu_debug_lose(struct mps_softc *sc, struct mps_command *cm)
  * that is requested is the shutdown stop instead, one that is running
  * gives up at its next wait and stops the same way.  FreeBSD needs none of
  * this: it has no halt watchdog, and its shutdown SSU is timed (10 s).
- * IO is not failed here: the stop in systemWillShutdown does that.
+ * IO is not failed here (FreeBSD does not stop the IOC at shutdown, D50;
+ * with sas2308_shutdown_stop 1 the stop in systemWillShutdown does).
  */
 void
 mps_xnu_halt_begin(struct mps_softc *sc)

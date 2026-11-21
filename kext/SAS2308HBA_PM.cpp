@@ -42,7 +42,7 @@
  * / WillPowerOff; SAM's block driver marks "Power Off" there) before it
  * walks the power tree with systemWillShutdown, children (the disks) first.
  * Our priority interest handler is the earliest point inside that window:
- * from there every command has at most 10 s left (mps_xnu_halt_begin), so a
+ * from there every command has at most 15 s left (mps_xnu_halt_begin), so a
  * lost reply to a command in flight, or to one SAM sends during the halt
  * (START STOP UNIT, timeout 0), is recovered and failed before the
  * watchdog fires. Sleep keeps D15's backstop: it has no such watchdog.
@@ -172,7 +172,7 @@ SAS2308HBA::BeginHalt(const char *why)
 {
     if (!Enter())
         return;
-    Klog(MPSK_INIT | MPSK_INFO, "%s: halt begins, command timeouts capped at 10 s", why);
+    Klog(MPSK_INIT | MPSK_INFO, "%s: halt begins, command timeouts capped at 15 s", why);
     mps_kext_halt_begin(fGlue.fMps);
     Leave();
 }
