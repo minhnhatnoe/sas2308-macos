@@ -1938,6 +1938,48 @@ static void TemperatureTests()
         }
     }
 
+    printf("temperature: a read the IOC never answers -> 5 s, no reinit, polling stops until a reinit (D31)\n");
+    {
+        Rig g({0x0009});
+        MockIocModel &m = g.ioc;
+        auto busy = [&g]() {
+            int n = 0;
+            for (u_int i = 1; i < g.sc->num_reqs; i++)
+                n += g.sc->commands[i].cm_state != MPS_CM_STATE_FREE;
+            return n;
+        };
+        HostAdvance(1100);
+        CHECK(m.iounit7Reads == 1 && g.Stats().ioc_temp_valid == 1);
+        const uint32_t reinits = g.Stats().reinits;
+        const int busy0 = busy();
+        size_t mark = LogMark();
+        m.dropIoUnit7 = true;
+        HostAdvance(31000);                                 /* due: the header request is lost */
+        CHECK(m.iounit7Dropped == 1);
+        HostAdvance(5100);                                  /* 5 s timeout, not 60 */
+        CHECK(g.Stats().temp_timeouts == 1 && g.Stats().reinits == reinits && !g.ReinitQueued());
+        CHECK(HasLog(mark, "IO Unit Page 7 read not answered in 5 s: temperature polling stopped until the next controller reinit"));
+        CHECK(LogClass(mark, "IO Unit Page 7 read not answered") & MPS_ERROR);
+        CHECK(busy() == busy0 + 1);                         /* the IOC owns that command: not freed */
+        Io *r = g.Read(0x0009, 0, 2);                       /* the event queue is not blocked, IO flows */
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+        HostAdvance(120000);                                /* no more polls, so at most one command leaked */
+        CHECK(m.iounit7Dropped == 1 && g.Stats().temp_timeouts == 1 && g.Stats().reinits == reinits);
+        CHECK(gHost.Count(mark, "IO Unit Page 7 read not answered") == 1 && busy() == busy0 + 1);
+        m.dropIoUnit7 = false;
+        mps_lock(g.sc);
+        mps_xnu_request_reinit(g.sc, "test");               /* the reinit reclaims the command ... */
+        mps_unlock(g.sc);
+        CHECK(g.RunReinit() == 0);
+        HostRunPending();
+        CHECK(busy() == busy0);
+        const int reads = m.iounit7Reads;
+        HostAdvance(31000);                                 /* ... and polling resumes */
+        CHECK(m.iounit7Reads > reads && g.Stats().ioc_temp_valid == 1 && g.Stats().temp_timeouts == 1);
+    }
+
     printf("temperature: no sensor (units NOT_PRESENT) -> logged once, no more polls\n");
     {
         Rig g({0x0009}, [](Rig &r) { r.ioc.iocTempUnits = MPI2_IOUNITPAGE7_IOC_TEMP_NOT_PRESENT; });

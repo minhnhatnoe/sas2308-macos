@@ -35,6 +35,7 @@ struct mps_softc;
 #define MPS_XNU_READD_SLOTS	16	/* devices waiting for a later add */
 #define MPS_XNU_READD_TRIES	8	/* later attempts, 1 s .. 5 s apart */
 #define MPS_XNU_TEMP_PERIOD_S	30	/* IOC temperature poll */
+#define MPS_XNU_TEMP_TIMEOUT_S	5	/* its wait: no reinit after it (D31) */
 #define MPS_XNU_TEMP_WARN_C	85	/* warning above, */
 #define MPS_XNU_TEMP_REARM_C	80	/* re-armed below */
 #define MPS_XNU_SHUTDOWN_DRAIN_MS 1000	/* shutdown: drain at most, */
@@ -161,6 +162,7 @@ struct mps_xnu {
 	/* IOC temperature (IO Unit Page 7), read on the event queue */
 	int			 temp_queued;
 	int			 temp_absent;		/* units NOT_PRESENT: stop */
+	int			 temp_stopped;		/* a read timed out: stop until a reinit (D31) */
 	int			 temp_warned;		/* above the warning, not re-armed */
 	int			 temp_logged;		/* first reading logged */
 	uint64_t		 temp_last_us;

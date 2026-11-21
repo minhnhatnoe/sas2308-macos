@@ -40,8 +40,34 @@
  * BIOS page 3, RAID volume/physical disk pages, WarpDrive) belong to
  * mps_mapping.c, IR and WarpDrive support, which are not ported.
  * mps_config_get_iounit_pg7() (IOC temperature) is new, written like
- * FreeBSD's mps_config_get_ioc_pg8() (a non-extended page).
+ * FreeBSD's mps_config_get_ioc_pg8() (a non-extended page), except its
+ * failure mode (D31): a monitoring read must not reset the controller.  It
+ * waits MPS_XNU_TEMP_TIMEOUT_S with a timeout handler, as FreeBSD's SATA
+ * IDENTIFY does (mpssas_get_sata_identify): no mps_reinit; the command the
+ * IOC still owns is freed when it comes back or by the next reinit, and
+ * polling stops until then (one command at most).
  */
+
+static void
+mps_config_iounit_pg7_late(struct mps_softc *sc, struct mps_command *cm)
+{
+	mps_dprint(sc, MPS_INFO, "%s: IO Unit Page 7 request completed late\n",
+	    __func__);
+	free(cm->cm_data, M_MPT2);
+	mps_free_command(sc, cm);
+}
+
+static void
+mps_config_iounit_pg7_timeout(struct mps_softc *sc, struct mps_command *cm)
+{
+	cm->cm_flags |= MPS_CM_FLAGS_XNU_CFG_TIMEOUT;
+	cm->cm_complete = mps_config_iounit_pg7_late;
+	sc->xnu.temp_stopped = 1;
+	sc->xnu.stats.temp_timeouts++;
+	mps_dprint(sc, MPS_ERROR, "IO Unit Page 7 read not answered in %d s: "
+	    "temperature polling stopped until the next controller reinit\n",
+	    MPS_XNU_TEMP_TIMEOUT_S);
+}
 
 /**
  * mps_config_get_iounit_pg7 - obtain IO Unit page 7 (XNU: not in FreeBSD)
@@ -80,7 +106,8 @@ mps_config_get_iounit_pg7(struct mps_softc *sc, Mpi2ConfigReply_t *mpi_reply,
 	request->Header.PageVersion = MPI2_IOUNITPAGE7_PAGEVERSION;
 	cm->cm_desc.Default.RequestFlags = MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE;
 	cm->cm_data = NULL;
-	error = mps_wait_command(sc, &cm, 60, CAN_SLEEP);
+	cm->cm_timeout_handler = mps_config_iounit_pg7_timeout;
+	error = mps_wait_command(sc, &cm, MPS_XNU_TEMP_TIMEOUT_S, CAN_SLEEP);
 	if (cm != NULL)
 		reply = (MPI2_CONFIG_REPLY *)cm->cm_reply;
 	if (error || (reply == NULL)) {
@@ -125,8 +152,9 @@ mps_config_get_iounit_pg7(struct mps_softc *sc, Mpi2ConfigReply_t *mpi_reply,
 		goto out;
 	}
 	cm->cm_data = page;
+	cm->cm_timeout_handler = mps_config_iounit_pg7_timeout;
 
-	error = mps_wait_command(sc, &cm, 60, CAN_SLEEP);
+	error = mps_wait_command(sc, &cm, MPS_XNU_TEMP_TIMEOUT_S, CAN_SLEEP);
 	if (cm != NULL)
 		reply = (MPI2_CONFIG_REPLY *)cm->cm_reply;
 	if (error || (reply == NULL)) {
@@ -147,6 +175,9 @@ mps_config_get_iounit_pg7(struct mps_softc *sc, Mpi2ConfigReply_t *mpi_reply,
 	    (sizeof(Mpi2IOUnitPage7_t))));
 
 out:
+	/* the IOC owns a timed-out command: mps_config_iounit_pg7_late frees it */
+	if (cm != NULL && (cm->cm_flags & MPS_CM_FLAGS_XNU_CFG_TIMEOUT))
+		return (error);
 	free(page, M_MPT2);
 	if (cm)
 		mps_free_command(sc, cm);

@@ -464,6 +464,7 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Unit attentions after reset retried", st.ua_retries);
     SetNumber(d, "IOC temperature reads", st.temp_reads);
     SetNumber(d, "IOC temperature read failures", st.temp_failures);
+    SetNumber(d, "IOC temperature read timeouts", st.temp_timeouts);   /* polling stops until a reinit (D31) */
     SetNumber(d, "IOC temperature warnings", st.temp_warnings);
     if (st.ioc_temp_valid && st.ioc_temp_c >= 0) {
         SetNumber(d, "IOC temperature (C)", (UInt64)st.ioc_temp_c);

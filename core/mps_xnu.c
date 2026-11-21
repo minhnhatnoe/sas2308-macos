@@ -1017,6 +1017,8 @@ mps_xnu_reinit_done(struct mps_softc *sc)
 		sc->xnu.stats.reinit_max_ms = (uint32_t)ms;
 	mps_dprint(sc, MPS_INIT|MPS_INFO, "reinit done in %ju ms\n",
 	    (uintmax_t)ms);
+	/* the reinit reclaimed a timed-out temperature read: poll again (D31) */
+	sc->xnu.temp_stopped = 0;
 }
 
 /* ---- system sleep ------------------------------------------------------------ */
@@ -1418,9 +1420,9 @@ mps_xnu_queue_due(struct mps_softc *sc)
 	 * completed nor while firmware events wait (discovery comes first), never
 	 * two reads queued.  It runs on the event queue, so it cannot overlap a
 	 * page 0 read.  (Not MPSSAS_IN_DISCOVERY: only a discovery event clears
-	 * it.)
+	 * it.)  After a read timed out, not until the next reinit (D31).
 	 */
-	if (sc->xnu.temp_absent || sc->xnu.temp_queued ||
+	if (sc->xnu.temp_absent || sc->xnu.temp_queued || sc->xnu.temp_stopped ||
 	    (sc->sassc->flags & MPSSAS_IN_STARTUP) ||
 	    !TAILQ_EMPTY(&sc->sassc->ev_queue) ||
 	    (sc->xnu.temp_last_us != 0 && now - sc->xnu.temp_last_us <

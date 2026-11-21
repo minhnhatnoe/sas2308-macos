@@ -143,6 +143,8 @@ struct MockIocModel {
     uint16_t iocTemp = 52;
     uint8_t  iocTempUnits = MPI2_IOUNITPAGE7_IOC_TEMP_CELSIUS;
     int      iounit7Headers = 0, iounit7Reads = 0;
+    bool     dropIoUnit7 = false;               /* never answer IO Unit Page 7 requests (D31) */
+    int      iounit7Dropped = 0;
 
     /* ---- IOC-side view of the queues (from IOCInit) ---- */
     uint64_t reqBase = 0, postBase = 0, freeBase = 0;
@@ -601,7 +603,11 @@ struct MockIocModel {
         }
         if (dropConfigOnce) { dropConfigOnce = false; return; }
         CHECK(descType == MPI2_REQ_DESCRIPT_FLAGS_DEFAULT_TYPE);
-        if (q->Header.PageType == MPI2_CONFIG_PAGETYPE_IO_UNIT) { AnswerIoUnit7(q, smid); return; }
+        if (q->Header.PageType == MPI2_CONFIG_PAGETYPE_IO_UNIT) {
+            if (dropIoUnit7) { iounit7Dropped++; return; }
+            AnswerIoUnit7(q, smid);
+            return;
+        }
         CHECK(q->Header.PageType == MPI2_CONFIG_PAGETYPE_EXTENDED);
         CHECK(q->ExtPageType == MPI2_CONFIG_EXTPAGETYPE_SAS_DEVICE && q->Header.PageNumber == 0);
         MPI2_CONFIG_REPLY cr{};

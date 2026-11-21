@@ -69,6 +69,7 @@ struct mps_xnu_stats {
 	/* IOC temperature (IO Unit Page 7, mps_xnu_temperature) */
 	uint32_t	temp_reads, temp_failures;
 	uint32_t	temp_warnings;		/* crossings of MPS_XNU_TEMP_WARN_C */
+	uint32_t	temp_timeouts;		/* read not answered: polling stopped until a reinit (D31) */
 	uint32_t	ioc_temp_valid;		/* ioc_temp_c holds a reading */
 	int32_t		ioc_temp_c;		/* last reading, degrees C */
 	/* review fixes */
