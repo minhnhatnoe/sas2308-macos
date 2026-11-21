@@ -59,6 +59,7 @@ cam_sim_alloc(sim_action_func sim_action, sim_poll_func sim_poll,
 	sim->max_tagged_dev_openings = max_tagged_dev_transactions;
 	sim->devq = queue;
 	TAILQ_INIT(&sim->held);
+	TAILQ_INIT(&sim->batch);
 	TAILQ_INIT(&sim->frozen);
 	sim->nomem.target_id = CAM_TARGET_WILDCARD;
 	sim->nomem.lun_id = CAM_LUN_WILDCARD;
@@ -300,8 +301,9 @@ cam_xnu_hold(struct cam_sim *sim, union ccb *ccb)
  * a merge keeps the held queue in order.
  */
 static void
-cam_xnu_unbatch(struct cam_sim *sim, struct cam_xnu_ccbq *batch)
+cam_xnu_unbatch(struct cam_sim *sim)
 {
+	struct cam_xnu_ccbq *batch = &sim->batch;
 	struct cam_xnu_ccbq merged;
 	struct ccb_hdr *a, *b;
 
@@ -333,7 +335,6 @@ cam_xnu_unbatch(struct cam_sim *sim, struct cam_xnu_ccbq *batch)
 static void
 cam_xnu_run_held(struct cam_sim *sim)
 {
-	struct cam_xnu_ccbq batch;
 	struct ccb_hdr *h;
 	union ccb *ccb;
 
@@ -346,14 +347,15 @@ cam_xnu_run_held(struct cam_sim *sim)
 		sim->rerun = 0;
 		if (sim->freeze > 0)
 			break;
-		TAILQ_INIT(&batch);
-		TAILQ_CONCAT(&batch, &sim->held, sim_links);
-		while ((h = TAILQ_FIRST(&batch)) != NULL) {
+		TAILQ_CONCAT(&sim->batch, &sim->held, sim_links);
+		TAILQ_FOREACH(h, &sim->batch, sim_links)
+			((union ccb *)h)->ccb_h.xnu_held = 2;
+		while ((h = TAILQ_FIRST(&sim->batch)) != NULL) {
 			if (sim->freeze > 0) {
-				cam_xnu_unbatch(sim, &batch);
+				cam_xnu_unbatch(sim);
 				break;
 			}
-			TAILQ_REMOVE(&batch, h, sim_links);
+			TAILQ_REMOVE(&sim->batch, h, sim_links);
 			ccb = (union ccb *)h;
 			ccb->ccb_h.xnu_held = 0;
 			sim->held_checks++;
@@ -365,6 +367,7 @@ cam_xnu_run_held(struct cam_sim *sim)
 			sim->sim_action(sim, ccb);
 		}
 	} while (sim->rerun);
+	KASSERT(TAILQ_EMPTY(&sim->batch), ("cam_xnu_run_held: batch left"));
 	sim->running = 0;
 }
 
@@ -580,7 +583,16 @@ cam_xnu_held_count(struct cam_sim *sim)
 
 	TAILQ_FOREACH(h, &sim->held, sim_links)
 		n++;
+	TAILQ_FOREACH(h, &sim->batch, sim_links)
+		n++;
 	return (n);
+}
+
+/* XNU: the queue a held ccb is on (L3) */
+static struct cam_xnu_ccbq *
+cam_xnu_held_queue(struct cam_sim *sim, union ccb *ccb)
+{
+	return (ccb->ccb_h.xnu_held == 2 ? &sim->batch : &sim->held);
 }
 
 void
@@ -589,9 +601,10 @@ cam_xnu_flush_held(struct cam_sim *sim, uint32_t status)
 	struct ccb_hdr *h;
 	union ccb *ccb;
 
-	while ((h = TAILQ_FIRST(&sim->held)) != NULL) {
-		TAILQ_REMOVE(&sim->held, h, sim_links);
+	while ((h = TAILQ_FIRST(&sim->held)) != NULL ||
+	    (h = TAILQ_FIRST(&sim->batch)) != NULL) {
 		ccb = (union ccb *)h;
+		TAILQ_REMOVE(cam_xnu_held_queue(sim, ccb), h, sim_links);
 		ccb->ccb_h.xnu_held = 0;
 		ccb->ccb_h.status = status;
 		if (ccb->ccb_h.cbfcnp != NULL)
@@ -603,22 +616,25 @@ cam_xnu_flush_held(struct cam_sim *sim, uint32_t status)
 int
 cam_xnu_flush_held_target(struct cam_sim *sim, target_id_t tid, uint32_t status)
 {
+	struct cam_xnu_ccbq *q[2] = { &sim->held, &sim->batch };
 	struct ccb_hdr *h, *next;
 	union ccb *ccb;
-	int n = 0;
+	int i, n = 0;
 
 	mtx_assert(sim->mtx, MA_OWNED);
-	for (h = TAILQ_FIRST(&sim->held); h != NULL; h = next) {
-		next = TAILQ_NEXT(h, sim_links);
-		if (h->target_id != tid)
-			continue;
-		TAILQ_REMOVE(&sim->held, h, sim_links);
-		ccb = (union ccb *)h;
-		ccb->ccb_h.xnu_held = 0;
-		ccb->ccb_h.status = status;
-		if (ccb->ccb_h.cbfcnp != NULL)
-			ccb->ccb_h.cbfcnp(NULL, ccb);
-		n++;
+	for (i = 0; i < 2; i++) {
+		for (h = TAILQ_FIRST(q[i]); h != NULL; h = next) {
+			next = TAILQ_NEXT(h, sim_links);
+			if (h->target_id != tid)
+				continue;
+			TAILQ_REMOVE(q[i], h, sim_links);
+			ccb = (union ccb *)h;
+			ccb->ccb_h.xnu_held = 0;
+			ccb->ccb_h.status = status;
+			if (ccb->ccb_h.cbfcnp != NULL)
+				ccb->ccb_h.cbfcnp(NULL, ccb);
+			n++;
+		}
 	}
 	return (n);
 }
@@ -629,7 +645,7 @@ cam_xnu_cancel_held(struct cam_sim *sim, union ccb *ccb, uint32_t status)
 	mtx_assert(sim->mtx, MA_OWNED);
 	if (!ccb->ccb_h.xnu_held)
 		return (0);
-	TAILQ_REMOVE(&sim->held, &ccb->ccb_h, sim_links);
+	TAILQ_REMOVE(cam_xnu_held_queue(sim, ccb), &ccb->ccb_h, sim_links);
 	ccb->ccb_h.xnu_held = 0;
 	ccb->ccb_h.status = status;
 	if (ccb->ccb_h.cbfcnp != NULL)

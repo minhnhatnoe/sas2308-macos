@@ -2998,6 +2998,66 @@ static void DeviationTests()
         /* the driver's own handlers never do: an unexpected KASSERT aborts every other test */
     }
 
+    if (Want("L3")) {
+        /* a held ccb can always be cancelled, as CAM's XPT_ABORT of a queued ccb: also while a run of
+         * the held queue has it in its batch (the tail and a middle element), and a flush sees them */
+        Rig g;
+        struct cam_sim *sim = g.sc->sassc->sim;
+        static sim_action_func *orig;
+        static union ccb *first, *cancel[2];
+        static int cancelled;
+        mps_lock(g.sc);
+        xpt_freeze_simq(sim, 1);
+        mps_unlock(g.sc);
+        Io *io[4];
+        for (int i = 0; i < 4; i++) {
+            io[i] = g.Read(0x0009, 0, 10 + i);
+            CHECK(g.Go(io[i]) == kHeld);
+        }
+        first = io[0]->ccb; cancel[0] = io[3]->ccb; cancel[1] = io[1]->ccb;   /* the tail, a middle one */
+        cancelled = 0;
+        orig = sim->sim_action;
+        sim->sim_action = [](struct cam_sim *s, union ccb *ccb) {
+            if (ccb == first)
+                for (union ccb *c : cancel)
+                    cancelled += cam_xnu_cancel_held(s, c, CAM_REQ_ABORTED);
+            orig(s, ccb);
+        };
+        mps_lock(g.sc);
+        xpt_release_simq(sim, 1);
+        mps_unlock(g.sc);
+        sim->sim_action = orig;
+        g.Pump();
+        CHECK(cancelled == 2);
+        CHECK(io[3]->done && io[3]->status == CAM_REQ_ABORTED && io[1]->done && io[1]->status == CAM_REQ_ABORTED);
+        CHECK(io[0]->done && io[0]->status == CAM_REQ_CMP && io[2]->done && io[2]->status == CAM_REQ_CMP);
+        CHECK(g.HeldCount() == 0 && TAILQ_EMPTY(&sim->held));
+        /* a flush from inside a run fails the rest of the batch, once */
+        mps_lock(g.sc);
+        xpt_freeze_simq(sim, 1);
+        mps_unlock(g.sc);
+        Io *f[3];
+        for (int i = 0; i < 3; i++) {
+            f[i] = g.Read(0x0009, 0, 20 + i);
+            CHECK(g.Go(f[i]) == kHeld);
+        }
+        first = f[0]->ccb;
+        orig = sim->sim_action;
+        sim->sim_action = [](struct cam_sim *s, union ccb *ccb) {
+            if (ccb == first)
+                cam_xnu_flush_held(s, CAM_DEV_NOT_THERE);
+            orig(s, ccb);
+        };
+        mps_lock(g.sc);
+        xpt_release_simq(sim, 1);
+        mps_unlock(g.sc);
+        sim->sim_action = orig;
+        g.Pump();
+        CHECK(f[0]->done == 1 && f[0]->status == CAM_REQ_CMP);
+        CHECK(f[1]->done == 1 && f[1]->status == CAM_DEV_NOT_THERE && f[2]->done == 1 && f[2]->status == CAM_DEV_NOT_THERE);
+        CHECK(g.HeldCount() == 0 && g.sc->io_cmds_active == 0);
+    }
+
     if (Want("D27")) {
         /* the kernel printf's %b in compat: FreeBSD's call sites stay verbatim */
         char b[200];

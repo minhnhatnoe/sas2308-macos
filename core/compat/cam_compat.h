@@ -183,7 +183,7 @@ struct ccb_hdr {
 	TAILQ_ENTRY(ccb_hdr) sim_links;	/* XNU: held queue link */
 	uint64_t	xnu_seq;	/* XNU: arrival order (xpt_action) */
 	uint64_t	xnu_start_us;	/* XNU: arrival time (latency incl. hold) */
-	int		xnu_held;	/* XNU: on the held queue now */
+	int		xnu_held;	/* XNU: 1 held, 2 in a run's batch (L3) */
 	int		xnu_was_held;	/* XNU: held at least once */
 	int		xnu_resets;	/* XNU: re-sent after our own resets */
 	xpt_opcode	func_code;
@@ -289,6 +289,12 @@ struct cam_sim {
 	uint64_t		 held_checks;		/* held ccbs examined by runs */
 	uint32_t		 held_total;		/* ccbs ever held */
 	TAILQ_HEAD(cam_xnu_ccbq, ccb_hdr) held;			/* by arrival order */
+	/*
+	 * XNU: the ccbs a run of the held queue took off it (xnu_held 2), so
+	 * a cancel or flush can still find each one, as CAM's XPT_ABORT finds
+	 * a queued ccb in its devq (L3).  Empty outside cam_xnu_run_held.
+	 */
+	struct cam_xnu_ccbq	 batch;
 	TAILQ_HEAD(, cam_xnu_frozen) frozen;
 	/*
 	 * XNU: CAM's devq freeze is a counter in the cam_ed, no allocation.
