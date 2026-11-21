@@ -389,7 +389,7 @@ struct Rig {
     }
     int ForceReinit() {                         /* mps_reinit() from a thread */
         mps_lock(sc);
-        int rc = mps_reinit(sc);
+        int rc = (mps_reinit)(sc);
         mps_unlock(sc);
         return rc;
     }
@@ -1150,7 +1150,7 @@ static void AsyncTests()
         CHECK(HasLog(mark, "Abort failed for target 0, sending logical unit reset"));
         CHECK(HasLog(mark, "logical unit reset complete for target 0, but still have 1 command(s), sending target reset"));
         CHECK(HasLog(mark, "Target reset complete for target 0, but still have 1 command(s), resetting controller"));
-        CHECK(HasLog(mark, "controller reinit requested: target reset did not clear the target"));
+        CHECK(HasLog(mark, "controller reinit requested: mpssas_target_reset_complete"));
         CHECK(HasLog(mark, "Reinitializing controller"));
         CHECK(HasLog(mark, "Reset already in progress"));
         CHECK(HasLog(mark, "held IO for target 1 lun 0 timed out before it was sent"));
@@ -1178,7 +1178,7 @@ static void AsyncTests()
         m.nowUs += 400000;
         g.Callouts();                                                /* mpssas_tm_timeout */
         CHECK(g.ReinitQueued() && g.Stats().tm_timeouts == 1 && g.TmsBusy() == 1);
-        CHECK(HasLog(mark, "timed out") && HasLog(mark, "controller reinit requested: task management timeout"));
+        CHECK(HasLog(mark, "timed out") && HasLog(mark, "controller reinit requested: mpssas_tm_timeout"));
         m.ReleaseTm();                                               /* firmware answers after all */
         g.Pump();
         CHECK(g.Stats().tm_late_replies == 1 && g.TmsBusy() == 1 && g.ReinitQueued());   /* the reinit frees it */
@@ -1264,7 +1264,7 @@ static void AsyncTests()
         g.Callouts();                                                /* mps_periodic */
         CHECK(g.Faulted() && g.ReinitQueued() && g.Stats().faults == 1);
         CHECK(HasLog(mark, "IOC Fault 0x40005854, Resetting"));
-        CHECK(HasLog(mark, "controller reinit requested: IOC fault"));
+        CHECK(HasLog(mark, "controller reinit requested: mps_periodic"));
         m.faultOnIocInitOnce = true; m.holdIo = false;
         const int diag = m.diagResetCount;
         CHECK(g.RunReinit() == 0);
@@ -2986,6 +2986,22 @@ static void DeviationTests()
         /* 128-byte frames: (128/12 - 1) x MaxChainDepth 128 + 1 = 1153 pages, i.e. 4.5 MiB (mps.c) */
         CHECK(g.sc->maxio == (((128 / 12) - 1) * 128 + 1) * 4096);
         CHECK(g.MaxSegs() == (uint32_t)g.sc->maxio / 4096);   /* + 1, capped at the chain depth (D59) */
+    }
+
+    if (Want("D54")) {
+        /* FreeBSD's mps_reinit(sc) from a callout or completion queues the reinit task (it sleeps) */
+        Rig g;
+        const int resets = g.ioc.diagResetCount;
+        mps_lock(g.sc);
+        mps_reinit(g.sc);                               /* as mps_periodic / mpssas_tm_timeout do */
+        CHECK(g.ReinitQueued() && g.ioc.diagResetCount == resets);
+        mps_unlock(g.sc);
+        HostAdvance(5000);
+        CHECK(!g.ReinitQueued() && g.ioc.diagResetCount == resets + 1 && !g.Gone());
+        Io *r = g.Read(0x0009, 0, 2);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
     }
 
     if (Want("D18")) {

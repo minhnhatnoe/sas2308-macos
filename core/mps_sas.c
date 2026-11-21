@@ -884,12 +884,11 @@ mpssas_tm_timeout(void *data)
 	/*
 	 * XNU: the IOC still owns the TM until the reinit: a reply that
 	 * arrives meanwhile is counted as late and ignored (mps_intr_locked);
-	 * the reinit completes the TM.  mps_reinit() sleeps, so it runs on
-	 * the reinit taskqueue.
+	 * the reinit completes the TM.  mps_reinit() queues the reinit task.
 	 */
 	tm->cm_flags |= MPS_CM_FLAGS_XNU_TM_TIMEDOUT;
 	sc->xnu.stats.tm_timeouts++;
-	mps_xnu_request_reinit(sc, "task management timeout");
+	mps_reinit(sc);
 }
 
 static void
@@ -933,7 +932,7 @@ mpssas_logical_unit_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 			/* we should have gotten a reply. */
 			mps_dprint(sc, MPS_INFO|MPS_RECOVERY, "NULL reply on "
 			    "LUN reset attempt, resetting controller\n");
-			mps_xnu_request_reinit(sc, "NULL LUN reset reply");	/* XNU */
+			mps_reinit(sc);
 		}
 		return;
 	}
@@ -1031,7 +1030,7 @@ mpssas_target_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 			/* we should have gotten a reply. */
 			mps_dprint(sc, MPS_INFO|MPS_RECOVERY, "NULL reply on "
 			    "target reset attempt, resetting controller\n");
-			mps_xnu_request_reinit(sc, "NULL target reset reply");	/* XNU */
+			mps_reinit(sc);
 		}
 		return;
 	}
@@ -1065,8 +1064,8 @@ mpssas_target_reset_complete(struct mps_softc *sc, struct mps_command *tm)
 		    "Target reset complete for target %u, but still have %u "
 		    "command(s), resetting controller\n", targ->tid,
 		    targ->outstanding);
-		/* XNU: on the reinit taskqueue; the TM is freed by the reinit */
-		mps_xnu_request_reinit(sc, "target reset did not clear the target");
+		/* XNU: the TM is freed by the reinit */
+		mps_reinit(sc);
 	}
 }
 
@@ -1173,7 +1172,7 @@ mpssas_abort_complete(struct mps_softc *sc, struct mps_command *tm)
 			/* we should have gotten a reply. */
 			mps_dprint(sc, MPS_INFO|MPS_RECOVERY, "NULL reply on "
 			    "abort attempt, resetting controller\n");
-			mps_xnu_request_reinit(sc, "NULL abort reply");	/* XNU */
+			mps_reinit(sc);
 		}
 		return;
 	}

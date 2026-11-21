@@ -843,7 +843,7 @@ mps_iocfacts_free(struct mps_softc *sc)
  * appropriately.
  */
 int
-mps_reinit(struct mps_softc *sc)
+(mps_reinit)(struct mps_softc *sc)
 {
 	int error;
 	struct mpssas_softc *sassc;
@@ -1013,7 +1013,7 @@ mps_reinit_task(void *arg, int pending)
 	mps_lock(sc);
 	/* XNU: a reinit that ran meanwhile (mps_wait_command) covered it */
 	if (sc->xnu.reinit_pending)
-		mps_reinit(sc);
+		(mps_reinit)(sc);
 	mps_unlock(sc);
 }
 
@@ -2153,8 +2153,7 @@ mps_periodic(void *arg)
 	    !sc->xnu.reinit_pending) {				/* XNU */
 		mps_dprint(sc, MPS_FAULT, "IOC Fault 0x%08x, Resetting\n", db);
 		sc->xnu.stats.faults++;
-		/* XNU: mps_reinit() sleeps; run it on the taskqueue */
-		mps_xnu_request_reinit(sc, "IOC fault");
+		mps_reinit(sc);
 	}
 	mps_xnu_periodic(sc);	/* XNU: log summaries, statistics */
 
@@ -3271,7 +3270,7 @@ mps_wait_command(struct mps_softc *sc, struct mps_command **cmp, int timeout,
 			mps_dprint(sc, MPS_FAULT, "Calling Reinit from %s, timeout=%d,"
 			    " elapsed=%jd\n", __func__, timeout,
 			    (intmax_t)cur_time.tv_sec);
-			rc = mps_reinit(sc);
+			rc = (mps_reinit)(sc);	/* XNU: the reset (D54) */
 			mps_dprint(sc, MPS_FAULT, "Reinit %s\n", (rc == 0) ? "success" :
 			    "failed");
 		} else

@@ -788,6 +788,12 @@ int mps_wait_command(struct mps_softc *sc, struct mps_command **cm, int timeout,
 
 
 int mps_reinit(struct mps_softc *sc);
+/*
+ * XNU: mps_reinit() sleeps (diag reset), and FreeBSD calls it from callouts
+ * and completion handlers: there it queues the reinit task (D54), named by
+ * the caller.  (mps_reinit)(sc) resets: the task, mps_wait_command.
+ */
+#define	mps_reinit(sc)	mps_xnu_request_reinit((sc), __func__)
 void mpssas_handle_reinit(struct mps_softc *sc);
 
 /* XNU: SAS Device Page 0 only, no mps_mapping.c (simple target ids, mps_xnu.c) */
