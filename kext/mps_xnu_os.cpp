@@ -348,6 +348,19 @@ void mps_os_bus_write_4(bus_space_tag_t t, bus_space_handle_t h, bus_size_t off,
 }
 
 /*
+ * D73: bus_dmamap_sync() is a no-op (PCIe DMA through the DART is coherent),
+ * which is only right if the IODMACommand maps our memory itself. One that
+ * bounces (a copy buffer for an address or alignment it cannot reach) would
+ * copy only at prepare/complete, not at the core's syncs: refused. The
+ * family's task buffers are safe either way: their prepare() and complete()
+ * synchronize (SAS2308HBA::PortTaskMapBegin / PortTaskUnmap).
+ */
+static bool XnuBounced(IODMACommand *cmd)
+{
+    return cmd->getIOMemoryDescriptor() != cmd->getMemoryDescriptor();
+}
+
+/*
  * bus_dmamem_alloc(): wired kernel memory run through an IODMACommand bound
  * to the device's mapper, so the IOC sees IOVAs (on Apple silicon every PCI
  * device sits behind a DART). addrBits 32 makes the mapper place the IOVA
@@ -387,8 +400,10 @@ int mps_os_dmamem_alloc(bus_dma_tag_t tag, void **vaddr, void **cookie)
     UInt64 maxSegSize = tag->dt_maxsegsz >= size ? 0 : tag->dt_maxsegsz;
     if (d->segs)
         d->cmd = IODMACommand::withSpecification(kIODMACommandOutputHost64, low32 ? 32 : 64, maxSegSize,
-                                                 IODMACommand::kMapped, 0, 1, mapper, NULL);
+                                                 IODMACommand::kMapped, 0, (UInt32)align, mapper, NULL);
     IOReturn ret = (d->segs && d->bmd && d->cmd) ? d->cmd->setMemoryDescriptor(d->bmd, true) : kIOReturnNoMemory;
+    if (ret == kIOReturnSuccess && XnuBounced(d->cmd))
+        ret = kIOReturnDMAError;
 
     UInt64 offset = 0;
     bool ok = ret == kIOReturnSuccess;
@@ -401,7 +416,8 @@ int mps_os_dmamem_alloc(bus_dma_tag_t tag, void **vaddr, void **cookie)
             break;
         }
         for (UInt32 i = 0; i < n && ok; i++) {
-            if (d->nsegs >= (uint32_t)maxsegs || seg[i].fIOVMAddr % align != 0 ||
+            /* alignment: the DMA specification's (D74) */
+            if (d->nsegs >= (uint32_t)maxsegs ||
                 seg[i].fIOVMAddr + seg[i].fLength - 1 > tag->dt_lowaddr ||
                 seg[i].fLength > tag->dt_maxsegsz) {
                 ok = false;
@@ -421,7 +437,7 @@ int mps_os_dmamem_alloc(bus_dma_tag_t tag, void **vaddr, void **cookie)
         mps_os_dmamem_free(tag, nullptr, d);
         return ENOMEM;
     }
-    bzero(d->bmd->getBytesNoCopy(), size);
+    /* not zeroed here: bus_dmamem_alloc does for BUS_DMA_ZERO, as FreeBSD (D74) */
     if (sc)
         mps_dprint(sc, MPS_XINFO, "DMA %zu bytes, align %llu, lowaddr 0x%llx: IOVA 0x%llx, %u segment%s\n",
                    size, (unsigned long long)align, (unsigned long long)tag->dt_lowaddr,
@@ -525,10 +541,14 @@ int mps_os_dmamap_load_buf(bus_dma_tag_t tag, void *buf, size_t len, void **cook
     }
     UInt64 maxSegSize = tag->dt_maxsegsz >= len ? 0 : tag->dt_maxsegsz;
     b->cmd = IODMACommand::withSpecification(kIODMACommandOutputHost64, low32 ? 32 : 64, maxSegSize,
-                                             IODMACommand::kMapped, 0, 1, mapper, NULL);
+                                             IODMACommand::kMapped, 0, (UInt32)align, mapper, NULL);
     IOReturn ret = b->cmd ? b->cmd->setMemoryDescriptor(b->md, true) : kIOReturnNoMemory;
     UInt64 offset = 0;
     int n = 0, error = (ret == kIOReturnSuccess) ? 0 : ENOMEM;
+    if (error == 0 && XnuBounced(b->cmd)) {
+        ret = kIOReturnDMAError;
+        error = EINVAL;
+    }
     while (error == 0 && offset < len) {
         IODMACommand::Segment64 seg[4];
         UInt32 cnt = 4;
@@ -542,7 +562,7 @@ int mps_os_dmamap_load_buf(bus_dma_tag_t tag, void *buf, size_t len, void **cook
                 error = EFBIG;
                 break;
             }
-            if (seg[i].fIOVMAddr % align != 0 || seg[i].fIOVMAddr + seg[i].fLength - 1 > tag->dt_lowaddr) {
+            if (seg[i].fIOVMAddr + seg[i].fLength - 1 > tag->dt_lowaddr) {     /* alignment: the specification's (D74) */
                 error = EINVAL;
                 break;
             }

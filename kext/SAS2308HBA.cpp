@@ -266,7 +266,13 @@ SAS2308HBA::PortTaskDescribe(SCSIParallelTaskIdentifier task, SAS2308GluePort::T
     return GetTargetIdentifier(task) < fGlue.fMaxTargets;
 }
 
-/* the family owns the IODMACommand and its memory descriptor: prepare the range, list it, complete it */
+/*
+ * The family owns the IODMACommand and its memory descriptor: prepare the
+ * range, list it, complete it. Should it ever bounce (InitializeDMASpecification
+ * asks for 64 bits, byte alignment: it should not), prepare() and complete()
+ * synchronize the copy themselves, so the core's no-op bus_dmamap_sync does
+ * not matter here (D73).
+ */
 bool
 SAS2308HBA::PortTaskMapBegin(SCSIParallelTaskIdentifier task, uint64_t length)
 {
