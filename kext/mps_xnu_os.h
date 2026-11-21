@@ -116,7 +116,7 @@ struct mps_kext_limits {
 	uint32_t	reply_frames;		/* num_replies */
 	uint32_t	post_queue_depth;	/* pqdepth */
 	uint32_t	chain_frames;		/* num_chains */
-	uint32_t	os_commands;		/* xnu.io_cmds */
+	uint32_t	os_commands;		/* mps_kext_max_tasks */
 	uint32_t	max_segs;		/* buffer_dmat nsegments */
 	uint64_t	maxio;			/* sc->maxio: largest IO, bytes (mps.max_io_pages) */
 	uint64_t	dma_bytes;

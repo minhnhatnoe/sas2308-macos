@@ -186,7 +186,7 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         CHECK(glue.Attached());
         CHECK(glue.fSlots != nullptr);
         CHECK(glue.fCoreAttached && glue.fMaxSegs == mps_kext_max_segs(k));
-        CHECK(glue.fMaxTasks == mps_kext_max_tasks(k) && glue.fMaxTasks == (uint32_t)gHost.sc->xnu.io_cmds);
+        CHECK(glue.fMaxTasks == mps_kext_max_tasks(k) && glue.fMaxTasks == (uint32_t)(gHost.sc->num_reqs - gHost.sc->num_prireqs - 8));   /* D21: the kext keeps 8 */
         glue.Start();
         CHECK(glue.Enter());
         mps_kext_start(k);
@@ -303,7 +303,7 @@ int main()
         m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         m.requestCredit = 10240; m.replyPostDepth = 65520;
         Family f; f.Attach(&m);
-        CHECK(f.glue.fMaxTasks == MPS_REQ_FRAMES - MPS_XNU_INTERNAL_CMDS && f.glue.fMaxTasks == 2040);
+        CHECK(f.glue.fMaxTasks == MPS_REQ_FRAMES - 8 && f.glue.fMaxTasks == 2040);
         struct mps_kext_limits l;
         CHECK(mps_kext_limits(f.k, &l) == 0);
         CHECK(l.request_credit == 10240 && l.high_priority_credit == MockIocModel::kHighPriorityCredit &&

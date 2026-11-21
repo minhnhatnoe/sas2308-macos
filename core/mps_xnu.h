@@ -26,10 +26,9 @@ struct mps_softc;
 /*
  * Queue sizes are FreeBSD's (mpsvar.h MPS_REQ_FRAMES, MPS_PRI_REQ_FRAMES,
  * MPS_REPLY_FRAMES, MPS_EVT_REPLY_FRAMES, MPS_CHAIN_FRAMES), bounded by
- * IOCFacts in mps_resize_queues. The OS gets the normal frames less
- * MPS_XNU_INTERNAL_CMDS (xnu.io_cmds, the family's ReportMaximumTaskCount).
+ * IOCFacts in mps_resize_queues.  The OS's share of the normal frames is
+ * the kext's (mps_kext_max_tasks).
  */
-#define MPS_XNU_INTERNAL_CMDS	8	/* events, acks, port enable, removal */
 #define MPS_XNU_REINIT_TRIES	3	/* mps_reinit attempts on nested faults */
 #define MPS_XNU_MAX_TARGETS	64	/* target ids handed out */
 #define MPS_XNU_CFG_TRIES	3	/* page 0 attempts in a row (10, 20 ms apart) */
@@ -139,7 +138,6 @@ struct mps_xnu {
 	int			 stop_reinit;		/* suspend: a running reinit gives up */
 	int			 reinit_owed;		/* abandoned reinit left IN_STARTUP held */
 	int			 freed;			/* mps_free() ran */
-	int			 io_cmds;		/* SCSI IOs the OS may have outstanding (mps_resize_queues) */
 	uint64_t		 reinit_start_us;
 	int			 gone_logged;
 	/* config pages (mps_config.c): one DMA buffer, one read at a time */

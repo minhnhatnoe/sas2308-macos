@@ -1453,7 +1453,7 @@ static void LoggingTests()
         CHECK(HasLog(mark, "Firmware: 20.00.00.00, Driver: "));
         CHECK(HasLog(mark, "IOCCapabilities: "));
         CHECK(HasLog(mark, "Sized queues to q=1 reqs=108 replies=127"));
-        CHECK(HasLog(mark, "RequestCredit 100 HighPriorityCredit 8 ReplyPostQueueDepth 128: 92 OS commands, 2900 chain frames"));
+        CHECK(HasLog(mark, "RequestCredit 100 HighPriorityCredit 8 ReplyPostQueueDepth 128: 2900 chain frames"));
         CHECK(HasLog(mark, "FWVersion= 20-0-0-0") && HasLog(mark, "HighPriorityCredit: 8"));
         CHECK(HasLog(mark, "IOCInit"));
         CHECK(HasLog(mark, "reply frames busaddr") && HasLog(mark, "sense frames busaddr"));
@@ -1883,7 +1883,7 @@ static void TemperatureTests()
     }
 
     printf("sizing: FreeBSD defaults (%d + %d frames) bounded by IOCFacts; OS commands = normal frames - %d\n",
-           MPS_REQ_FRAMES, MPS_PRI_REQ_FRAMES, MPS_XNU_INTERNAL_CMDS);
+           MPS_REQ_FRAMES, MPS_PRI_REQ_FRAMES, 8);   /* the kext keeps 8 (MPSK_INTERNAL_CMDS, D21) */
     {
         struct Case { uint16_t credit, hpc, depth; int replyTune; int prireq, reqcr, io; const char *what; } cases[] = {
             {100, 8, 128, 0, 8, 100, 92, "the model's default"},
@@ -1909,7 +1909,7 @@ static void TemperatureTests()
             CHECK(g.attachRc == 0);
             CHECK(g.sc->num_prireqs == c.prireq);
             CHECK(g.sc->num_reqs == c.reqcr + c.prireq);
-            CHECK(g.sc->xnu.io_cmds == c.io);
+            CHECK(std::max(1, g.sc->num_reqs - g.sc->num_prireqs - 8) == c.io);   /* the kext's share (D21) */
             CHECK(g.sc->num_reqs - g.sc->num_prireqs - 1 >= c.io);       /* normal SMIDs */
             const int replyFrames = c.replyTune ? c.replyTune : MPS_REPLY_FRAMES;
             CHECK(g.sc->num_replies ==

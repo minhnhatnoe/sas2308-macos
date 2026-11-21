@@ -161,7 +161,7 @@ static void TestAttach(struct mps_softc *sc)
     T(sc->num_prireqs == MockIocModel::kHighPriorityCredit);     /* min(MPS_PRI_REQ_FRAMES 128, 8) */
     /* RequestCredit 100 < MPS_REQ_FRAMES: 100 normal frames, 92 for the OS */
     T(sc->num_reqs == 100 + MockIocModel::kHighPriorityCredit);
-    T(sc->xnu.io_cmds == 100 - MPS_XNU_INTERNAL_CMDS);
+    T(sc->num_reqs - sc->num_prireqs == 100);        /* FreeBSD's sizing; the kext keeps 8 of them (D21) */
     T(sc->num_replies == 127);              /* min(108 + 32, 128) - 1 */
     T(sc->fqdepth == 128 && sc->pqdepth == 128);
     T(gIoc.fq == 128 && gIoc.pq == 128 && gIoc.frameSz == 128);

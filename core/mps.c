@@ -392,12 +392,6 @@ mps_resize_queues(struct mps_softc *sc)
 	if (sc->facts->MaxReplyDescriptorPostQueueDepth > prireqcr + 3)
 		reqcr = MIN(reqcr,
 		    sc->facts->MaxReplyDescriptorPostQueueDepth - prireqcr - 1);
-	/*
-	 * XNU: the OS's share (ReportMaximumTaskCount): the normal frames
-	 * (SMIDs prireqcr + 1 .. num_reqs - 1) less the internal commands
-	 * (events, config pages, port enable, removals).
-	 */
-	sc->xnu.io_cmds = MAX(1, (int)reqcr - MPS_XNU_INTERNAL_CMDS);
 
 	sc->num_reqs = prireqcr + reqcr;
 	sc->num_prireqs = prireqcr;
@@ -456,10 +450,9 @@ mps_resize_queues(struct mps_softc *sc)
 	mps_dprint(sc, MPS_INIT, "Sized queues to q=%d reqs=%d replies=%d\n",
 	    sc->msi_msgs, sc->num_reqs, sc->num_replies);
 	mps_dprint(sc, MPS_INIT, "RequestCredit %d HighPriorityCredit %d "
-	    "ReplyPostQueueDepth %d: %d OS commands, %d chain frames\n",
+	    "ReplyPostQueueDepth %d: %d chain frames\n",
 	    sc->facts->RequestCredit, sc->facts->HighPriorityCredit,
-	    sc->facts->MaxReplyDescriptorPostQueueDepth, sc->xnu.io_cmds,
-	    sc->num_chains);
+	    sc->facts->MaxReplyDescriptorPostQueueDepth, sc->num_chains);
 }
 
 /*
