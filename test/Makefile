@@ -3,6 +3,7 @@
 #                   FreeBSD-shaped core (core/mps*.c, core/compat) and the IOC model
 #   mps_port_test   attach/discovery/thin CAM/reinit smoke test of the same core
 #   kext_targets_test  the kext's target table (kext/SAS2308HBA_Targets.h, no IOKit)
+#   kext_pcie_test  the "PCIe Link" register decoding (kext/SAS2308HBA_PCIe.h)
 #   plist_test.sh   the personality matches the SAS2308 device ids (D52)
 #   freestanding    compile the ported C core like the kext does (-nostdinc,
 #                   only stdint/stddef/stdarg/string/libkern; test/kernhdr stands in
@@ -38,6 +39,9 @@ mps_port_test: mps_port_test.cpp mps_host_os.cpp mps_host_os.h mock_ioc.h $(PORT
 kext_targets_test: kext_targets_test.cpp ../kext/SAS2308HBA_Targets.h
 	$(CXX) $(CXXFLAGS) -o $@ kext_targets_test.cpp
 
+kext_pcie_test: kext_pcie_test.cpp ../kext/SAS2308HBA_PCIe.h
+	$(CXX) $(CXXFLAGS) -o $@ kext_pcie_test.cpp
+
 # The kext's IOKit-free half (mps_kext.cpp, SAS2308Glue.cpp) against a fake family.
 GLUE_SRCS := ../kext/mps_kext.cpp ../kext/SAS2308Glue.cpp
 GLUE_HDRS := ../kext/mps_xnu_os.h ../kext/SAS2308Glue.h ../kext/SAS2308HBA_Targets.h
@@ -55,14 +59,15 @@ freestanding: $(PORT_SRCS) $(PORT_HDRS)
 		    -c -o /dev/null $$f || exit 1; \
 	done
 
-test: mock_ioc_test mps_port_test kext_targets_test kext_glue_test freestanding
+test: mock_ioc_test mps_port_test kext_targets_test kext_pcie_test kext_glue_test freestanding
 	sh ./plist_test.sh
 	./mock_ioc_test
 	./mps_port_test
 	./kext_targets_test
+	./kext_pcie_test
 	./kext_glue_test
 
 clean:
-	rm -rf mock_ioc_test mps_port_test kext_targets_test kext_glue_test obj
+	rm -rf mock_ioc_test mps_port_test kext_targets_test kext_pcie_test kext_glue_test obj
 
 .PHONY: test clean freestanding

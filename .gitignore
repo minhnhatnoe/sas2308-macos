@@ -8,3 +8,4 @@ test/mps_port_test
 test/obj/
 test/kext_targets_test
 test/kext_glue_test
+test/kext_pcie_test

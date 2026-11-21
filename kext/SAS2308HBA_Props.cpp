@@ -9,6 +9,7 @@
  * dictionary (SAS2308Statistics), published at most once a second.
  */
 #include "SAS2308HBA.h"
+#include "SAS2308HBA_PCIe.h"
 
 #include <IOKit/IOUserClient.h>
 #include <IOKit/storage/IOStorageControllerCharacteristics.h>
@@ -243,15 +244,76 @@ SAS2308HBA::PublishControllerCharacteristics(void)
 
 //-----------------------------------------------------------------------------
 //	PublishLimits - "Controller Limits": the IOCFacts limits and the queue
-//	sizes mps_resize_queues derived from them, plus the memory they cost.
-//	At attach (logged once) and again after every IOC reinit or resume
-//	(PublishStats), since the facts are re-read then.				[PRIVATE]
+//	sizes mps_resize_queues derived from them, plus the memory they cost,
+//	and "PCIe Link". At attach (logged once) and again after every IOC
+//	reinit or resume (PublishStats), since the facts are re-read then.
+//																	[PRIVATE]
 //-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+//	PublishPcieLink - "PCIe Link": the card's own PCI Express registers: the
+//	negotiated speed and width (Link Status) against what the card can do
+//	(Link Capabilities), the Max Payload Size and Max Read Request Size in
+//	use (Device Control) and the largest payload it supports (Device
+//	Capabilities). Not when the card is gone (all-ones) or asleep. With
+//	"Controller Limits": at attach and after every reinit or resume.
+//																	[PRIVATE]
+//-----------------------------------------------------------------------------
+
+void
+SAS2308HBA::PublishPcieLink(bool log)
+{
+    UInt8 cap = 0;
+
+    if (!fPCI || fSuspended || fPCI->configRead16(kIOPCIConfigVendorID) != 0x1000 ||
+        !fPCI->findPCICapability(kIOPCIPCIExpressCapability, &cap) || cap == 0)
+        return;
+    const uint32_t devCap = fPCI->configRead32(cap + SAS2308Pcie::kDevCap);
+    const uint16_t devCtl = fPCI->configRead16(cap + SAS2308Pcie::kDevCtl);
+    const uint32_t linkCap = fPCI->configRead32(cap + SAS2308Pcie::kLinkCap);
+    const uint16_t linkSta = fPCI->configRead16(cap + SAS2308Pcie::kLinkSta);
+    if (devCap == 0xFFFFFFFFu || linkCap == 0xFFFFFFFFu)
+        return;
+    const SAS2308Pcie::Link k = SAS2308Pcie::Decode(devCap, devCtl, linkCap, linkSta);
+    const char *speed = SAS2308Pcie::SpeedName(k.speed);
+    const char *maxSpeed = SAS2308Pcie::SpeedName(k.maxSpeed);
+
+    OSDictionary *d = OSDictionary::withCapacity(12);
+    if (!d)
+        return;
+    OSString *str = OSString::withCString(speed ? speed : "unknown");
+    if (str) {
+        d->setObject("Link Speed", str);
+        str->release();
+    }
+    SetNumber(d, "Link Width", k.width);
+    str = OSString::withCString(maxSpeed ? maxSpeed : "unknown");
+    if (str) {
+        d->setObject("Max Link Speed", str);
+        str->release();
+    }
+    SetNumber(d, "Max Link Width", k.maxWidth);
+    SetNumber(d, "Max Payload Size (bytes)", k.mps);
+    SetNumber(d, "Max Payload Size Supported (bytes)", k.mpsSupported);
+    SetNumber(d, "Max Read Request Size (bytes)", k.mrrs);
+    SetNumber(d, "Device Capabilities", devCap);
+    SetNumber(d, "Device Control", devCtl);
+    SetNumber(d, "Link Capabilities", linkCap);
+    SetNumber(d, "Link Status", linkSta);
+    setProperty(kPcieLinkKey, d);
+    d->release();
+    if (log)
+        Klog(MPSK_INIT | MPSK_INFO, "PCIe link %s x%u (card: %s x%u), Max Payload Size %u (supported %u), "
+             "Max Read Request Size %u bytes", speed ? speed : "unknown", k.width, maxSpeed ? maxSpeed : "unknown",
+             k.maxWidth, k.mps, k.mpsSupported, k.mrrs);
+}
 
 void
 SAS2308HBA::PublishLimits(bool log)
 {
     struct mps_kext_limits l;
+
+    PublishPcieLink(log);
 
     if (!Enter())
         return;

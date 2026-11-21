@@ -85,6 +85,7 @@ public:
     static constexpr const char *kStatsKey      = "SAS2308Statistics";
     static constexpr const char *kIocTemperatureKey = "IOC Temperature (C)";   /* IO Unit Page 7 */
     static constexpr const char *kLimitsKey     = "Controller Limits";  /* IOCFacts + queue sizes */
+    static constexpr const char *kPcieLinkKey   = "PCIe Link";          /* the card's link, MPS, MRRS */
 
     /* IOService (start/stop belong to the family: "shall not be overridden") */
     virtual IOReturn    setPowerState(unsigned long powerStateOrdinal, IOService *whatDevice) APPLE_KEXT_OVERRIDE;
@@ -188,6 +189,7 @@ private:
     void PublishStats(bool force);
     void ReadMsi(uint16_t *command, uint16_t *control, uint64_t *address, uint32_t *data);
     void PublishLimits(bool log);
+    void PublishPcieLink(bool log);
     void LogCounters(const char *why);
     static void StatsTimerFired(OSObject *owner, IOTimerEventSource *sender);
     static void SetNumber(OSDictionary *dict, const char *key, UInt64 value);

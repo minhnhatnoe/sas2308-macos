@@ -5,7 +5,7 @@
  *
  * sas2308ctl - change SAS2308HBA logging at runtime and read its counters.
  *
- *   sas2308ctl show                     level, debug mask, sink
+ *   sas2308ctl show                     level, debug mask, sink, PCIe link
  *   sas2308ctl stats                    the SAS2308Statistics dictionary
  *   sudo sas2308ctl level <0-4|error|warn|info|debug|trace>
  *   sudo sas2308ctl mask <list>         FreeBSD mps debug classes: "info,fault,recovery",
@@ -92,6 +92,15 @@ int main(int argc, char **argv)
                 CFTypeRef v = IORegistryEntryCreateCFProperty(svc, k, NULL, 0);
                 CFRelease(k);
                 if (v) { PrintValue(keys[i], v); CFRelease(v); }
+            }
+            if (!strcmp(cmd, "show")) {
+                /* the card's own PCIe registers (speed, width, MPS, MRRS), read at attach and after a reinit */
+                CFTypeRef v = IORegistryEntryCreateCFProperty(svc, CFSTR("PCIe Link"), NULL, 0);
+                if (v && CFGetTypeID(v) == CFDictionaryGetTypeID()) {
+                    printf("  PCIe Link:\n");
+                    CFDictionaryApplyFunction((CFDictionaryRef)v, PrintEntry, NULL);
+                }
+                if (v) CFRelease(v);
             }
             if (!strcmp(cmd, "stats")) {
                 CFTypeRef v = IORegistryEntryCreateCFProperty(svc, CFSTR("SAS2308Statistics"), NULL, 0);
