@@ -36,8 +36,23 @@ log-noise); items FINAL.md already fixed.
 | **C. Compat fidelity (core back to FreeBSD text)** | D6, D16, D21, D32, D33, D35, D37, D39, D40, D41, D42, D54, D27, D36, D17 (cosmetic), D67 (assert), D78 (QUEUE_MACRO_DEBUG in host build) | two concurrent page reads + stuck IDENTIFY -> both succeed; 1000 page reads -> live mappings back to 0; DELAY keeps mps_mtx; held-queue run bounded with 2000 posted + 500 held; tunables read from personality/boot-args; boundary split in load_ccb; queue.h debug macros on | replug a breakout under IO: all drives back, "Config page failures" 0 (only then remove the M5c retries/re-add slots, as a second step in this batch or the next); random 4K QD32 unchanged |
 | **D. Kext glue and IO path** | D7, D9, D30, D31, D45, D46, D47, D48, D52, D29 (ack counter), D55 (KASSERT counter), D73/D74 (asserts, minor) | 70-device topology -> 70 nubs; SSU sent to SATA SSDs only at shutdown; temperature poll timeout -> no reinit, polling stops; zero-length IN/OUT accepted; IODMACommand shortage -> requeue; task attribute passed | random 4K QD32 before/after (D45 slot removal); temperature property updates; "Event acks sent" after boot + hot-plug (decides D29); D9 needs a SATA SSD (SMART unsafe-shutdown count over 3 `shutdown -r`) |
 | **E. Logging (after log-noise is merged)** | D22, D23, D24, D25, D26, D49(b) | captured log types: default mask info,fault,error; XINFO lines DEBUG; FAULT type only for IOC fault / disabled; iolog fallback for device-less lines; per-target limiter | 5 min idle + hot-plug: persisted line counts by type |
+| **F. Shutdown timeout cap (new, after E)** | F1 | SSU (timeout 0) and read with lost replies, halt begins -> both done 10-15 s later, no diag reset; IO after the halt -> 10 s; no TM answered -> done < 16 s; a 30 s LUN reset pending -> 3 s; a reinit stuck in its diag reset -> stopped < 5 s | `sas2308ctl lose 1` + `sas2308ctl halt` (deterministic); `lose 1` right before `shutdown -r now` with a mounted volume; a normal mounted restart; regression |
 
 Comment-only changes (no behaviour change) ride with whichever batch touches the file: listed in the last table.
+
+**Batch F rationale** (added after batches A-E were merged, from the question "spin-down should finish
+within 30 s, right?"). macOS's halt watchdog (`PEHaltRestartInternal`, 30 s, "Halt/Restart Timed
+Out"; the 03:17 panic in `2026-11-final.md` section 5) is armed before the priority power interest
+clients and the `systemWillShutdown` walk, and covers the whole halt. D15's 10 min backstop for
+SAM's untimed START STOP UNIT, the 30 s + 10 s of any other command, 30 s reset TMs and a
+diag-reset reinit cannot save a lost reply inside it: the watchdog panics first. H5 already fails
+commands that arrive after our stop; the gap is a command in flight when the halt begins, or sent
+during the halt before our stop. Fix: from the priority interest message (the earliest hook inside
+the watchdog window, before any `systemWillShutdown`) every command gets at most 10 s left
+(FreeBSD's shutdown figure: `mpssas_SSU_to_SATA_devices` times each SSU at 10 s; da's 1 h shutdown
+SYNCHRONIZE CACHE and CAM_TIME_DEFAULT 0 = "SIM default" show FreeBSD has no comparable cap and no
+watchdog, so D15's 10 min was our own number), every TM at most 3 s, and the reinit becomes H5's
+bounded stop: 10 + 3 x 3 + 2 = 21 s worst case. Sleep keeps D15. Design: `design.md` "Batch F".
 Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace) after batch B; D75
 (kIOMapPostedWrite A/B) after batch D; D29 decided by batch D's counter.
 
@@ -103,6 +118,7 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | E | D25 | done | 079715a | glue `D25` (did not build before: new API) | see "Batch E hardware results" |
 | E | D26 | done | e5733f1 | core `D26` (handles 0x09/0x11 shared a window before) | see "Batch E hardware results" |
 | E | D49(b) + KEEP comment D49(a) | done | 89b4e62 | core `D49` (MUR ignored at sleep: counted, said) | see "Batch E hardware results" |
+| F | F1 (halt timeout cap, new) | done | 301d0d8 | glue `F`, `F-new`, `F-tm`, `F-pending-tm`, `F-reinit` (all failed before) | see "Batch F hardware results": lost read capped and failed 10.15 s after the halt began, stop instead of reinit, 0 diag resets; mounted restarts clean, no panic, volume OK |
 
 ### Batch A hardware results
 
@@ -281,6 +297,60 @@ ndjson` (script `~/hwE/count.sh`).
   KASSERT hits, 0 sleep stop failures.
 - **Not tested here**: hot-plug line counts (still to run, test 11).
 
+### Batch F hardware results
+
+Build **085DA9D6** (fix-batch-F), installed 2026-11-20 23:19, 7 drives, 0 config page failures,
+IOC 53-59 C, no "no priority power interest" error line (the halt notifier registered). Rollback:
+`~/sas2308-rollback-6542C39F` (batch E build, master ba4a02f). `tools/diff-vs-freebsd.sh`: common
+7383 -> 7380 (the three TM `callout_reset` lines and the IO timeout line carry the cap), added
+1293 -> 1360 (`mpssas_xnu_halt_caps` in mps_sas.c, the two reinit hooks in mps.c; the halt
+functions themselves are in the XNU-only mps_xnu.c). Scripts and outputs: Mac `~/hwF`.
+
+- **Deterministic halt test** (`~/hwF/hwF-halt.sh`; drives unmounted): `sas2308ctl lose 1`, a 4K
+  raw read of disk4 (target 0) is lost at 23:25:38.3; 3 s later `sas2308ctl halt` (the same
+  `mps_xnu_halt_begin` the restart's priority interest calls): `halt: 1 commands outstanding, 1
+  capped at 10 s`. At **+10.00 s** `Command timeout ... 40000 set` (the ccb keeps its original
+  30 s + 10 s figure; only the callout moved), abort, LUN reset, target reset (IOC answers each in
+  ~25 ms, the command stays lost), `halt: stopping the controller instead of a reinit`, `suspended:
+  IOC stopped` (MUR acknowledged, 53 ms). The read failed **10.15 s after the halt began** (13.17
+  s after submit; without F: the family timer at 30 s, then a diag-reset reinit). A second read
+  failed in 0.02 s (stopped controller, H5). Counters: IO timeouts 1, Halt timeouts capped 1, Halt
+  recovery stops 1, Reinits 0, **Diag resets 0**. `shutdown -r now` afterwards: request -> kernel
+  boot 12 s, no panic, attach clean on the stopped IOC, 7 drives.
+- **(b) normal restart with a mounted volume** (H5drive6 on disk9, 256 MiB synced + 64 MiB
+  left dirty): request 23:22:59 -> kernel boot 23:23:11, **12 s**; no panic; both files verify
+  (sha256) after the boot.
+- **(a) `lose 1` armed right before `shutdown -r now`, mounted volume**: the next SCSI IO lost was
+  SMID 1630 for **target 5 = disk9, the mounted volume**, at 23:24:00.868. Request 23:24:00 ->
+  kernel boot 23:24:47, **47 s** (35 s more than (b)); no panic, no new report except the routine
+  shutdown stall; both files verify. The 35 s are the lost write recovered by the normal path (30 s
+  family timer, abort -> LUN -> target reset -> reinit) while the unmount waited for it, i.e.
+  **before** the halt began: logd stops at 23:24:01, so the recovery itself was not persisted. This
+  is the pre-halt case, which never had a watchdog; it shows the mounted-volume shutdown survives a
+  lost command. A command lost **inside** the halt cannot be produced by a restart on this setup:
+  on restart nothing sends IO in the halt (SAM marks "Power Off" and sends its START STOP UNIT only
+  for power off, and D9's SSU goes only to SATA SSDs, none attached); that case is covered by the
+  deterministic test above (same entry point) and by the host tests; power off: still to run, test
+  12.
+- **Shutdown stall reports** (all of `/Library/Logs/DiagnosticReports/shutdown_stall_*`, decoded
+  with `spindump -i`, `~/hwF/stalls.sh`): one per restart, 31 since 2026-11-15, including 11 from
+  2026-11-15..17 before the kext existed; the 20 of 2026-11-20 decoded, two of them (00:08, 05:35)
+  with no SAS2308HBA loaded.
+  Each is launchd's routine sample ("shutdown stall", sampling starts 2 s into the userspace
+  shutdown, 1 s long) taken while processes are still exiting (AppleCentauri*, DriverKit drivers,
+  softwareupdated, duetexpertd, spindump itself); **0 frames in IOSCSI*/IOStorage or our kext in
+  any of the 20**, our work-loop thread idle. None is a hang: the restarts took 12-47 s request to boot.
+  22:28 = batch E's install reboot (509E19D3 shutting down), 23:18 = this batch's approval reboot
+  (6542C39F shutting down, drives unmounted, nothing injected), 23:23 / 23:24 / 23:26 = tests (b),
+  (a), and the reboot after the halt test. They are not the 03:17 picture (threads asleep in
+  `commandSleep` for 30 s inside the halt, then "Halt/Restart Timed Out"); the 03:16 stall report a
+  minute before that panic (build 386F7D9D) shows only a turnstile wait on userfsd, also no storage
+  frames.
+- **Regression** (085DA9D6, drives unmounted): random 4K read QD32 all 7, 60 s: **1772 IOPS**; seq
+  1 MiB read QD2 all 7, 60 s: **1944.9 MB/s**; verify 64 KiB random QD64, 256 MiB per drive: **0
+  mismatches, 0 errors**. `sas2308ctl stats` after: 0 IO timeouts, 0 reinits / diag resets, 0
+  halt caps / stops (fresh boot), 0 config page failures, 0 KASSERT hits, 0 lost kicks.
+
 ### Hardware tests still to run
 
 Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found with
@@ -346,6 +416,13 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
     removal and the re-add (no event field dumps, no `PHY[..]` lines); the dock unplug shows
     `controller gone (surprise removal)` and `surprise removal: controller disabled` as **Error**,
     no **Fault** line; a few dozen lines in all, not hundreds.
+
+12. **Batch F, a lost command inside the halt at power off.** Needs someone to press the power
+    button afterwards. Mount the JHFS+ test volume on disk9, write a file, then
+    `sudo ~/sas2308-dext/tools/sas2308ctl lose 1; sudo shutdown -h now` (power off: SAM marks
+    "Power Off" and spins the disks down with START STOP UNIT, timeout 0, during the halt). Expect
+    the Mac to power off within ~35 s (unmount recovery) + <= 21 s (halt), no "Halt/Restart Timed
+    Out" panic report after the next boot, the file verifies. Repeat without `lose` as the baseline.
 
 ## Ranked table: changes (CHANGE)
 

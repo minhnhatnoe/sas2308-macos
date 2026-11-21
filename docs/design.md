@@ -440,7 +440,9 @@ The dock has its own PSU: across a Mac restart the IOC would keep running and co
 memory the next kernel owns. `systemWillShutdown(kIOMessageSystemWillRestart | …WillPowerOff)`:
 `fShutdown`, `QuiesceController(2 s)` (the same stop: drain, MUR), then `super`. The IOC stays
 stopped (`setPowerState(on)` does not resume after a shutdown). FreeBSD has only an IR
-`shutdown_final` handler; Linux `scsih_shutdown` also stops the IOC. `mps_free` works on a
+`shutdown_final` handler; Linux `scsih_shutdown` also stops the IOC. From the start of the halt (priority
+power interest, before any `systemWillShutdown`) every command has at most 10 s left and a reinit
+is that stop (batch F below). `mps_free` works on a
 suspended controller (registers left alone, held IO failed `CAM_DEV_NOT_THERE`).
 
 ### Termination
@@ -877,6 +879,53 @@ MPS 128 B (card supports 4096), MRRS 512 B; "Event acks sent" 0 over 4 boots and
 (177.4k vs 173.2k IOPS), so they are the default; a forced reinit and a lost command under IO
 recover with 0 errors on posted writes. Random 4K QD32 1763 IOPS, seq 1 MiB 1945.3 MB/s, verify 0
 mismatches.
+
+## Batch F: the halt's timeout cap (branch fix-batch-F, 2026-11-20)
+Not a FreeBSD deviation item: a gap the 2026-11-20 03:17 "Halt/Restart Timed Out" panic
+(`docs/reviews/2026-11-final.md` section 5) left after H5. Plan and rationale:
+`docs/reviews/2026-11-freebsd-deviations.md`, batch F.
+
+- **Why.** `PEHaltRestartInternal` arms a 30 s watchdog and then runs
+  `IOPMrootDomain::handlePlatformHaltRestart`: first the priority power interest clients get
+  `kIOMessageSystemWillRestart` / `…WillPowerOff` (SAM's block driver marks "Power Off" there),
+  then the power tree is walked with `systemWillShutdown`, children (the disks) first, us after
+  them. H5 fails IO that arrives after our stop, but a command already posted, or one SAM sends in
+  the halt before our stop (START STOP UNIT with timeout 0, SYNCHRONIZE CACHE 30 s), keeps its
+  normal deadline: D15's 10 min backstop, 30 s + 10 s for a read, 30 s reset TMs, and a reinit
+  with a diag reset. A lost reply there hangs the halt until the watchdog panics.
+- **Hook.** `registerPrioritySleepWakeInterest` (the KPI function SAM uses; declared locally,
+  `RootDomain.h` does not compile outside xnu): our handler runs right after the watchdog is armed
+  and before any `systemWillShutdown`. `systemWillShutdown` does the same if the registration
+  failed. Sleep messages are ignored: sleep keeps D15's backstop (no watchdog there).
+- **Cap** (`mps_xnu_halt_begin`, `mpssas_xnu_halt_caps`): every posted SCSI IO not already in
+  recovery gets at most 10 s left (an untimed one too), every new one at most 10 s
+  (`mpssas_action_scsiio`), every TM at most 3 s (posted ones re-armed, new ones capped at
+  `callout_reset`). 10 s is FreeBSD's own shutdown figure (`mpssas_SSU_to_SATA_devices` sends each
+  START STOP UNIT with a 10 s timeout and waits up to 60 s, or 10 s with RB_NOSYNC; da's shutdown
+  SYNCHRONIZE CACHE has 1 h, but FreeBSD has no halt watchdog; CAM_TIME_DEFAULT 0 means "SIM
+  default" and mps has none, so D15's 10 min was our own number). A spin-down that legitimately
+  takes longer than 10 s is aborted; the watchdog would not have waited for it either.
+- **Bounded recovery.** The normal path runs (timeout, abort, LUN reset, target reset); a reinit
+  requested during the halt is H5's stop instead (`mps_xnu_halt_stop`: one MUR, 1 s ack, no diag
+  reset, everything failed, new IO fails at once), and a reinit already running gives up at its
+  next wait (`stop_reinit`) and stops the same way. Worst case for a lost reply: 10 + 3 x 3 + 2 =
+  21 s after the halt began. Synchronous config page waits are not capped: no halt thread waits
+  for them, and our stop does not wait for them beyond its 1 s drain.
+- **Counters / debug.** "Halt timeouts capped", "Halt recovery stops"; `sas2308ctl halt` starts
+  the halt's caps on a running system (one way: the controller stops at the next reinit; reboot
+  after it).
+
+| id | fix | host test |
+|---|---|---|
+| F1 | the above | glue `F` (SSU timeout 0 + read, replies lost: done 10-15 s after the halt began, no diag reset, later IO fails at once), `F-new` (IO and FORMAT UNIT after the halt: 10 s, a working abort keeps the controller), `F-tm` (no TM answered: done within 16 s), `F-pending-tm` (a LUN reset already waiting 30 s: 3 s left), `F-reinit` (a reinit stuck in its diag reset when the halt begins: stopped within 5 s); all failed before |
+
+Verified on the Mac (build 085DA9D6, 2026-11-20): a lost read, then `sas2308ctl halt`: capped,
+timed out at +10.00 s, abort / LUN / target reset, the stop instead of a reinit, the read failed
+10.15 s after the halt began, 0 diag resets; restarts with a mounted JHFS+ volume clean (12 s
+request to boot; 47 s with a write lost just before `shutdown -r`, recovered before the halt), no
+panic, files verify; the routine launchd shutdown stall reports have no storage or kext frames.
+Random 4K QD32 1772 IOPS, seq 1 MiB 1944.9 MB/s, verify 0 mismatches. Details: the deviations
+plan, "Batch F hardware results".
 
 ## What is implemented (M1 – M4)
 > **Names after M5.** The tables and sections below are the M1–M4 history and use the names of
