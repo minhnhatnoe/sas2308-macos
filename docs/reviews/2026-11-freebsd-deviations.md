@@ -39,6 +39,7 @@ log-noise); items FINAL.md already fixed.
 | **F. Shutdown timeout cap (new, after E)** | F1 | SSU (timeout 0) and read with lost replies, halt begins -> both done 10-15 s later, no diag reset; IO after the halt -> 10 s; no TM answered -> done < 16 s; a 30 s LUN reset pending -> 3 s; a reinit stuck in its diag reset -> stopped < 5 s | `sas2308ctl lose 1` + `sas2308ctl halt` (deterministic); `lose 1` right before `shutdown -r now` with a mounted volume; a normal mounted restart; regression |
 | **G1. Code fixes and reverts to FreeBSD (after F)** | D29, D22, D15a, D55b, D58, L12, L13, L4, L11, L3, L17, L7, L10, D43 | per item in design.md "Batch G1" (each failed before: ack asserts, default mask, plist value, one diag reset, max tasks, ASan bad-free, NULL target array, unreleased freeze, no KASSERT, QMD fault, HIS ignored, lock gone after Fini, nested hotplug, pump while not in the gate) | standard regression; `lose 1` + `reinit` under IO on all 7; sleep/wake under IO; `shutdown -r now` with a mounted JHFS+ volume; default log at idle and in the recovery |
 | **G2. FreeBSD defaults decided by experiments (after G1)** | D46, D21, D50, D15b, D65, core-callout IO timer, wake log class | per item in design.md "Batch G2" (D46 ORDERED cadence, D21 hot-add under a full pool, D15 SSU 60 s, D50 attach from OPERATIONAL, C1/D4 without the family timer, D43 kick, G2-wake) | D65 QD1 next to QD1024/2000 and D15b spin-up (before the install); D46 A/B (H soak, random 4K QD32), IO timer A/B (F1 4K point), D50 restart without the MUR (attach state, DART), restarts with spun-down drives; regression |
+| **S1. No idle spin-down (feature request, after the 14.5.0 import)** | S1 (`sas2308_idle_spindown`, default 0) | glue `S1-spindown` (idle stop not sent; START 1, LOEJ, POWER CONDITION, knob 1, system sleep, unknown state, halt: sent) | `pmset -a disksleep 1`: tunable 0 drives keep spinning after 3 min idle, tunable 1 they spin down; one sleep/wake; one restart; regression on 5 drives |
 
 Comment-only changes (no behaviour change) ride with whichever batch touches the file: listed in the last table.
 
@@ -161,6 +162,7 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | G2 | D65 (no per-device cap, KEEP-WITH-EVIDENCE) | done | bee8d0b | none (comment) | QD1 drive unchanged next to QD 1024 / 2000 |
 | G2 | build fixes (Mac build) | done | ee94a31 | n/a | n/a |
 | vendor | FreeBSD release/14.5.0 import (2 upstream commits, 3 lines, no conflicts, no new deviation) | done | 9c0a5f9, 72654ac | all host tests | smoke test on 830E83B5 (see "FreeBSD 14.5.0 import hardware results") |
+| S1 | S1 (no idle spin-down; `sas2308_idle_spindown`, default 0: SAM's idle stop completed here) | done | f1cc568 | glue `S1-spindown` | tunable 0: first read 0.23-0.30 s after SAM's idle stop (5 stops completed here); tunable 1: 10.9-11.5 s (see "Batch S1 hardware results") |
 
 ### Batch A hardware results
 
@@ -514,6 +516,44 @@ A/B.
   "restricted lookup table" line come with every restart on this Mac (G1 had both).
 - **Regression:** random 4K read QD32 all 7: **1764 IOPS** (G2 1767); seq 1 MiB read all 7:
   **1945.2 MB/s** (G2 1945.2); verify **0 mismatches, 0 errors**.
+
+### Batch S1 hardware results
+
+Rationale: drives that never spin down, with a tunable (the request: "never spin down ... it
+should be param"); FreeBSD's da/CAM never stop a disk for idleness, so the default is FreeBSD's
+behaviour and the deviation is macOS's SAM idle timer being cut off at the HBA. The HBA sees no
+mounts: it applies to every drive behind it. Design: `design.md` "S1".
+
+Build **95E0D6C9-AC58-399D-A2CB-370687C33590** (branch spindown-tunable, f1cc568), installed with
+`mac/install.sh` (first real use; sudo), rollback copy
+`~/sas2308-rollback-830E83B5`. Two drives were removed before this batch (drive4, drive5): 5 drives
+(drive1, drive2, drive3, drive6, drive7). Raw outputs: Mac `~/hwS1` (`spin.sh LABEL KNOB
+DISKSLEEP`: knob, `pmset -a disksleep`, 240 s idle with SAM's CurrentPowerState every 20 s, then one
+timed 4K read at a random LBA per drive in parallel, then a second one).
+- **(a) `sas2308_idle_spindown` 0, disksleep 1:** SAM went 4 → 3 (40 s) → 2 (80 s) → 1 (100 s) on all 5;
+  `Idle stops completed here` 0 → 5 (one per drive, at the Standby step; nothing sent). First read
+  **0.227-0.303 s**; SAM back to 4.
+- **(b) tunable 1, disksleep 1:** the same steps; 5 × "START STOP UNIT (byte 4 0x00) sent" (CDB
+  `1b 00 00 00 00 00`: SAM sends IMMED 0 here, not the IMMED 1 of the published source; the code
+  ignores IMMED), counter unchanged. First read **10.862-11.483 s** (spin-up), second 0.008-0.018 s.
+- **(c) control, tunable 0, disksleep 0 (SAM stays Active):** first read after 240 s idle
+  **0.214-0.354 s**, second 0.007-0.014 s. So the ~0.23 s of (a) is the drives' own idle state
+  (SATA drives behind SAT, firmware idle timers), not SAM or the HBA: with the tunable at 0 the
+  drives stay spinning exactly as if SAM never idled them.
+- **Side finding:** `diskutil info` (in `sasdisks.sh`) sends ATA PASS-THROUGH (SMART status), which
+  brings SAM back to Active (START 1) and restarts its idle timer.
+- **Sleep/wake** (tunable 0, disksleep 10, random 4K QD8 on all 5, `pmset sleepnow` + scheduled
+  wake): 3 suspend/resume cycles (sleep + 2 dark wakes), all READY-path resumes without a reset
+  (340-350 ms), 0 IO errors, 0 timeouts, 0 diag resets; the system state went SLEEP → AWAKE at the
+  full wake (14:12:49.996, scheduled 14:12:50; the WillSleep line itself was not persisted, the
+  state shows it arrived). SAM sent no START STOP UNIT at this system sleep (none sent, none
+  completed here: counter 10 → 10).
+- **Restart** (drives spinning, unmounted): request → kernel boot **13 s** (12-18 s before), the usual
+  shutdownStall report, 5 drives back, 0 diag resets, 0 config page failures.
+- **Regression (5 drives):** random 4K QD32 **1262 IOPS** (251-254 per drive; 14.5.0 import: 1764 / 7 =
+  252), seq 1 MiB **1391.4 MB/s** (278 per drive; before 1945.2 / 7 = 278), verify 0 mismatches,
+  0 errors; 0 IO timeouts, reinits, recoveries, KASSERT hits.
+- Logging: `log config --mode persist:debug` for the subsystem during (b) to sleep, reset afterwards.
 
 ### Hardware tests still to run
 

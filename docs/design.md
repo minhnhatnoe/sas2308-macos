@@ -1056,6 +1056,12 @@ tunable is read at attach from the boot-arg, else the Info.plist key (default 0)
 `sas2308ctl set sas2308_idle_spindown <0|1>`; the debug level logs each stop completed here or sent.
 Host test: glue `S1-spindown` (failed before: the stop reached the IOC).
 
+Verified (2026-11-21, build 95E0D6C9, 5 drives, `pmset -a disksleep 1`): tunable 0, SAM dropped to Sleep,
+5 stops completed here, first 4K read 0.23-0.30 s (the same as with SAM never idling: 0.21-0.35 s,
+the drives' own idle state); tunable 1, first read 10.9-11.5 s (spin-up). Sleep/wake and restart
+(13 s) unchanged; regression 1262 IOPS, 1391.4 MB/s on 5 drives (per drive as before). Details: the
+deviations plan, "Batch S1 hardware results".
+
 ## What is implemented (M1 – M4)
 > **Names after M5.** The tables and sections below are the M1–M4 history and use the names of
 > the deleted C++ core. Old → new: `MpsCore::Attach/Detach/Shutdown` → `mps_attach`/`mps_free`;
