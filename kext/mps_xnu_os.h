@@ -191,8 +191,10 @@ enum { MPSK_SUBMIT_POSTED, MPSK_SUBMIT_HELD, MPSK_SUBMIT_DONE };
  * xpt_action with mps_mtx held. DONE: completed synchronously (*res, for
  * the log); the task is on the done queue like any other completion, so
  * the family sees it through CompleteParallelTask. timeout_ms: the
- * task's own timeout; the core arms its callout 10 s after it, a
- * backstop should the family's timer be lost (0: none). gen: the
+ * task's own timeout, the core callout's when it posts the ccb (the IO
+ * timer, as FreeBSD mps); os_timed: the family's timer runs too, so the
+ * callout is a backstop 10 s after it. 0: untimed (START STOP UNIT gets
+ * 60 s, FORMAT UNIT / SANITIZE none, the rest 10 min). gen: the
  * generation of the nub the task came from; another device behind tid
  * now (mps_xnu_target_gen differs): DONE, CAM_DEV_NOT_THERE.
  */
@@ -200,7 +202,7 @@ int	 mps_kext_submit(struct mps_kext *k, void *td, void *os_task,
 	    uint64_t os_tag, uint32_t tid, uint64_t lun, const uint8_t *cdb,
 	    uint8_t cdblen,
 	    int dir, int attr, uint32_t nsegs, uint64_t len, uint32_t timeout_ms,
-	    uint32_t gen, struct mps_kext_io_result *res);
+	    int os_timed, uint32_t gen, struct mps_kext_io_result *res);
 #define	MPSK_BACKSTOP_MS	10000	/* core timeout = task timeout + this */
 #define	MPSK_UNTIMED_BACKSTOP_MS 600000	/* core timeout of a task with none (D15) */
 #define	MPSK_SSU_TIMEOUT_MS	60000	/* ... of an untimed START STOP UNIT: da's 60 s (D15b) */
@@ -222,8 +224,11 @@ int	 mps_kext_timeout(struct mps_kext *k, void *td, void *os_task,
  * The start value is the boot-arg, else the personality property of the
  * same name (sas2308_*), as FreeBSD's CTLFLAG_RWTUN sysctls.
  * SEND_ORDERED: kern.cam.da.send_ordered (D46), 0/1.
+ * FAMILY_TIMER: 1 = the family's timer per IO (SetTimeoutForTask) with
+ * the core callout as a backstop, the scheme before batch G2; 0 = the
+ * core callout is the IO timer (FreeBSD mps). For A/B measurements.
  */
-enum { MPSK_KNOB_SEND_ORDERED = 1 };
+enum { MPSK_KNOB_SEND_ORDERED = 1, MPSK_KNOB_FAMILY_TIMER };
 int	 mps_kext_set_knob(struct mps_kext *k, int knob, uint32_t value);
 uint32_t mps_kext_knob(struct mps_kext *k, int knob);
 

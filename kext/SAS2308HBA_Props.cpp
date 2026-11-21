@@ -127,6 +127,7 @@ SAS2308HBA::ApplyLogSettings(void)
 const SAS2308HBA::Knob SAS2308HBA::kKnobs[] = {
     { "sas2308_send_ordered", MPSK_KNOB_SEND_ORDERED },     /* kern.cam.da.send_ordered (D46) */
     { "sas2308_shutdown_stop", 0 },     /* MUR at systemWillShutdown, 0 = FreeBSD's none (D50) */
+    { "sas2308_family_timer", MPSK_KNOB_FAMILY_TIMER },     /* 1 = family timer per IO (A/B, G2) */
 };
 const size_t SAS2308HBA::kKnobCount = sizeof(kKnobs) / sizeof(kKnobs[0]);
 

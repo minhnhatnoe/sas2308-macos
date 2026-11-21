@@ -134,6 +134,7 @@ struct mps_kext {
     struct mps_kext_otag   *otag;
     struct callout          otag_callout;
     int                     send_ordered;   /* kern.cam.da.send_ordered (sas2308_send_ordered) */
+    int                     family_timer;   /* sas2308_family_timer: the family's timer per IO (G2 A/B) */
 };
 
 static volatile int gKexts = 0;
@@ -512,6 +513,7 @@ int mps_kext_attach(struct mps_kext *k, uint32_t debug_mask)
     memset_zero(k->ua_gen, sizeof(*k->ua_gen) * k->ntargets);
     memset_zero(k->otag, sizeof(*k->otag) * k->ntargets * MPSK_OTAG_SLOTS);
     k->send_ordered = (int)mps_kext_tunable(k, "sas2308_send_ordered", 1);
+    k->family_timer = (int)mps_kext_tunable(k, "sas2308_family_timer", 0);
     k->attached = 1;
     callout_init_mtx(&k->hold_callout, &sc->mps_mtx, 0);
     /* daregister: the ORDERED tag callout runs whether or not send_ordered is set */
@@ -736,7 +738,7 @@ static void mps_kext_queue_done(struct mps_kext *k, struct mps_kext_task *t)
 
 int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag, uint32_t tid,
                     uint64_t lun, const uint8_t *cdb, uint8_t cdblen, int dir, int attr, uint32_t nsegs, uint64_t len,
-                    uint32_t timeout_ms, uint32_t gen, struct mps_kext_io_result *res)
+                    uint32_t timeout_ms, int os_timed, uint32_t gen, struct mps_kext_io_result *res)
 {
     struct mps_softc *sc = &k->sc;
     struct mps_kext_task *t = (struct mps_kext_task *)td;
@@ -765,8 +767,10 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
     ccb->ccb_h.cbfcnp = mps_kext_io_done;
     ccb->ccb_h.ppriv_ptr0 = t;
     /*
-     * The family times the task (SetTimeoutForTask -> HandleTimeout); the
-     * core's callout is a backstop, later, should that timer be lost.
+     * The core's callout is the task's IO timer (mpssas_action_scsiio arms
+     * it at the post, as FreeBSD's ccb_h.timeout); when the family's timer
+     * runs too (os_timed: a task that waited for its mapping, or
+     * sas2308_family_timer 1) the callout is a backstop 10 s later.
      * Timeout 0 is the family's "no timeout": FreeBSD's periphs always set
      * one, macOS clients do not, and SAM sends every START STOP UNIT with
      * 0, so a lost reply would hang the PM thread. START STOP UNIT gets
@@ -777,7 +781,7 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
      * FORMAT UNIT and SANITIZE none: they legitimately run for hours.
      */
     if (timeout_ms != 0)
-        ccb->ccb_h.timeout = timeout_ms + MPSK_BACKSTOP_MS;
+        ccb->ccb_h.timeout = timeout_ms + (os_timed ? MPSK_BACKSTOP_MS : 0);
     else if (cdb[0] == 0x04 /* FORMAT UNIT */ || cdb[0] == 0x48 /* SANITIZE */)
         ccb->ccb_h.timeout = 0;
     else if (cdb[0] == 0x1B /* START STOP UNIT */)
@@ -1102,10 +1106,13 @@ int mps_kext_set_knob(struct mps_kext *k, int knob, uint32_t value)
     mps_lock(sc);
     switch (knob) {
     case MPSK_KNOB_SEND_ORDERED:
+    case MPSK_KNOB_FAMILY_TIMER:
         if (value > 1)
             error = EINVAL;
-        else
+        else if (knob == MPSK_KNOB_SEND_ORDERED)
             k->send_ordered = (int)value;
+        else
+            __atomic_store_n(&k->family_timer, (int)value, __ATOMIC_RELAXED);
         break;
     default:
         error = EINVAL;
@@ -1118,6 +1125,7 @@ uint32_t mps_kext_knob(struct mps_kext *k, int knob)
 {
     switch (knob) {
     case MPSK_KNOB_SEND_ORDERED: return (uint32_t)k->send_ordered;
+    case MPSK_KNOB_FAMILY_TIMER: return (uint32_t)__atomic_load_n(&k->family_timer, __ATOMIC_RELAXED);
     default: return 0;
     }
 }

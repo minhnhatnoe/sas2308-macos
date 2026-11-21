@@ -365,11 +365,36 @@ int main()
     }
 
     if (Want("C1")) {
-        /* a reply that never comes: the family's timer must be armed, recovery completes the task */
+        /*
+         * A reply that never comes: something must time the task (review
+         * C1). The core's callout, armed at the post at the task's own
+         * timeout, as FreeBSD mps; no family timer per IO (batch G2).
+         */
         MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
         m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         Family f; f.Attach(&m);
+        CHECK(mps_kext_knob(f.k, MPSK_KNOB_FAMILY_TIMER) == 0);
         m.holdIo = true;                            /* the firmware keeps it until a TM */
+        FakeTask *t = f.NewRead(f.Tid(0x0009), 10000);
+        CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+        CHECK(!t->armed);                           /* no SetTimeoutForTask: no gate trip, no Rearm */
+        f.Run(9900);
+        CHECK(m.tms.empty() && t->completions == 0);
+        f.Run(5100);                                /* 10 s after the post: abort, then the task */
+        CHECK(f.timeouts == 0 && !m.tms.empty() && m.tms[0].type == MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK);
+        CHECK(t->completions == 1 && t->done == SAS2308GluePort::kDoneTimeout);
+        CHECK(gHost.sc->xnu.stats.io_timeouts == 1 && f.glue.fKStats.familyTimeouts == 0);
+        m.holdIo = false;
+        f.Detach();
+    }
+
+    if (Want("C1-family")) {
+        /* sas2308_family_timer 1 (the scheme before G2): the family's timer fires first */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_FAMILY_TIMER, 1) == 0);
+        m.holdIo = true;
         FakeTask *t = f.NewRead(f.Tid(0x0009), 10000);
         CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
         CHECK(t->armed);
@@ -381,15 +406,18 @@ int main()
     }
 
     if (Want("C1-backstop")) {
-        /* the family timer is lost: the core's own callout (timeout + 10 s) still recovers */
+        /* sas2308_family_timer 1 and the family timer is lost: the core's callout (timeout + 10 s) still recovers */
         MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
         m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         Family f; f.Attach(&m);
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_FAMILY_TIMER, 1) == 0);
         f.ignoreTimeouts = true;
         m.holdIo = true;
         FakeTask *t = f.NewRead(f.Tid(0x0009), 5000);
         CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
-        f.Run(25000);
+        f.Run(14000);
+        CHECK(t->completions == 0);                 /* not at 5 s: the backstop is 10 s later */
+        f.Run(11000);
         CHECK(t->completions == 1 && t->done == SAS2308GluePort::kDoneTimeout);
         m.holdIo = false;
         f.Detach();
@@ -675,51 +703,56 @@ int main()
     if (Want("D4")) {
         /*
          * IO held 25 s (the controller asleep), then posted to an IOC that
-         * keeps it 10 s: the family timer counts from the post, as FreeBSD's
-         * callout does (no TM). A held-then-posted task that really is
-         * stuck times out once, 30 s after its post.
+         * keeps it 10 s: timed from the post, as FreeBSD's callout (no TM).
+         * A held-then-posted task that really is stuck times out once, 30 s
+         * after its post. With the core callout as the IO timer (G2) this is
+         * the callout's own semantics; with sas2308_family_timer 1 the
+         * family's timer is re-armed while the task is held.
          */
-        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
-        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
-        Family f; f.Attach(&m);
-        const uint32_t t9 = f.Tid(0x0009);
-        auto heldThenPosted = [&](FakeTask *t) {
-            CHECK(mps_kext_suspend(f.k, 1000, 0) == 0);
-            const uint32_t held = f.glue.fKStats.tasksHeld;
-            CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
-            CHECK(f.glue.fKStats.tasksHeld == held + 1);
-            f.Run(25000);
-            CHECK(t->completions == 0);
-            m.holdIo = true;                        /* the firmware keeps it */
-            CHECK(mps_kext_resume(f.k) == 0);
-            f.Run(3000);                            /* reinit, rediscovery: posted */
-            CHECK(m.pending.size() == 1 && t->completions == 0);
-        };
-        FakeTask *a = f.NewRead(t9);
-        heldThenPosted(a);
-        size_t tms = m.tms.size();
-        f.Run(10000);                               /* 38 s after the submit, 10 s after the post */
-        CHECK(a->timeouts >= 1);                    /* the family's timer fired ... */
-        CHECK(m.tms.size() == tms && a->completions == 0);   /* ... and was re-armed: no abort */
-        m.holdIo = false;
-        m.ReleasePending();
-        HostRunPending();
-        CHECK(a->completions == 1 && a->done == SAS2308GluePort::kDoneStatus && a->scsiStatus == 0);
+        for (int familyTimer : {0, 1}) {
+            MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+            m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+            Family f; f.Attach(&m);
+            CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_FAMILY_TIMER, (uint32_t)familyTimer) == 0);
+            const uint32_t t9 = f.Tid(0x0009);
+            auto heldThenPosted = [&](FakeTask *t) {
+                CHECK(mps_kext_suspend(f.k, 1000, 0) == 0);
+                const uint32_t held = f.glue.fKStats.tasksHeld;
+                CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+                CHECK(f.glue.fKStats.tasksHeld == held + 1);
+                f.Run(25000);
+                CHECK(t->completions == 0);
+                m.holdIo = true;                    /* the firmware keeps it */
+                CHECK(mps_kext_resume(f.k) == 0);
+                f.Run(3000);                        /* reinit, rediscovery: posted */
+                CHECK(m.pending.size() == 1 && t->completions == 0);
+            };
+            FakeTask *a = f.NewRead(t9);
+            heldThenPosted(a);
+            size_t tms = m.tms.size();
+            f.Run(10000);                           /* 38 s after the submit, 10 s after the post */
+            CHECK(familyTimer ? a->timeouts >= 1 : a->timeouts == 0);   /* the family's timer fired, re-armed */
+            CHECK(m.tms.size() == tms && a->completions == 0);   /* no abort */
+            m.holdIo = false;
+            m.ReleasePending();
+            HostRunPending();
+            CHECK(a->completions == 1 && a->done == SAS2308GluePort::kDoneStatus && a->scsiStatus == 0);
 
-        FakeTask *b = f.NewRead(t9);
-        heldThenPosted(b);
-        tms = m.tms.size();
-        const uint64_t posted = m.nowUs;
-        f.Run(26000);                               /* 29 s after the post */
-        CHECK(m.tms.size() == tms && b->completions == 0);
-        f.Run(4000);
-        CHECK(m.tms.size() == tms + 1 && m.tms.back().type == MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK);
-        HostRunPending();
-        CHECK(b->completions == 1 && b->done == SAS2308GluePort::kDoneTimeout);
-        CHECK(b->timeouts == 2);                    /* re-armed once, then timed out once */
-        CHECK(m.nowUs - posted >= 30000000ull);
-        m.holdIo = false;
-        f.Detach();
+            FakeTask *b = f.NewRead(t9);
+            heldThenPosted(b);
+            tms = m.tms.size();
+            const uint64_t posted = m.nowUs;
+            f.Run(26000);                           /* 29 s after the post */
+            CHECK(m.tms.size() == tms && b->completions == 0);
+            f.Run(4000);
+            CHECK(m.tms.size() == tms + 1 && m.tms.back().type == MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK);
+            HostRunPending();
+            CHECK(b->completions == 1 && b->done == SAS2308GluePort::kDoneTimeout);
+            CHECK(b->timeouts == (familyTimer ? 2 : 0));     /* family: re-armed once, then timed out once */
+            CHECK(m.nowUs - posted >= 30000000ull);
+            m.holdIo = false;
+            f.Detach();
+        }
     }
 
     if (Want("D15")) {
@@ -923,7 +956,7 @@ int main()
         f.Run(5000);
         CHECK(f.Submit(b) == SAS2308Glue::kInProcess);
         f.Run(26000);                               /* a's timer: the recovery's ABORT_TASK, not answered yet */
-        CHECK(a->timeouts == 1 && m.deferredTm.size() == 1);
+        CHECK(gHost.sc->xnu.stats.io_timeouts == 1 && m.deferredTm.size() == 1);
         const size_t tms0 = m.tms.size();
         size_t maxDeferred = 0;
         uint64_t lastRelease = m.nowUs;
@@ -1058,7 +1091,7 @@ int main()
         gHost.onOtherThreads = nullptr;
         CHECK(unmaskAt != 0 && !early && m.hostPost != post0);
         HostRunPending();
-        /* the 1 s timer: detects, counts and logs, does not deliver */
+        /* the 1 s timer: detects, counts and logs, kicks the done call (it does not deliver itself) */
         const size_t mark = gHost.log.size();
         f.glue.TimerDeliver();                      /* nothing waiting: nothing counted */
         CHECK(f.glue.fKStats.lostKicks == 0);
@@ -1070,10 +1103,10 @@ int main()
         CHECK(a->completions == 0 && b->completions == 0);   /* the kick was lost */
         f.glue.TimerDeliver();                      /* first tick: maybe a kick on its way */
         CHECK(f.glue.fKStats.lostKicks == 0 && a->completions == 0);
-        f.glue.TimerDeliver();                      /* second tick: lost */
+        f.glue.TimerDeliver();                      /* second tick: lost; the timer kicks the done call */
         f.glue.TimerDeliver();
         CHECK(f.glue.fKStats.lostKicks == 1 && a->completions == 0 && b->completions == 0);
-        f.glue.DeliverCompletions();                /* the next interrupt or family timeout */
+        HostRunPending();                           /* the done call delivers (no family timer per IO since G2) */
         CHECK(a->completions == 1 && b->completions == 1);
         f.glue.TimerDeliver();
         f.loseKicks = false;
@@ -1373,8 +1406,8 @@ int main()
         FakeTask *a = f.NewRead(t9);
         CHECK(f.Submit(a) == SAS2308Glue::kInProcess && f.glue.fKStats.tasksHeld == 1);
         f.Run(40000);
-        CHECK(a->completions == 1 && a->done == SAS2308GluePort::kDoneStatus && a->timeouts == 1);
-        CHECK(gHost.sc->xnu.stats.timer_rearms == 1 && gHost.sc->xnu.stats.io_timeouts == 0 && m.tms.empty());
+        CHECK(a->completions == 1 && a->done == SAS2308GluePort::kDoneStatus && a->timeouts == 0);
+        CHECK(gHost.sc->xnu.stats.io_timeouts == 0 && m.tms.empty());    /* held: not timed (D4) */
         CHECK(mps_kext_debug(f.k, MPSK_DEBUG_LOSE, 1) == 0);
         FakeTask *b = f.NewRead(t9);
         CHECK(f.Submit(b) == SAS2308Glue::kInProcess);

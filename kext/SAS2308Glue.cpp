@@ -288,14 +288,14 @@ SAS2308Glue::MapTask(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t *n
 //-----------------------------------------------------------------------------
 
 void
-SAS2308Glue::Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs)
+SAS2308Glue::Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs, bool osTimed)
 {
     Lock();
     const uint32_t gen = fTargets.Gen(d.target);   /* the nub's device (mps_kext_submit checks it) */
     Unlock();
     struct mps_kext_io_result res;
     const int rc = mps_kext_submit(fMps, d.td, task, d.tag, d.target, d.lun, d.cdb, d.cdbLen, d.dir, d.attr, nsegs,
-                                   d.length, d.timeoutMs, gen, &res);
+                                   d.length, d.timeoutMs, osTimed ? 1 : 0, gen, &res);
     Lock();
     if (rc == MPSK_SUBMIT_DONE) {
         fKStats.tasksRejected++;
@@ -384,14 +384,23 @@ SAS2308Glue::ProcessTask(void *task)
     }
 
     /*
-     * Review C1: the family times only tasks given to SetTimeoutForTask
-     * (SCSIParallelTimer; Apple's iSCSI HBA does the same in its
-     * ProcessParallelTask); 0 = the task's own timeout. Once armed, only
-     * CompleteParallelTask removes the timer entry, so from here on every
-     * outcome, a synchronous refusal too, completes through it. HandleTimeout
-     * re-arms it while the task waits outside the IOC (D4).
+     * The IO timer (review C1: something must time every task): as in
+     * FreeBSD mps, the core's per-command callout, armed when
+     * mpssas_action_scsiio posts the ccb, at the task's own timeout; a ccb
+     * held by the thin CAM is not timed, as a ccb in CAM's queues (D4). No
+     * family timer per IO (SetTimeoutForTask: a contended gate trip on
+     * submit, RemoveTask + Rearm on completion; perf profile proposal 2).
+     * The family's timer still times a task that waits for its mapping
+     * (D47: not in the core yet; FreeBSD's callout runs from before
+     * mps_map_command), and every task with sas2308_family_timer 1 (the old
+     * scheme: family timer at the timeout, core callout 10 s later). Once
+     * armed, only CompleteParallelTask removes the timer entry, so every
+     * outcome completes through it; HandleTimeout re-arms it while the
+     * task waits outside the IOC (D4).
      */
-    fPort->SetTimeoutForTask(task, 0);
+    const bool osTimed = mr == kMapShort || mps_kext_knob(fMps, MPSK_KNOB_FAMILY_TIMER) != 0;
+    if (osTimed)
+        fPort->SetTimeoutForTask(task, 0);
     if (mr == kMapShort) {
         /*
          * D47: no IOVA space now. FreeBSD's busdma defers the load and
@@ -416,7 +425,7 @@ SAS2308Glue::ProcessTask(void *task)
                  "counted as \"Tasks waiting for a mapping\", logged once", d.target);
         return kInProcess;
     }
-    Post(task, d, nsegs);
+    Post(task, d, nsegs, osTimed);
     Lock();
     if (--fBusy == 0 && fStopping)
         mps_kext_wakeup(&fBusy);
@@ -481,7 +490,7 @@ SAS2308Glue::RetryMapWait(void)
             Unlock();
             fPort->CompleteTask(task, cancel ? cancel - 1 : (int)SAS2308GluePort::kDoneReject, 0, 0, nullptr, 0);
         } else if (mr == kMapOk) {
-            Post(task, d, nsegs);
+            Post(task, d, nsegs, true);     /* armed when it began to wait */
         } else {
             again = false;                      /* still short: the next completion or tick */
         }
@@ -699,9 +708,11 @@ SAS2308Glue::TimerDeliver(void)
     /*
      * FreeBSD delivers completions only from CAM's done threads, no timer.
      * A completion queued with no kick (the done call) for two ticks is a
-     * lost kick: counted once per stall and logged once, not delivered, so
-     * it shows as a stalled IO; the next interrupt or the family's timeout
-     * (HandleTimeout) delivers it (D43).
+     * lost kick: counted once per stall and logged once (D43). XNU: the done
+     * queue and its kick are port code (CAM wakes its done threads on every
+     * enqueue), and since batch G2 no family timer per IO is left to
+     * deliver a stranded completion (HandleTimeout used to), so the timer
+     * kicks the done call: the delivery itself stays on the done call.
      */
     Lock();
     const bool kicked = fDonePending != 0;
@@ -715,10 +726,11 @@ SAS2308Glue::TimerDeliver(void)
     Lock();
     const bool first = fKStats.lostKicks == 0;
     fKStats.lostKicks++;
+    ScheduleDone();
     Unlock();
     if (first)
-        Klog(MPSK_ERROR | MPSK_INFO, "completions queued with no completion kick for 2 s: left for the next "
-             "interrupt or the family's timeout (counted as \"Lost completion kicks\", logged once)");
+        Klog(MPSK_ERROR | MPSK_INFO, "completions queued with no completion kick for 2 s: done call kicked "
+             "(counted as \"Lost completion kicks\", logged once)");
 }
 
 //-----------------------------------------------------------------------------

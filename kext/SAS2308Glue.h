@@ -170,7 +170,7 @@ public:
 private:
     void Hotplug(void);
     MapResult MapTask(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t *nsegs);
-    void Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs);
+    void Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs, bool osTimed);
     void RetryMapWait(void);            /* no lock held */
     bool TakeWaiting(void *td, int done);   /* fLock held */
 
