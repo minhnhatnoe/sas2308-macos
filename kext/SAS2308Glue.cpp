@@ -28,11 +28,7 @@ SAS2308Glue::Init(SAS2308GluePort *port)
 void
 SAS2308Glue::Fini(void)
 {
-    if (fSlots != nullptr) {
-        mps_kext_zfree(fSlots, sizeof(Slot) * fMaxTasks);
-        fSlots = nullptr;
-        fMaxTasks = 0;
-    }
+    fMaxTasks = 0;
     if (fLock != nullptr) {
         mps_kext_lock_free(fLock);
         fLock = nullptr;
@@ -82,10 +78,11 @@ SAS2308Glue::Leave(void)
 //-----------------------------------------------------------------------------
 //	Attached - after mps_attach: the core takes calls; the SGL limit and the
 //	task count (ReportMaximumTaskCount, AllocateSCSIParallelTasks right after
-//	InitializeController) come from IOCFacts, one slot per task. A later
-//	reinit may resize the core's queues; the family's pool stays as
-//	allocated, and IO beyond the core's commands waits in the thin CAM.
-//	False: no memory for the slots (the caller detaches the core).
+//	InitializeController) come from IOCFacts. A later reinit may resize the
+//	core's queues; the family's pool stays as allocated, and IO beyond the
+//	core's commands waits in the thin CAM. No per-task table (D45): a task's
+//	glue state is in its HBA data, and the family finds a task by its nexus
+//	(FindTaskForAddress). False: nothing usable (the caller detaches the core).
 //-----------------------------------------------------------------------------
 
 bool
@@ -93,21 +90,15 @@ SAS2308Glue::Attached(void)
 {
     const uint32_t segs = mps_kext_max_segs(fMps);
     const uint32_t tasks = mps_kext_max_tasks(fMps);
-    Slot *slots = tasks ? (Slot *)mps_kext_zalloc(sizeof(Slot) * tasks) : nullptr;
-    if (!slots) {
-        Klog(MPSK_ERROR | MPSK_INIT, "no memory for %u task slots", tasks);
+    if (tasks == 0 || segs == 0) {
+        Klog(MPSK_ERROR | MPSK_INIT, "no OS tasks (%u) or segments (%u)", tasks, segs);
         return false;
     }
     Lock();
-    Slot *old = fSlots;
-    const uint32_t oldCount = fMaxTasks;
     fCoreAttached = true;
     fMaxSegs = segs;
     fMaxTasks = tasks;
-    fSlots = slots;
     Unlock();
-    if (old)
-        mps_kext_zfree(old, sizeof(Slot) * oldCount);
     return true;
 }
 
@@ -190,6 +181,8 @@ SAS2308Glue::ProcessTask(void *task)
      * IODMACommand and its memory descriptor; we prepare() the range and
      * complete() it when the IO is done.
      */
+    struct mps_kext_task_glue *tg = mps_kext_task_glue(d.td);
+    memset(tg, 0, sizeof(*tg));
     uint32_t nsegs = 0;
     bool prepared = false;
     if (d.length) {
@@ -226,30 +219,26 @@ SAS2308Glue::ProcessTask(void *task)
         }
     }
 
-    /* A slot (for AbortTaskRequest) and a pass through the gate. */
-    Slot *slot = nullptr;
+    /*
+     * A pass through the gate. The family never has more than fMaxTasks
+     * (ReportMaximumTaskCount) outstanding; the count is a check.
+     */
+    tg->prepared = prepared;
     Lock();
     const uint32_t gen = fTargets.Gen(d.target);   /* the nub's device (mps_kext_submit checks it) */
     const bool open = !fStopping && fCoreAttached && fMps;
-    if (open) {
-        for (uint32_t i = 0; i < fMaxTasks && !slot; i++)
-            if (!fSlots[i].task)
-                slot = &fSlots[i];
-    }
-    if (slot) {
-        slot->task = task;
-        slot->prepared = prepared;
-        slot->target = d.target;
-        slot->lun = d.lun;
-        slot->tag = d.tag;
+    const bool room = open && fOutstanding < fMaxTasks;
+    if (room) {
+        fOutstanding++;
         fBusy++;
     } else {
         fKStats.tasksRejected++;
     }
     Unlock();
-    if (!slot) {
+    if (!room) {
         if (prepared)
             fPort->TaskUnmap(task);
+        tg->prepared = 0;
         if (open)
             Klog(MPSK_ERROR, "more than %u tasks outstanding: rejecting one", fMaxTasks);
         return open ? kRejected : kFailure;
@@ -325,21 +314,6 @@ SAS2308Glue::HandleTimeout(void *task)
     DeliverCompletions();
 }
 
-void *
-SAS2308Glue::FindTask(uint32_t target, uint64_t lun, uint64_t tag)
-{
-    void *victim = nullptr;
-
-    Lock();
-    for (uint32_t i = 0; i < fMaxTasks && !victim; i++) {
-        const Slot &s = fSlots[i];
-        if (s.task && s.target == target && s.lun == lun && s.tag == tag)
-            victim = s.task;
-    }
-    Unlock();
-    return victim;
-}
-
 //-----------------------------------------------------------------------------
 //	DeliverCompletions - mpssas_scsiio_complete() results to the family.
 //	No lock held.
@@ -358,15 +332,12 @@ SAS2308Glue::DeliverCompletions(void)
         if (!task)
             break;
 
-        bool prepared = false;
+        struct mps_kext_task_glue *tg = mps_kext_task_glue(res.td);
+        const bool prepared = tg->prepared;
+        tg->prepared = 0;
         Lock();
-        for (uint32_t i = 0; i < fMaxTasks; i++) {
-            if (fSlots[i].task == task) {
-                prepared = fSlots[i].prepared;
-                fSlots[i] = Slot();
-                break;
-            }
-        }
+        if (fOutstanding)
+            fOutstanding--;
         Unlock();
         if (prepared)
             fPort->TaskUnmap(task);

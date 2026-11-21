@@ -71,6 +71,7 @@ struct mps_kext_task {
 #define MPSK_T_SYNC_DONE    3   /* completed inside xpt_action() */
 #define MPSK_T_QUEUED       4   /* on the done queue */
     int                     ua_retried; /* re-sent once for a UNIT ATTENTION after our reset (D3) */
+    struct mps_kext_task_glue glue;     /* the glue's (D45) */
     /* then mps_kext_max_segs() bus_dma_segment_t (mps_kext_task_size) */
 };
 
@@ -540,6 +541,11 @@ struct mps_kext_seg *mps_kext_task_segs(void *td)
     return (struct mps_kext_seg *)mps_kext_task_seglist((struct mps_kext_task *)td);
 }
 
+struct mps_kext_task_glue *mps_kext_task_glue(void *td)
+{
+    return &((struct mps_kext_task *)td)->glue;
+}
+
 /* The XPT_SCSI_IO ccb of mock_ioc_test.cpp Rig::NewIo/Go. */
 static void mps_kext_queue_done(struct mps_kext *k, struct mps_kext_task *t)
 {
@@ -664,6 +670,7 @@ void *mps_kext_next_done(struct mps_kext *k, struct mps_kext_io_result *res)
     if (t == nullptr)
         return nullptr;
     mps_kext_result(t, res);
+    res->td = t;
     t->state = MPSK_T_IDLE;
     return t->os_task;
 }

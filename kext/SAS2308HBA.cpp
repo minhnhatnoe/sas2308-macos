@@ -869,7 +869,7 @@ SAS2308HBA::SendTaskMgmt(uint8_t taskType, SCSITargetIdentifier theT,
 
     SCSIParallelTaskIdentifier victim = nullptr;
     if (taskType == kTmAbortTask) {
-        victim = (SCSIParallelTaskIdentifier)fGlue.FindTask((uint32_t)theT, theL, theQ);
+        victim = FindTaskForAddress(theT, theL, theQ);     /* the family's outstanding list (D45) */
         if (!victim) {
             Klog(MPSK_RECOVERY | MPSK_USER, "abort task on target %u: nothing left to abort", (unsigned)theT);
             return kSCSIServiceResponse_FUNCTION_COMPLETE;

@@ -262,7 +262,6 @@ SAS2308HBA::PublishLimits(bool log)
     fGlue.Lock();
     const uint32_t tasks = fGlue.fMaxTasks;
     fGlue.Unlock();
-    const uint64_t slotBytes = (uint64_t)tasks * sizeof(SAS2308Glue::Slot);
     const uint64_t taskDataBytes = (uint64_t)tasks * mps_kext_task_size(fGlue.fMps);
 
     OSDictionary *d = OSDictionary::withCapacity(24);
@@ -288,7 +287,7 @@ SAS2308HBA::PublishLimits(bool log)
     SetNumber(d, "Core OS commands", l.os_commands);
     SetNumber(d, "OS task count", tasks);
     SetNumber(d, "DMA bytes", l.dma_bytes);
-    SetNumber(d, "Heap bytes", l.heap_bytes + slotBytes);
+    SetNumber(d, "Heap bytes", l.heap_bytes);
     SetNumber(d, "Task data bytes", taskDataBytes);
     setProperty(kLimitsKey, d);
     d->release();
@@ -299,7 +298,7 @@ SAS2308HBA::PublishLimits(bool log)
              "%u replies, %u chain frames, %u OS tasks; memory: DMA %llu, heap %llu, task data %llu bytes",
              l.request_credit, l.high_priority_credit, l.max_reply_post_depth, l.max_chain_depth, l.req_frame_bytes,
              l.max_targets, l.req_frames, l.pri_req_frames, l.reply_frames, l.chain_frames, tasks,
-             (unsigned long long)l.dma_bytes, (unsigned long long)(l.heap_bytes + slotBytes),
+             (unsigned long long)l.dma_bytes, (unsigned long long)l.heap_bytes,
              (unsigned long long)taskDataBytes);
 }
 

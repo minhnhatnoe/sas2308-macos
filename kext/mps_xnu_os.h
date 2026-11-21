@@ -142,6 +142,17 @@ struct mps_kext_seg {			/* = bus_dma_segment_t */
 
 size_t	 mps_kext_task_size(struct mps_kext *k);	/* HBA data per task (after attach) */
 struct mps_kext_seg *mps_kext_task_segs(void *td);
+/*
+ * The glue's own state of a task, in its HBA data (D45: no slot table; the
+ * family finds a task by its nexus, FindTaskForAddress). Set by the glue
+ * before mps_kext_submit, which does not touch it.
+ */
+struct mps_kext_task_glue {
+	void		*next;		/* the glue's lists */
+	uint8_t		 prepared;	/* TaskMapBegin() done: TaskUnmap() at completion */
+	uint8_t		 mapwait;	/* on the glue's mapping-wait list (D47) */
+};
+struct mps_kext_task_glue *mps_kext_task_glue(void *td);
 
 enum { MPSK_DIR_NONE, MPSK_DIR_IN, MPSK_DIR_OUT };
 /* the task attribute (SCSITaskAttribute order), CAM's tag_action in the ccb (D46) */
@@ -154,6 +165,7 @@ enum {
 	MPSK_IO_REJECT			/* invalid request */
 };
 struct mps_kext_io_result {
+	void		*td;		/* the task's HBA data (mps_kext_next_done) */
 	int		 kind;		/* MPSK_IO_* */
 	uint32_t	 cam_status;	/* for log lines */
 	uint8_t		 scsi_status;

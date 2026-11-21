@@ -3,8 +3,8 @@
  *
  * Copyright (c) 2026 Minh Nhat Noe
  *
- * SAS2308Glue.h - the IOKit-free half of the SAS2308HBA class: the task
- * slots and the gate around the core, ProcessParallelTask / HandleTimeout /
+ * SAS2308Glue.h - the IOKit-free half of the SAS2308HBA class: the gate
+ * around the core, ProcessParallelTask / HandleTimeout /
  * completion delivery, the hotplug thread and its target table.
  *
  * Everything that needs IOKit or the family (task accessors, IODMACommand,
@@ -96,13 +96,6 @@ public:
         uint32_t deadEvents;            /* controller declared dead */
         uint32_t lostKicks;             /* completions only the 1 s timer delivered (D43) */
     };
-    struct Slot {                       /* an outstanding task, for AbortTaskRequest() */
-        void       *task;
-        bool        prepared;           /* TaskMapBegin() done */
-        uint32_t    target;             /* I_T_L_Q nexus */
-        uint64_t    lun;
-        uint64_t    tag;
-    };
 
     bool Init(SAS2308GluePort *port);   /* the lock; false: no memory */
     void Fini(void);                    /* idempotent */
@@ -112,7 +105,7 @@ public:
 
     bool Enter(void);                   /* gate around mps_kext_* calls; false once stopping */
     void Leave(void);
-    bool Attached(void);                /* mps_attach done: fCoreAttached, fMaxSegs, fMaxTasks, fSlots; false: no memory */
+    bool Attached(void);                /* mps_attach done: fCoreAttached, fMaxSegs, fMaxTasks; false: no memory */
     void Start(void);                   /* StartController */
     void StopCore(void);                /* no new calls, wait for running ones, mps_free */
 
@@ -120,7 +113,6 @@ public:
     void HandleTimeout(void *task);
     uint32_t DeliverCompletions(void);  /* no lock held; returns how many */
     void TimerDeliver(void);            /* the 1 s statistics timer: lost kicks (D43) */
-    void *FindTask(uint32_t target, uint64_t lun, uint64_t tag);
 
     void ScheduleDone(void);            /* fLock held */
     void DoneCallBody(void);            /* the done thread call */
@@ -142,7 +134,8 @@ public:
     void              *fLock = nullptr;
     struct mps_kext   *fMps = nullptr;
     uint32_t           fMaxSegs = 0;            /* per IO, from the core's buffer_dmat */
-    uint32_t           fMaxTasks = 0;           /* ReportMaximumTaskCount, from IOCFacts at attach: fSlots[] */
+    uint32_t           fMaxTasks = 0;           /* ReportMaximumTaskCount, from IOCFacts at attach */
+    uint32_t           fOutstanding = 0;        /* accepted tasks not completed to the family yet */
     bool               fStarted = false;
     bool               fStopping = false;       /* no new mps_kext_* calls */
     bool               fCoreAttached = false;   /* mps_attach done, mps_free not yet */
@@ -154,7 +147,6 @@ public:
     uint32_t           fDonePending = 0;
     uint32_t           fBusy = 0;               /* threads inside Enter()/Leave() */
     KStats             fKStats = {};
-    Slot              *fSlots = nullptr;        /* fMaxTasks, allocated by Attached, freed by Fini */
     SAS2308TargetTable fTargets;
 
 private:

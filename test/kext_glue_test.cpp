@@ -186,7 +186,6 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         CHECK(mps_kext_attach(k, MPSK_DEBUG_ALL) == 0);
         gHost.sc = (struct mps_softc *)mps_kext_softc(k);
         CHECK(glue.Attached());
-        CHECK(glue.fSlots != nullptr);
         CHECK(glue.fCoreAttached && glue.fMaxSegs == mps_kext_max_segs(k));
         CHECK(glue.fMaxTasks == mps_kext_max_tasks(k) && glue.fMaxTasks == (uint32_t)(gHost.sc->num_reqs - gHost.sc->num_prireqs - 8));   /* D21: the kext keeps 8 */
         glue.Start();
@@ -313,10 +312,10 @@ int main()
               l.pri_req_frames == MockIocModel::kHighPriorityCredit && l.reply_frames >= l.req_frames + l.pri_req_frames &&
               l.chain_frames == MPS_CHAIN_FRAMES && l.req_frame_bytes == 128 && l.max_segs == kMaxIoPages + 1);
         printf("  limits: %u request + %u high-priority frames, %u replies (post queue %u), %u chains, %u OS tasks; "
-               "DMA %llu B, core heap %llu B, slots %zu B, task data %zu B\n",
+               "DMA %llu B, core heap %llu B, task data %zu B\n",
                l.req_frames, l.pri_req_frames, l.reply_frames, l.post_queue_depth, l.chain_frames, f.glue.fMaxTasks,
                (unsigned long long)l.dma_bytes, (unsigned long long)l.heap_bytes,
-               sizeof(SAS2308Glue::Slot) * f.glue.fMaxTasks, mps_kext_task_size(f.k) * f.glue.fMaxTasks);
+               mps_kext_task_size(f.k) * f.glue.fMaxTasks);
         m.holdIo = true;
         std::vector<FakeTask *> v;
         for (uint32_t i = 0; i < f.glue.fMaxTasks; i++) {
@@ -830,6 +829,25 @@ int main()
         CHECK(f.asyncCalls == calls);
         xpt_free_path(path);
         mps_unlock(sc);
+        f.Detach();
+    }
+
+    if (Want("D45")) {
+        /* no slot table: the glue's per-task state is in the task's HBA data, the family finds tasks */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        m.holdIo = true;
+        FakeTask *a = f.NewRead(f.Tid(0x0009)), *z = f.NewRead(f.Tid(0x0009));
+        z->dir = MPSK_DIR_NONE; z->len = 0; z->cdb[0] = 0x00;
+        CHECK(f.Submit(a) == SAS2308Glue::kInProcess && f.Submit(z) == SAS2308Glue::kInProcess);
+        CHECK(mps_kext_task_glue(a->td.data())->prepared && !mps_kext_task_glue(z->td.data())->prepared);
+        CHECK(f.glue.fOutstanding == 2);
+        m.holdIo = false;
+        m.ReleasePending();
+        HostRunPending();
+        CHECK(a->completions == 1 && z->completions == 1 && !a->mapped);
+        CHECK(!mps_kext_task_glue(a->td.data())->prepared && f.glue.fOutstanding == 0);
         f.Detach();
     }
 
