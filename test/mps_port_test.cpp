@@ -208,6 +208,8 @@ static void TestDiscovery(struct mps_softc *sc)
     xpt_free_path(path);
 
     size_t mark = gHost.Mark();
+    const uint32_t dbg = sc->mps_debug;
+    sc->mps_debug |= MPS_MAPPING;           /* "Target id 0x.. added" is opt-in (D22) */
     mps_compat_intrhook_run(sc);            /* mps_startup: unmask, port enable */
     T(gIoc.portEnables == 1);
     HostRunPending();                       /* interrupt, event task */
@@ -221,6 +223,7 @@ static void TestDiscovery(struct mps_softc *sc)
     T(!(sc->sassc->flags & MPSSAS_IN_STARTUP));
     T(sc->sassc->sim->freeze == 0);
     T(gHost.Count(mark, "Target id 0x") == 2);
+    sc->mps_debug = dbg;
     T(gIoc.hostPost == gIoc.iocPost);
 }
 
@@ -506,8 +509,7 @@ static void TestXnuHelpers(struct mps_softc *sc)
 {
     printf("xnu helpers: levels, mps_parse_debug, %%b, decoders, rate limit\n");
     T(mps_xnu_level_mask(MPS_LEVEL_ERROR) == (MPS_FAULT | MPS_ERROR));
-    T(mps_xnu_level_mask(MPS_LEVEL_INFO) ==
-      (MPS_FAULT | MPS_ERROR | MPS_RECOVERY | MPS_INFO | MPS_INIT | MPS_EVENT | MPS_MAPPING));
+    T(mps_xnu_level_mask(MPS_LEVEL_INFO) == (MPS_FAULT | MPS_ERROR | MPS_INFO));
     T(mps_xnu_level_mask(MPS_LEVEL_TRACE) == MPS_DEBUG_ALL);
     T(mps_xnu_parse_level("debug") == 3 && mps_xnu_parse_level("4") == 4 &&
       mps_xnu_parse_level("warning") == 1 && mps_xnu_parse_level("loud") == -1);

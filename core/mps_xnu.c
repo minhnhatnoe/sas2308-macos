@@ -36,17 +36,26 @@ static const struct {
 	{"trace", MPS_TRACE}
 };
 
+/*
+ * The default (info) is FreeBSD's mps_debug (mps.c: MPS_INFO|MPS_FAULT)
+ * plus error: no CAM periph prints IO errors on macOS (D22).  FreeBSD's
+ * recovery lines that matter are tagged MPS_INFO|MPS_RECOVERY and show at
+ * info; recovery, init, event and mapping alone are opt-in (debug, or a
+ * mask).  warn is errors plus the whole recovery trail, without the info
+ * lines: not a subset of info.
+ */
 uint32_t
 mps_xnu_level_mask(int level)
 {
 	uint32_t m = MPS_FAULT | MPS_ERROR;
 
-	if (level >= MPS_LEVEL_WARN)
+	if (level == MPS_LEVEL_WARN)
 		m |= MPS_RECOVERY;
 	if (level >= MPS_LEVEL_INFO)
-		m |= MPS_INFO | MPS_INIT | MPS_EVENT | MPS_MAPPING;
+		m |= MPS_INFO;
 	if (level >= MPS_LEVEL_DEBUG)
-		m |= MPS_XINFO | MPS_LOG | MPS_USER;
+		m |= MPS_RECOVERY | MPS_INIT | MPS_EVENT | MPS_MAPPING |
+		    MPS_XINFO | MPS_LOG | MPS_USER;
 	if (level >= MPS_LEVEL_TRACE)
 		m |= MPS_TRACE;
 	return (m);
@@ -98,17 +107,21 @@ mps_xnu_category(uint32_t cls)
 }
 
 /*
- * os_log type: errors/faults are ERROR; lines tagged with an info-level
- * class are DEFAULT (shown by `log stream`, persisted); XINFO/TRACE/LOG/USER
- * only lines are DEBUG (need `log stream --level debug`).  FreeBSD
- * printf/device_printf lines (class 0, e.g. a config page read failure) go
- * to the console: DEFAULT.
+ * os_log type: a line tagged XINFO or TRACE is DEBUG whatever else it
+ * carries (the most verbose class wins, D22: "Freezing devq" is
+ * XINFO|RECOVERY; no line combines XINFO with FAULT or ERROR);
+ * errors/faults are ERROR; lines tagged with an info-level class are
+ * DEFAULT (shown by `log stream`, persisted); LOG/USER only lines are DEBUG
+ * (need `log stream --level debug`).  FreeBSD printf/device_printf lines
+ * (class 0, e.g. a config page read failure) go to the console: DEFAULT.
  */
 int
 mps_xnu_log_type(uint32_t cls)
 {
 	if (cls == 0)
 		return (MPS_XNU_LOG_DEFAULT);
+	if (cls & (MPS_XINFO | MPS_TRACE))
+		return (MPS_XNU_LOG_DEBUG);
 	if (cls & (MPS_FAULT | MPS_ERROR))
 		return (MPS_XNU_LOG_ERROR);
 	if (cls & (MPS_INFO | MPS_RECOVERY | MPS_INIT | MPS_EVENT | MPS_MAPPING))

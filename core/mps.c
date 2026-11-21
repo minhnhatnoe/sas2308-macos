@@ -1855,7 +1855,7 @@ mps_get_tunables(struct mps_softc *sc)
 	char tmpstr[80], mps_debug[80];
 
 	/* XXX default to some debugging for now */
-	sc->mps_debug = mps_xnu_level_mask(MPS_LEVEL_INFO);	/* XNU: M4 */
+	sc->mps_debug = MPS_INFO|MPS_FAULT|MPS_ERROR;	/* XNU: +error (D22) */
 	sc->disable_msix = 0;
 	sc->disable_msi = 0;
 	sc->max_msix = MPS_MSIX_MAX;

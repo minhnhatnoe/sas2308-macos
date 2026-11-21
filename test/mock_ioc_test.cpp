@@ -1390,7 +1390,9 @@ static void LoggingTests()
         CHECK(mps_xnu_level_mask(MPS_LEVEL_ERROR) == (MPS_FAULT | MPS_ERROR));
         CHECK(mps_xnu_level_mask(MPS_LEVEL_WARN) == (MPS_FAULT | MPS_ERROR | MPS_RECOVERY));
         const uint32_t info = mps_xnu_level_mask(MPS_LEVEL_INFO);
-        CHECK((info & MPS_INFO) && (info & MPS_RECOVERY) && (info & MPS_EVENT) && !(info & MPS_XINFO) && !(info & MPS_TRACE));
+        CHECK(info == (MPS_INFO | MPS_FAULT | MPS_ERROR));                   /* D22 */
+        const uint32_t dbg = mps_xnu_level_mask(MPS_LEVEL_DEBUG);
+        CHECK((dbg & MPS_RECOVERY) && (dbg & MPS_EVENT) && (dbg & MPS_INIT) && (dbg & MPS_XINFO) && !(dbg & MPS_TRACE));
         CHECK(mps_xnu_level_mask(MPS_LEVEL_TRACE) == MPS_DEBUG_ALL && mps_xnu_level_mask(99) == MPS_DEBUG_ALL);
         auto parse = [&](const char *s) { std::string t(s); mps_parse_debug(sc, &t[0]); return sc->mps_debug; };
         sc->mps_debug = MPS_INFO | MPS_FAULT;
@@ -3352,5 +3354,26 @@ static void DeviationTests()
         CHECK(m.ioCount[0x000B] == d.sentBefore);
         CHECK(Gen(g, tb) != gb);
         CHECK(NoneUnverified(g.sc) && g.HeldCount() == 0);
+    }
+
+    if (Want("D22")) {
+        /* the default is FreeBSD's info|fault plus error; xinfo-tagged lines are os_log DEBUG */
+        CHECK(mps_xnu_level_mask(MPS_LEVEL_INFO) == (MPS_INFO | MPS_FAULT | MPS_ERROR));
+        CHECK(mps_xnu_log_type(MPS_XINFO | MPS_RECOVERY) == MPS_XNU_LOG_DEBUG);
+        CHECK(mps_xnu_log_type(MPS_INIT | MPS_XINFO) == MPS_XNU_LOG_DEBUG);
+        CHECK(mps_xnu_log_type(MPS_RECOVERY | MPS_INFO) == MPS_XNU_LOG_DEFAULT);
+        size_t mark = LogMark();
+        Rig g({0x0009, 0x000A}, [](Rig &r) { mps_get_tunables(r.sc); });     /* the core's default mask */
+        CHECK(g.sc->mps_debug == (MPS_INFO | MPS_FAULT | MPS_ERROR));
+        /* attach and discovery: no event field dumps, no doorbell polls, no per-PHY lines */
+        CHECK(!HasLog(mark, "Doorbell=") && !HasLog(mark, "PHY[0]"));
+        CHECK(CountLog(mark, "SasTopologyChangeList") == 1 && HasLog(mark, "asks for an ack"));  /* D29's line only */
+        CHECK(HasLog(mark, "Firmware: "));                                   /* FreeBSD's info lines stay */
+        mark = LogMark();
+        CHECK(g.ForceReinit() == 0);
+        CHECK(HasLog(mark, "Reinitializing controller") && !HasLog(mark, "Doorbell=") &&
+              !HasLog(mark, "NULL handle for target"));
+        for (size_t i = mark; i < gHost.log.size(); i++)
+            CHECK(mps_xnu_log_type(gHost.log[i].cls) != MPS_XNU_LOG_DEBUG);  /* only what persists is printed */
     }
 }
