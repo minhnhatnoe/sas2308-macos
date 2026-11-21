@@ -1,0 +1,12 @@
+05:28:24,start,disk4,drive1,34
+05:28:24,start,disk5,drive2,34
+05:33:24,idle,disk4,drive1,34
+05:33:24,idle,disk5,drive2,33
+05:43:00,idle-end,disk4,drive1,33
+05:43:00,idle-end,disk5,drive2,34
+05:50:41,KRB1-end,disk4,drive1,34
+05:50:41,KRB1-end,disk5,drive2,34
+05:58:24,KRB2-end,disk4,drive1,34
+05:58:24,KRB2-end,disk5,drive2,35
+06:06:05,KRB3-end,disk4,drive1,34
+06:06:05,KRB3-end,disk5,drive2,35

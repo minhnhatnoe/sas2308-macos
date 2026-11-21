@@ -391,6 +391,7 @@ Plot of the whole run: `bench/final/temps.png`; 30 s ASCII view of the soak: `be
 1. **QD1 read-cache hits ~0.05 ms slower** (4.3-4.5k vs 10-17k IOPS, K table) while 4 KiB cache-hit
    writes at QD1 are unchanged (59 us, 16,559 IOPS) and 7 x QD8 cache-hit reads are -5 %.
    Not reproduced on idle drives after the run (18.1k / 11.8k IOPS, 54 / 84 us); situational (drive destaging after the preceding flush/random-write tests). Not a driver regression.
+   Settled in "K recheck (2026-11-21)" below: a 35-45 s drive-side slow phase after the K writes (reproduced 3/3), and two idle hit states (54 / 80 us).
 2. **Host-side 4 KiB IOPS ceiling -5 to -7.5 %** (F1 4 KiB 157.6k vs 170.3k, X 4 KiB 162.5k vs
    171.2k). Small, but consistent with ~0.5 us more per IO in the submit/completion path after
    batches A-F (more accounting/logging checks per IO). Irrelevant for HDDs (< 2,000 IOPS needed);
@@ -413,3 +414,89 @@ Plot of the whole run: `bench/final/temps.png`; 30 s ASCII view of the soak: `be
   `wcache.txt`, `trace-sync*.txt`, `stats/` (driver stats around the Q points), `stats-*.txt`,
   `show-*.txt`, `seeds`, `disks.txt`, `run.log.gz`, `soak-temps.txt` (ASCII plot).
 - `bench/final/scripts/` - the scripts as run.
+
+## K recheck (2026-11-21)
+Question: are the K read-cache rows (QD1 4 KiB re-reads of a small region on drive2; 2026-11-20
+10,212 / 16,895 IOPS, final run 4,302 / 4,530, idle recheck 01:00 18,068 / 11,783) drive behaviour,
+an effect of the preceding writes, or the host? Run 05:28-06:06 on 085DA9D6, drive2 and drive1,
+same sasbench flags as the K rows (`-b 4K -q 1`, seq, raw device), 15 s idle / 10 s post-burst
+points, 1 s interval series; script `bench/final/scripts/krecheck.sh`, data `bench/final/krecheck/`
+(`results.csv`, `ts.csv` per-second IOPS, `run.log`, `zones.txt`, `idle-iostat.txt`, `temps.csv`).
+Drives idle for 5 min first (iostat 0 tps), 33-35 C throughout.
+
+**Region sizes.** The K row names are wrong: zone `3-3.000001` of an 18.0 TB drive is 43 x 4 KiB =
+**172 KiB**, `3-3.0000058` is 254 x 4 KiB = **1016 KiB** (`zones.txt`). The names are kept below
+("16KiB" / "1MiB" rows); the size sweep uses exact sizes.
+
+**1. Idle, 5 alternating repetitions per drive (15 s each)** - IOPS, p50 / p99 us, max ms:
+
+| drive | "16KiB" row (172 KiB) | "1MiB" row (1016 KiB) |
+|---|---|---|
+| drive2 | 12,296-12,319 (mean 12,307, sd 0.1 %), 80 / 86, 0.63-0.65 | 12,297-12,454 (mean 12,348, sd 0.5 %), 80 / 82-84, 0.63-0.64 |
+| drive1 | r1 **18,289 (54 / 94)**, r2-r5 12,045-12,138 (80-82 / 86-88), 0.63-2.2 | 12,054-12,147 (sd 0.3 %), 82 / 84-86, 0.62-0.64 |
+
+Hits come in **two discrete states**: ~12.1-12.4k IOPS with p50 80-82 us (the normal idle state,
+19 of 20 runs) and ~18.2-18.4k with p50 54 us. Within a state the spread is 0.1-0.5 %. No region
+dependence between the two rows.
+
+**Size sweep and LBA (15 s, once each):**
+
+| region | drive2 IOPS (p50 / p99 us, max ms) | drive1 |
+|---|---|---|
+| 16 KiB | 12,155 (80 / 88, 0.62) | 11,932 (82 / 88, 0.64) |
+| 64 KiB | 12,255 (80 / 88, 0.64) | 12,041 (82 / 88, 1.0) |
+| 256 KiB | 12,312 (80 / 86, 0.64) | 12,063 (82 / 86, 0.65) |
+| 1 MiB | 12,350 (80 / 84, 0.65) | 12,085 (82 / 86, 0.63) |
+| 4 MiB | 12,208 (80 / 84, 0.64) | 12,091 (82 / 86, 0.63) |
+| 16 MiB | 15,846 (**54** / 86, 20.1) | 15,751 (**54** / 86, 50.0) |
+| middle (49 %), 172 KiB | 18,252 (**54** / 92, 16.0) - fast all 15 s | 13,861 (80 / 88, 12.1) - **18.4k for 4 s, then 12.0k** |
+| middle (49 %), 1016 KiB | 12,124 (82 / 86, 0.63) | 11,985 (82 / 86, 0.66) |
+
+No size dependence from 16 KiB to 4 MiB (all within 3.5 %, p50 80-82 us). At 16 MiB the region no
+longer stays in the cache (one media refill per lap, max 20-50 ms) but the hits in between are 54 us.
+Outer vs middle: same normal state (12.1k) once resident; the first run on the new middle region,
+just read from media, was fast. Pattern: **54 us = hits on data the drive has just (re)read from
+the platter; after a few seconds of hits it switches to 80-82 us**, as a step inside one run
+(drive1 middle, second 4->5: 18.4k -> 12.0k, nothing changed on the host). The drive1 r1 fast
+run was such a first touch (that region was last read at 01:00).
+
+**2. Write burst** = the final run's K write sequence (`perf.sh` lines 78-87: 4K/64K/1M seq with and
+without flush-per-write, 4K random with and without flush, 4K flush-per-write on all 7; 2 min 20 s),
+then the two re-reads at t = 0, 30, 60, 120, 300 s after its end. Bursts 1 and 2 on drive2,
+burst 3 on drive1 (IOPS, p50 / p99 us):
+
+| t | B1 drive2 "16KiB" / "1MiB" | B2 drive2 | B3 drive1 |
+|---|---|---|---|
+| 0 s | 4,287 (104/1088) / 4,459 (100/1152) | 4,254 (104/1088) / 4,402 (102/1152) | 4,222 (104/1088) / 4,559 (100/1184) |
+| 30 s | 7,483 (86/1088) / 8,850 (82/1008) | 8,404 (86/1024) / 8,944 (80/1008) | 4,904 (98/1184) / 12,065 (82/88) |
+| 60 s | 12,245 (80/88) / 12,166 (80/86) | 12,231 (80/88) / 12,144 (82/86) | 12,281 (80/88) / 12,126 (82/86) |
+| 120 s | 12,118 / 12,156 (80-82/86-88) | 12,056 / 12,105 (82/86-90) | 12,112 / 12,122 (80-82/86-88) |
+| 300 s | 12,236 / 12,341 (80/84-88) | 12,067 / 12,125 (82/86-90) | 12,256 / 12,277 (80/84-88) |
+
+The t = 0 point reproduces the final run's K rows exactly (4,302 / 4,530, p50 104 / 100 us, p99
+1088 / 1184 us) on both drives, all three times. Per second (`ts.csv`) the slow phase is flat at
+~4.0-5.3k and ends as a step: B1 at ~35.5 s (16KiB row) and ~44.5 s ("1MiB" row, which started
+slow at 40 s), B2 at ~34.5 / ~44.5 s, B3 still slow at 41 s, fast from ~41 s. **Recovery time
+35-45 s after the burst, complete by 60 s** in all three; then the normal 80-us state, no
+fast-state overshoot. The burst's last command is a SYNCHRONIZE CACHE, so the RAM write cache is
+clean at t = 0: the slow phase is the drive's own background work after the writes (destaging in
+the wider sense, e.g. media-cache migration; not observable from the host), not dirty data in
+the cache. Side finding: in the burst's last row (4K flush-per-write on all 7), the drive that had
+just taken the burst runs at 62-64 IOPS, p99 58 ms, the other drives at 117-119 IOPS (p99 8.2 ms):
+the final run's -7 % / p99 41 ms on `K-wr4K-seq-qd1-dkiocsync-all7` is the same effect.
+
+**Host side.** Nothing points at the host: (a) both rows slow at once only in the post-burst
+phase, and they recover at drive-specific moments (B3 drive drive1 vs B1/B2 drive2), not
+together; (b) the state flips 54 <-> 80 us and the post-burst recovery are steps inside a single
+sasbench run with no host change; (c) the same path does 18.4k QD1 reads (54 us) and 16.8k QD1 4K
+cache-hit writes (58-59 us, every burst; final run 16,559, 2026-11-20 16,907); (d) one CPU core
+kept busy (`yes`, shallower CPU idle states) changes the normal state by +2 % (12,561 / 12,612 vs
+12,307 / 12,348, p50 78 vs 80 us), far below the 26 us and ~50 us steps. Not done: driver-level
+latency trace for the slow phase (no DTrace / trace class in this run).
+
+**Conclusion.** All four historical value pairs are drive states, not driver or host effects:
+final run 4.3k / 4.5k = post-write slow phase (reproduced 3 of 3, gone after 35-45 s);
+2026-11-20 10.2k (p50 68, p99 752 us) = the end of that phase inside the 10 s window, then 16.9k
+(53 us) = fast state; 01:00 recheck 18.1k = fast state (first touch), 11.8k = normal state. Idle
+spread within a state 0.1-0.5 %; no region-size dependence up to 4 MiB. A benchmark of drive
+cache hits must wait >= 60 s after writes and run long enough (or report both states).
