@@ -253,9 +253,14 @@ SAS2308Glue::Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs
             fKStats.tasksHeld++;
     }
     Unlock();
-    if (rc == MPSK_SUBMIT_DONE)
-        /* refused by mpssas_action_scsiio (unknown target, gone, invalid, too big) */
-        Klog(res.kind == MPSK_IO_REJECT ? MPSK_ERROR : (MPSK_ERROR | MPSK_XINFO),
+    /*
+     * Refused before the core (invalid request, not attached, another disk
+     * behind the id). What mpssas_action_scsiio refuses it logs itself, as
+     * FreeBSD (NULL handle, shutting down, cannot map), or not at all (a
+     * target being removed): no second line (D23).
+     */
+    if (rc == MPSK_SUBMIT_DONE && !res.by_core)
+        Klog(res.kind == MPSK_IO_REJECT ? MPSK_ERROR : MPSK_XINFO,
              "IO for target %u refused (CAM status 0x%x)", d.target, res.cam_status);
 }
 
@@ -569,8 +574,8 @@ SAS2308Glue::HandleTimeout(void *task)
      */
     if (rc == 0 && rearm != 0)
         fPort->SetTimeoutForTask(task, rearm);
-    if (rc != 0)
-        Klog(MPSK_RECOVERY | MPSK_ERROR, "timeout for a task that is not outstanding, ignored");
+    if (rc != 0)        /* its completion is queued, not yet delivered: the normal race (D23) */
+        Klog(MPSK_XINFO, "timeout for a task that is not outstanding, ignored");
     DeliverCompletions();
 }
 
@@ -704,20 +709,15 @@ SAS2308Glue::QuiesceDone(void)
 //	Async - CAM async events (mps_mtx held). `present' was sampled
 //	(mps_xnu_target_present) when the event happened; the hotplug thread
 //	acts on it later. AC_BUS_RESET alone changes nothing (targets survive a
-//	reinit if the rediscovery finds them again).
+//	reinit if the rediscovery finds them again). AC_BUS_RESET and
+//	AC_SENT_BDR are not logged: the core logs the reinit and the TM (D23).
 //-----------------------------------------------------------------------------
 
 void
 SAS2308Glue::Async(int event, uint32_t tid, const uint8_t *present, const uint32_t *gens, uint32_t count)
 {
-    if (event == MPSK_ASYNC_BUS_RESET) {
-        Klog(MPSK_MAPPING | MPSK_RECOVERY, "IOC reset: targets wait for the rediscovery");
+    if (event == MPSK_ASYNC_BUS_RESET || event == MPSK_ASYNC_SENT_BDR)
         return;
-    }
-    if (event == MPSK_ASYNC_SENT_BDR) {
-        Klog(MPSK_RECOVERY, "target %u: target reset sent", tid);
-        return;
-    }
     if (!fLock)
         return;
     Lock();

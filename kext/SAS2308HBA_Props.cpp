@@ -65,6 +65,18 @@ SAS2308HBA::Klog(uint32_t cls, const char *fmt, ...)
     mps_kext_log(&fHost, cls, line);
 }
 
+/* Whatever the mask: the operator's own actions (level change, debug triggers). */
+void
+SAS2308HBA::KlogAlways(uint32_t cls, const char *fmt, ...)
+{
+    char line[320];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(line, sizeof(line), fmt, ap);
+    va_end(ap);
+    mps_kext_log(&fHost, cls, line);
+}
+
 /*
  * Level: personality property SAS2308LogLevel (Info.plist, default 2 =
  * info), overridden by boot-arg sas2308_log=N (0..4); class mask
@@ -147,8 +159,8 @@ SAS2308HBA::setProperties(OSObject *properties)
         setProperty(kDebugMaskKey, (unsigned long long)mask, 32);
         char names[128];
         mps_kext_describe_debug(mask, names, sizeof(names));
-        /* Logged at error class so the change itself is visible at every level. */
-        Klog(MPSK_ERROR | MPSK_INFO, "debug mask 0x%x -> 0x%x (%s), set from userland", old, mask, names);
+        /* info (persisted), and past the mask: visible at every level (D23) */
+        KlogAlways(MPSK_INFO, "debug mask 0x%x -> 0x%x (%s), set from userland", old, mask, names);
     }
     if (OSBoolean *b = OSDynamicCast(OSBoolean, d->getObject(kIOLogKey))) {
         fHost.use_iolog = b->isTrue();
@@ -169,8 +181,8 @@ SAS2308HBA::setProperties(OSObject *properties)
             rc = mps_kext_debug(fGlue.fMps, e.what, n->unsigned32BitValue());
             Leave();
         }
-        Klog(MPSK_ERROR | MPSK_INFO, "debug trigger %s %u from userland: %s", e.key, n->unsigned32BitValue(),
-             rc == 0 ? "done" : "refused");
+        KlogAlways(MPSK_INFO, "debug trigger %s %u from userland: %s", e.key, n->unsigned32BitValue(),
+                   rc == 0 ? "done" : "refused");
         if (rc != 0)
             return kIOReturnBadArgument;
         handled = true;

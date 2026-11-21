@@ -681,6 +681,7 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
     if (t->state == MPSK_T_SYNC_DONE) {
         /* refused by mpssas_action_scsiio: the family hears of it through CompleteParallelTask */
         mps_kext_result(t, res);
+        res->by_core = 1;
         mps_kext_queue_done(k, t);
         rc = MPSK_SUBMIT_DONE;
     } else {

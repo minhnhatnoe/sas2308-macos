@@ -1010,6 +1010,54 @@ int main()
         f.Detach();
     }
 
+    if (Want("D23")) {
+        /* the kext adds no second line to the core's (refused IO, resets) */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009);
+        auto count = [](size_t mark, const char *sub) {
+            int n = 0;
+            for (size_t i = mark; i < gHost.log.size(); i++) n += gHost.log[i].line.find(sub) != std::string::npos;
+            return n;
+        };
+        auto cls = [](size_t mark, const char *sub) {
+            for (size_t i = mark; i < gHost.log.size(); i++)
+                if (gHost.log[i].line.find(sub) != std::string::npos) return gHost.log[i].cls;
+            return 0u;
+        };
+        /* refused by mpssas_action_scsiio (no device behind the id): the core's line only */
+        size_t mark = gHost.Mark();
+        FakeTask *a = f.NewRead(t9 + 5);
+        CHECK(f.Submit(a) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        CHECK(a->completions == 1 && a->done == SAS2308GluePort::kDoneGone);
+        CHECK(count(mark, "NULL handle for target") == 1 && count(mark, "refused (CAM status") == 0);
+        /* refused before the core (another disk behind the id): the kext's line, xinfo */
+        mps_lock(gHost.sc); gHost.sc->xnu.tids[t9].gen++; mps_unlock(gHost.sc);
+        mark = gHost.Mark();
+        FakeTask *b = f.NewRead(t9);
+        CHECK(f.Submit(b) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        mps_lock(gHost.sc); gHost.sc->xnu.tids[t9].gen--; mps_unlock(gHost.sc);
+        CHECK(b->done == SAS2308GluePort::kDoneGone && cls(mark, "refused (CAM status") == MPS_XINFO);
+        /* a timeout racing the completion: xinfo */
+        FakeTask *c = f.NewRead(t9);
+        CHECK(f.Submit(c) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        CHECK(c->completions == 1);
+        mark = gHost.Mark();
+        f.glue.HandleTimeout(c);                    /* its completion went first: not outstanding */
+        CHECK(c->completions == 1 && cls(mark, "timeout for a task that is not outstanding") == MPS_XINFO);
+        /* a reinit and a target reset: the core's lines, none from the kext's async handler */
+        mark = gHost.Mark();
+        RequestReinit("D23");
+        f.Run(3000);
+        CHECK(count(mark, "Reinitializing controller") == 1);
+        CHECK(count(mark, "targets wait for the rediscovery") == 0);
+        f.Detach();
+    }
+
     printf("PASS (%d checks)\n", gChecks);
     return 0;
 }

@@ -891,19 +891,21 @@ SAS2308HBA::SendTaskMgmt(uint8_t taskType, SCSITargetIdentifier theT,
 {
     if (theT >= fGlue.fMaxTargets)
         return kSCSIServiceResponse_FUNCTION_REJECTED;
-    Klog(MPSK_RECOVERY | MPSK_USER, "OS requests %s on target %u lun %llu tag %llu", mps_kext_tm_type_str(taskType),
-         (unsigned)theT, (unsigned long long)theL, (unsigned long long)theQ);
+    /* one line per OS request, with its outcome (D23) */
+    const char *tmName = mps_kext_tm_type_str(taskType);
+    const unsigned long long lun = theL, tag = theQ;
 
     SCSIParallelTaskIdentifier victim = nullptr;
     if (taskType == kTmAbortTask) {
         victim = FindTaskForAddress(theT, theL, theQ);     /* the family's outstanding list (D45) */
         if (!victim) {
-            Klog(MPSK_RECOVERY | MPSK_USER, "abort task on target %u: nothing left to abort", (unsigned)theT);
+            Klog(MPSK_RECOVERY | MPSK_USER, "OS %s on target %u lun %llu tag %llu: nothing left to abort", tmName,
+                 (unsigned)theT, lun, tag);
             return kSCSIServiceResponse_FUNCTION_COMPLETE;
         }
         if (fGlue.AbortWaiting(victim)) {           /* still waiting for its DMA mapping (D47) */
-            Klog(MPSK_RECOVERY | MPSK_USER, "abort task on target %u: it waited for a DMA mapping, completed",
-                 (unsigned)theT);
+            Klog(MPSK_RECOVERY | MPSK_USER, "OS %s on target %u lun %llu tag %llu: it waited for a DMA mapping, "
+                 "completed", tmName, (unsigned)theT, lun, tag);
             return kSCSIServiceResponse_FUNCTION_COMPLETE;
         }
     }
@@ -914,6 +916,8 @@ SAS2308HBA::SendTaskMgmt(uint8_t taskType, SCSITargetIdentifier theT,
             fGlue.fKStats.tmRequestsFailed++;
             fGlue.Unlock();
         }
+        Klog(MPSK_RECOVERY | MPSK_USER, "OS %s on target %u lun %llu tag %llu: failed (controller stopping)", tmName,
+             (unsigned)theT, lun, tag);
         return kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
     }
     fGlue.Lock();
@@ -928,7 +932,7 @@ SAS2308HBA::SendTaskMgmt(uint8_t taskType, SCSITargetIdentifier theT,
     SCSIServiceResponse response = r == MPSK_TM_COMPLETE ? kSCSIServiceResponse_FUNCTION_COMPLETE :
                                    r == MPSK_TM_REJECTED ? kSCSIServiceResponse_FUNCTION_REJECTED :
                                    kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
-    Klog(MPSK_RECOVERY | MPSK_USER, "%s on target %u: %s (%s)", mps_kext_tm_type_str(taskType), (unsigned)theT,
+    Klog(MPSK_RECOVERY | MPSK_USER, "OS %s on target %u lun %llu tag %llu: %s (%s)", tmName, (unsigned)theT, lun, tag,
          r == MPSK_TM_COMPLETE ? "complete" : r == MPSK_TM_REJECTED ? "rejected" : "failed", why);
     if (response != kSCSIServiceResponse_FUNCTION_COMPLETE) {
         fGlue.Lock();

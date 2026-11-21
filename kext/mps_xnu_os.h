@@ -180,6 +180,7 @@ struct mps_kext_io_result {
 	uint64_t	 transferred;
 	const uint8_t	*sense;		/* in td, valid until the task completes */
 	uint32_t	 sense_len;
+	uint8_t		 by_core;	/* refused by mpssas_action_scsiio, which logs as FreeBSD (D23) */
 };
 
 enum { MPSK_SUBMIT_POSTED, MPSK_SUBMIT_HELD, MPSK_SUBMIT_DONE };

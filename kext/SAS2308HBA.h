@@ -183,6 +183,7 @@ private:
 
     /* ---- SAS2308HBA_Props.cpp */
     void Klog(uint32_t cls, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
+    void KlogAlways(uint32_t cls, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
     void ApplyLogSettings(void);
     void PublishControllerCharacteristics(void);
     bool Snapshot(struct mps_kext_snapshot *snap);
