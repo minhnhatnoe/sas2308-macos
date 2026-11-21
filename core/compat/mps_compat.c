@@ -592,7 +592,16 @@ mps_compat_free(void *addr, struct malloc_type *type)
 	if (addr == NULL)
 		return;
 	h = (struct mps_malloc_hdr *)addr - 1;
-	KASSERT(h->magic == MPS_MALLOC_MAGIC, ("free: bad pointer %p", addr));
+	/*
+	 * FreeBSD's free(9) panics on a pointer malloc did not return.  Our
+	 * KASSERT only logs (D55), so do not touch the block: its "size" and
+	 * "map" are garbage, and IOFree with a wrong size corrupts the heap.
+	 * Leaked (L12).
+	 */
+	if (h->magic != MPS_MALLOC_MAGIC) {
+		KASSERT(0, ("free: bad pointer %p", addr));
+		return;
+	}
 	/*
 	 * XNU (D6): FreeBSD's synchronous config and IDENTIFY paths free the
 	 * page without bus_dmamap_unload(); the platform mapping of the block

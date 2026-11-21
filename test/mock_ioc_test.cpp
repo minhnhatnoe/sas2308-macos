@@ -2704,6 +2704,22 @@ static void DeviationTests()
         CHECK(gHost.panics >= 2 && g.Stats().kassert_hits == before + 2);
     }
 
+    if (Want("L12")) {
+        /* free() of a pointer malloc did not return: KASSERT, and the block is not touched (FreeBSD
+         * never frees a bad pointer); no IOFree with a garbage size, no DMA unload of a garbage map */
+        Rig g({0x0009});
+        const long n0 = mps_compat_malloc_count();
+        const uint32_t before = g.Stats().kassert_hits;
+        char *p = (char *)mps_compat_malloc(64, nullptr, M_WAITOK | M_ZERO);
+        CHECK(p != nullptr && mps_compat_malloc_count() == n0 + 1);
+        gHost.panicsAllowed = 1;
+        mps_compat_free(p + 32, nullptr);               /* "header" = zeroed data: bad magic */
+        gHost.panicsAllowed = 0;
+        CHECK(g.Stats().kassert_hits == before + 1 && mps_compat_malloc_count() == n0 + 1);
+        mps_compat_free(p, nullptr);
+        CHECK(mps_compat_malloc_count() == n0);
+    }
+
     if (Want("D30")) {
         /* an interrupt that finds an empty queue reads no register; a fault is found by mps_periodic (1 s) */
         Rig g({0x0009});
