@@ -1390,7 +1390,7 @@ static void LoggingTests()
         CHECK(mps_xnu_level_mask(MPS_LEVEL_ERROR) == (MPS_FAULT | MPS_ERROR));
         CHECK(mps_xnu_level_mask(MPS_LEVEL_WARN) == (MPS_FAULT | MPS_ERROR | MPS_RECOVERY));
         const uint32_t info = mps_xnu_level_mask(MPS_LEVEL_INFO);
-        CHECK(info == (MPS_INFO | MPS_FAULT | MPS_ERROR));                   /* D22 */
+        CHECK(info == (MPS_INFO | MPS_FAULT));                               /* FreeBSD default (D22) */
         const uint32_t dbg = mps_xnu_level_mask(MPS_LEVEL_DEBUG);
         CHECK((dbg & MPS_RECOVERY) && (dbg & MPS_EVENT) && (dbg & MPS_INIT) && (dbg & MPS_XINFO) && !(dbg & MPS_TRACE));
         CHECK(mps_xnu_level_mask(MPS_LEVEL_TRACE) == MPS_DEBUG_ALL && mps_xnu_level_mask(99) == MPS_DEBUG_ALL);
@@ -3355,14 +3355,19 @@ static void DeviationTests()
     }
 
     if (Want("D22")) {
-        /* the default is FreeBSD's info|fault plus error; xinfo-tagged lines are os_log DEBUG */
-        CHECK(mps_xnu_level_mask(MPS_LEVEL_INFO) == (MPS_INFO | MPS_FAULT | MPS_ERROR));
+        /* the default is FreeBSD's info|fault; error is opt-in (levels error, warn, debug); the
+         * port's periph stand-ins (failed IO, surprise removal) are tagged info|error */
+        CHECK(mps_xnu_level_mask(MPS_LEVEL_INFO) == (MPS_INFO | MPS_FAULT));
+        CHECK(mps_xnu_level_mask(MPS_LEVEL_ERROR) == (MPS_FAULT | MPS_ERROR));
+        CHECK(mps_xnu_level_mask(MPS_LEVEL_WARN) == (MPS_FAULT | MPS_ERROR | MPS_RECOVERY));
+        CHECK((mps_xnu_level_mask(MPS_LEVEL_DEBUG) & (MPS_INFO | MPS_FAULT | MPS_ERROR)) == (MPS_INFO | MPS_FAULT | MPS_ERROR));
+        CHECK(mps_xnu_log_type(MPS_INFO | MPS_ERROR) == MPS_XNU_LOG_ERROR);
         CHECK(mps_xnu_log_type(MPS_XINFO | MPS_RECOVERY) == MPS_XNU_LOG_DEBUG);
         CHECK(mps_xnu_log_type(MPS_INIT | MPS_XINFO) == MPS_XNU_LOG_DEBUG);
         CHECK(mps_xnu_log_type(MPS_RECOVERY | MPS_INFO) == MPS_XNU_LOG_DEFAULT);
         size_t mark = LogMark();
         Rig g({0x0009, 0x000A}, [](Rig &r) { mps_get_tunables(r.sc); });     /* the core's default mask */
-        CHECK(g.sc->mps_debug == (MPS_INFO | MPS_FAULT | MPS_ERROR));
+        CHECK(g.sc->mps_debug == (MPS_INFO | MPS_FAULT));
         /* attach and discovery: no event field dumps, no doorbell polls, no per-PHY lines */
         CHECK(!HasLog(mark, "Doorbell=") && !HasLog(mark, "PHY[0]"));
         CHECK(!HasLog(mark, "SasTopologyChangeList") && !HasLog(mark, "asks for an ack"));    /* no ack line (D29) */
@@ -3373,6 +3378,24 @@ static void DeviationTests()
               !HasLog(mark, "NULL handle for target"));
         for (size_t i = mark; i < gHost.log.size(); i++)
             CHECK(mps_xnu_log_type(gHost.log[i].cls) != MPS_XNU_LOG_DEBUG);  /* only what persists is printed */
+        /* at the default mask: a MEDIUM ERROR IO and a surprise removal still print, as ERROR */
+        {
+            Rig g2({0x0009}, [](Rig &r) { mps_get_tunables(r.sc); });
+            mark = LogMark();
+            g2.ioc.failDev = 0x0009;
+            Io *io = g2.Read(0x0009, 0, 7);
+            CHECK(g2.Go(io) == kPosted);
+            g2.Pump();
+            CHECK(io->status == CAM_REQ_CMP_ERR);
+            CHECK(HasLog(mark, " READ(10) lba 7 blocks 8 failed: IOCStatus scsi io data error"));
+            CHECK(mps_xnu_log_type(LogClass(mark, "READ(10) lba 7 blocks 8 failed")) == MPS_XNU_LOG_ERROR);
+            mark = LogMark();
+            g2.ioc.dead = true;
+            HostAdvance(1300);
+            CHECK(g2.Gone() && HasLog(mark, "controller gone (surprise removal)") &&
+                  HasLog(mark, "surprise removal: controller disabled"));
+            CHECK(mps_xnu_log_type(LogClass(mark, "controller gone (surprise removal)")) == MPS_XNU_LOG_ERROR);
+        }
     }
 
     if (Want("D24")) {

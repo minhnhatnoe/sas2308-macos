@@ -37,22 +37,31 @@ static const struct {
 };
 
 /*
- * The default (info) is FreeBSD's mps_debug (mps.c: MPS_INFO|MPS_FAULT)
- * plus error: no CAM periph prints IO errors on macOS (D22).  FreeBSD's
- * recovery lines that matter are tagged MPS_INFO|MPS_RECOVERY and show at
- * info; recovery, init, event and mapping alone are opt-in (debug, or a
- * mask).  warn is errors plus the whole recovery trail, without the info
- * lines: not a subset of info.
+ * The default (info) is FreeBSD's mps_debug (mps.c: MPS_INFO|MPS_FAULT,
+ * D22).  FreeBSD's error class is its internal error chatter (e.g. "NULL
+ * handle for target" per IO during a reinit), hidden by default; the IO
+ * errors a FreeBSD user sees are printed by CAM's periph
+ * (cam_periph_error), and the port's stand-ins for those (the failed-IO
+ * line, surprise removal, the kext's user-visible failures) are tagged
+ * MPS_INFO|MPS_ERROR, so they show at info and are os_log ERROR.
+ * FreeBSD's recovery lines that matter are tagged MPS_INFO|MPS_RECOVERY
+ * and show at info; recovery, init, event and mapping alone are opt-in
+ * (debug, or a mask).  error is fault plus error; warn adds the whole
+ * recovery trail.  Neither is a subset of info.
  */
 uint32_t
 mps_xnu_level_mask(int level)
 {
-	uint32_t m = MPS_FAULT | MPS_ERROR;
+	uint32_t m = MPS_FAULT;
 
+	if (level == MPS_LEVEL_ERROR || level == MPS_LEVEL_WARN)
+		m |= MPS_ERROR;
 	if (level == MPS_LEVEL_WARN)
 		m |= MPS_RECOVERY;
 	if (level >= MPS_LEVEL_INFO)
 		m |= MPS_INFO;
+	if (level >= MPS_LEVEL_DEBUG)
+		m |= MPS_ERROR;
 	if (level >= MPS_LEVEL_DEBUG)
 		m |= MPS_RECOVERY | MPS_INIT | MPS_EVENT | MPS_MAPPING |
 		    MPS_XINFO | MPS_LOG | MPS_USER;
@@ -635,7 +644,7 @@ mps_xnu_gone_check(void *arg)
 	sc->xnu.gone_tries = 0;
 	sc->mps_flags |= MPS_FLAGS_XNU_GONE;
 	/* XNU: error, not fault: an unplugged dock is a user action (D24) */
-	mps_dprint(sc, MPS_ERROR, "register 0x%02x reads 0xffffffff and the "
+	mps_dprint(sc, MPS_INFO|MPS_ERROR, "register 0x%02x reads 0xffffffff and the "
 	    "PCI config space does not answer: controller gone (surprise "
 	    "removal)\n", sc->xnu.gone_offset);
 	/* the reinit task fails everything (mps_reinit -> mps_xnu_disable) */
@@ -649,7 +658,7 @@ mps_xnu_disable(struct mps_softc *sc, int error)
 		return;
 	sc->xnu.disabled = 1;
 	if (sc->mps_flags & MPS_FLAGS_XNU_GONE)
-		mps_dprint(sc, MPS_ERROR, "surprise removal: controller "
+		mps_dprint(sc, MPS_INFO|MPS_ERROR, "surprise removal: controller "
 		    "disabled\n");
 	else
 		mps_dprint(sc, MPS_FAULT, "reinit failed (error %d) after %d "
@@ -721,7 +730,7 @@ mps_xnu_periodic(struct mps_softc *sc)
 		targ = &sc->sassc->targets[i];
 		if (mps_xnu_ratelimit_flush(&targ->xnu_ioerr_rl, now_ms,
 		    MPS_XNU_RL_WINDOW_MS, &sup))
-			mps_dprint(sc, MPS_ERROR, "target %u (handle 0x%04x): "
+			mps_dprint(sc, MPS_INFO|MPS_ERROR, "target %u (handle 0x%04x): "
 			    "%u similar IO error lines suppressed\n",
 			    targ->tid, targ->handle, sup);
 	}
@@ -892,18 +901,18 @@ mps_xnu_io_done(struct mps_softc *sc, struct mps_command *cm, union ccb *ccb,
 	    (key == SSD_KEY_MEDIUM_ERROR || key == SSD_KEY_HARDWARE_ERROR)))
 		cls = MPS_XINFO;
 	else
-		cls = MPS_ERROR;
+		cls = MPS_INFO | MPS_ERROR;	/* CAM's periph prints these (D22) */
 	if (rep == NULL || status == CAM_REQ_CMP ||
 	    ioc == MPI2_IOCSTATUS_SCSI_TASK_TERMINATED ||
 	    (sc->mps_debug & cls) == 0)
 		return;
 	sup = 0;
-	if (cls == MPS_ERROR &&
+	if ((cls & MPS_ERROR) &&
 	    !mps_xnu_ratelimit_allow(&targ->xnu_ioerr_rl, now / 1000,
 	    MPS_XNU_RL_BURST, MPS_XNU_RL_WINDOW_MS, &sup))
 		return;
 	if (sup != 0)
-		mps_dprint(sc, MPS_ERROR, "target %u (handle 0x%04x): %u "
+		mps_dprint(sc, MPS_INFO|MPS_ERROR, "target %u (handle 0x%04x): %u "
 		    "similar IO error lines suppressed\n", targ->tid,
 		    targ->handle, sup);
 	mps_xnu_cdb_lba(cdb, csio->cdb_len, &lba, &blocks);
@@ -1531,7 +1540,7 @@ mps_xnu_temperature(struct mps_softc *sc)
 	if (t >= MPS_XNU_TEMP_WARN_C && !sc->xnu.temp_warned) {
 		sc->xnu.temp_warned = 1;
 		st->temp_warnings++;
-		mps_dprint(sc, MPS_ERROR, "IOC temperature %d C: at or above "
+		mps_dprint(sc, MPS_INFO|MPS_ERROR, "IOC temperature %d C: at or above "
 		    "%d C, check the enclosure's airflow\n", t,
 		    MPS_XNU_TEMP_WARN_C);
 	} else if (t < MPS_XNU_TEMP_REARM_C && sc->xnu.temp_warned) {

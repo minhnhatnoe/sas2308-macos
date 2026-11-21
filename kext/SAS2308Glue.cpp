@@ -97,7 +97,7 @@ SAS2308Glue::Attached(void)
     const uint32_t tasks = mps_kext_max_tasks(fMps);
     const uint32_t targets = mps_kext_max_targets(fMps);
     if (tasks == 0 || segs == 0 || targets == 0) {
-        Klog(MPSK_ERROR | MPSK_INIT, "no OS tasks (%u), segments (%u) or target IDs (%u)", tasks, segs, targets);
+        Klog(MPSK_ERROR | MPSK_INFO | MPSK_INIT, "no OS tasks (%u), segments (%u) or target IDs (%u)", tasks, segs, targets);
         return false;
     }
     /* the target table, one entry per ID: sized once, as the family reads ReportHighestSupportedDeviceID once */
@@ -105,7 +105,7 @@ SAS2308Glue::Attached(void)
     if (fTargets.Count() != targets) {
         e = (SAS2308TargetTable::Entry *)mps_kext_zalloc(sizeof(*e) * targets);
         if (!e) {
-            Klog(MPSK_ERROR | MPSK_INIT, "no memory for %u target IDs", targets);
+            Klog(MPSK_ERROR | MPSK_INFO | MPSK_INIT, "no memory for %u target IDs", targets);
             return false;
         }
     }
@@ -260,7 +260,7 @@ SAS2308Glue::Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs
      * target being removed): no second line (D23).
      */
     if (rc == MPSK_SUBMIT_DONE && !res.by_core)
-        Klog(res.kind == MPSK_IO_REJECT ? MPSK_ERROR : MPSK_XINFO,
+        Klog(res.kind == MPSK_IO_REJECT ? (MPSK_ERROR | MPSK_INFO) : MPSK_XINFO,
              "IO for target %u refused (CAM status 0x%x)", d.target, res.cam_status);
 }
 
@@ -326,7 +326,7 @@ SAS2308Glue::ProcessTask(void *task)
             fPort->TaskUnmap(task);
         tg->prepared = 0;
         if (open)
-            Klog(MPSK_ERROR, "more than %u tasks outstanding: rejecting one", fMaxTasks);
+            Klog(MPSK_ERROR | MPSK_INFO, "more than %u tasks outstanding: rejecting one", fMaxTasks);
         return open ? kRejected : kFailure;
     }
 
@@ -541,7 +541,7 @@ SAS2308Glue::HandleTimeout(void *task)
     uint32_t rearm = 0;
 
     if (!Enter()) {
-        Klog(MPSK_RECOVERY | MPSK_ERROR, "timeout while stopping: the stop path completes the task");
+        Klog(MPSK_RECOVERY | MPSK_INFO | MPSK_ERROR, "timeout while stopping: the stop path completes the task");
         return;
     }
     Lock();
@@ -557,7 +557,7 @@ SAS2308Glue::HandleTimeout(void *task)
         Unlock();
         if (took || retrying) {
             Leave();
-            Klog(MPSK_RECOVERY | MPSK_ERROR, "target %u: timeout while waiting for a DMA mapping", d.target);
+            Klog(MPSK_RECOVERY | MPSK_INFO | MPSK_ERROR, "target %u: timeout while waiting for a DMA mapping", d.target);
             if (took)
                 fPort->CompleteTask(task, SAS2308GluePort::kDoneTimeout, 0, 0, nullptr, 0);
             return;
@@ -821,7 +821,7 @@ SAS2308Glue::Hotplug(void)
                 Leave();
                 DeliverCompletions();
                 if (left)
-                    Klog(MPSK_MAPPING | MPSK_ERROR, "target %u: %d IOs still outstanding at its destroy",
+                    Klog(MPSK_MAPPING | MPSK_INFO | MPSK_ERROR, "target %u: %d IOs still outstanding at its destroy",
                          w.targetID, left);
             }
             fPort->DestroyTarget(w.targetID);
@@ -863,7 +863,7 @@ SAS2308Glue::WillTerminate(void)
             Leave();
             DeliverCompletions();
             if (left)
-                Klog(MPSK_MAPPING | MPSK_ERROR, "target %u: %d IOs still outstanding at termination", id, left);
+                Klog(MPSK_MAPPING | MPSK_INFO | MPSK_ERROR, "target %u: %d IOs still outstanding at termination", id, left);
         }
     }
     StopTargets();

@@ -1696,7 +1696,7 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 		targ->outstanding--;
 		TAILQ_REMOVE(&targ->commands, cm, cm_link);
 		ccb->ccb_h.spriv_ptr1 = NULL;
-		mps_dprint(sc, MPS_ERROR, "%s: cannot map %u segments "
+		mps_dprint(sc, MPS_INFO|MPS_ERROR, "%s: cannot map %u segments "
 		    "(error %d)\n", __func__, csio->sglist_cnt, error);
 		mps_free_command(sc, cm);
 		mpssas_set_ccbstatus(ccb, (error == EFBIG) ? CAM_REQ_TOO_BIG :

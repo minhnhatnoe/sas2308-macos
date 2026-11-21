@@ -62,8 +62,8 @@ struct mps_softc;
 
 #define MPS_LEVEL_ERROR		0	/* fault, error */
 #define MPS_LEVEL_WARN		1	/* fault, error, recovery */
-#define MPS_LEVEL_INFO		2	/* fault, error, info (default, D22) */
-#define MPS_LEVEL_DEBUG		3	/* + recovery, init, event, mapping, xinfo, log, user */
+#define MPS_LEVEL_INFO		2	/* fault, info: FreeBSD's default (D22) */
+#define MPS_LEVEL_DEBUG		3	/* + error, recovery, init, event, mapping, xinfo, log, user */
 #define MPS_LEVEL_TRACE		4	/* + trace */
 #define MPS_DEBUG_ALL		((1u << 11) - 1)
 

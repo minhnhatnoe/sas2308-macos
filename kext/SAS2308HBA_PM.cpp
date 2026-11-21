@@ -86,7 +86,7 @@ SAS2308HBA::InitializePowerManagement(IOService *provider)
     provider->joinPMtree(this);
     IOReturn rc = registerPowerDriver(this, sPowerStates, kPowerStateCount);
     if (rc != IOPMNoErr) {
-        Klog(MPSK_ERROR | MPSK_INIT, "registerPowerDriver failed (0x%x): no sleep support", rc);
+        Klog(MPSK_ERROR | MPSK_INFO | MPSK_INIT, "registerPowerDriver failed (0x%x): no sleep support", rc);
         PMstop();
         return;
     }

@@ -515,7 +515,7 @@ SAS2308HBA::StartController(void)
         uint64_t addr;
         uint32_t data;
         ReadMsi(&cmd, &ctl, &addr, &data);
-        Klog(fPciSaved ? (MPSK_INIT | MPSK_INFO) : (MPSK_INIT | MPSK_ERROR),
+        Klog(fPciSaved ? (MPSK_INIT | MPSK_INFO) : (MPSK_INIT | MPSK_INFO | MPSK_ERROR),
              "PCI config space %s (0x%x): command 0x%04x, MSI control 0x%04x address 0x%llx data 0x%04x",
              fPciSaved ? "saved" : "not saved", r, cmd, ctl, (unsigned long long)addr, data);
     }
@@ -540,7 +540,7 @@ SAS2308HBA::StartController(void)
     if (fStatsTimer && wl && wl->addEventSource(fStatsTimer) == kIOReturnSuccess) {
         fStatsTimer->setTimeoutMS(kStatsPublishMs);
     } else {
-        Klog(MPSK_ERROR | MPSK_INIT, "cannot start the statistics timer");
+        Klog(MPSK_ERROR | MPSK_INFO | MPSK_INIT, "cannot start the statistics timer");
         OSSafeReleaseNULL(fStatsTimer);
     }
     Klog(MPSK_INIT | MPSK_INFO, "controller started");

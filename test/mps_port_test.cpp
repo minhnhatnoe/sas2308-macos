@@ -509,7 +509,7 @@ static void TestXnuHelpers(struct mps_softc *sc)
 {
     printf("xnu helpers: levels, mps_parse_debug, %%b, decoders, rate limit\n");
     T(mps_xnu_level_mask(MPS_LEVEL_ERROR) == (MPS_FAULT | MPS_ERROR));
-    T(mps_xnu_level_mask(MPS_LEVEL_INFO) == (MPS_FAULT | MPS_ERROR | MPS_INFO));
+    T(mps_xnu_level_mask(MPS_LEVEL_INFO) == (MPS_FAULT | MPS_INFO));     /* FreeBSD default (D22) */
     T(mps_xnu_level_mask(MPS_LEVEL_TRACE) == MPS_DEBUG_ALL);
     T(mps_xnu_parse_level("debug") == 3 && mps_xnu_parse_level("4") == 4 &&
       mps_xnu_parse_level("warning") == 1 && mps_xnu_parse_level("loud") == -1);

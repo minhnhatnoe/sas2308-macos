@@ -1876,7 +1876,7 @@ mps_get_tunables(struct mps_softc *sc)
 	char tmpstr[80], mps_debug[80];
 
 	/* XXX default to some debugging for now */
-	sc->mps_debug = MPS_INFO|MPS_FAULT|MPS_ERROR;	/* XNU: +error (D22) */
+	sc->mps_debug = MPS_INFO|MPS_FAULT;
 	sc->disable_msix = 0;
 	sc->disable_msi = 0;
 	sc->max_msix = MPS_MSIX_MAX;
@@ -2477,7 +2477,7 @@ mps_xnu_bad_smid(struct mps_softc *sc, u_int smid)
 {
 
 	if (smid == 0 || smid >= (u_int)sc->num_reqs) {
-		mps_dprint(sc, MPS_ERROR, "reply for invalid SMID %u "
+		mps_dprint(sc, MPS_INFO|MPS_ERROR, "reply for invalid SMID %u "
 		    "(%d commands), dropped\n", smid, sc->num_reqs);
 		sc->xnu.stats.bad_replies++;
 		return (1);
@@ -2588,7 +2588,7 @@ mps_intr_locked(void *data)
 			    (uint32_t)(sc->fqdepth * sc->replyframesz) ||
 			    (baddr - (uint32_t)sc->reply_busaddr) %
 			    sc->replyframesz != 0) {
-				mps_dprint(sc, MPS_ERROR, "%s: reply address "
+				mps_dprint(sc, MPS_INFO|MPS_ERROR, "%s: reply address "
 				    "%#x out of range (frames %#x, %d x %d), "
 				    "SMID %u dropped\n", __func__, baddr,
 				    (uint32_t)sc->reply_busaddr, sc->fqdepth,

@@ -76,7 +76,7 @@ SAS2308HBA::PortCreateTarget(uint32_t targetID)
     OSDictionary *props = CopyTargetProperties(targetID);
     const bool ok = props ? CreateTargetForID(targetID, props) : CreateTargetForID(targetID);
     OSSafeReleaseNULL(props);
-    Klog(ok ? (MPSK_MAPPING | MPSK_INFO) : (MPSK_MAPPING | MPSK_ERROR), "CreateTargetForID(%u) %s", targetID,
+    Klog(ok ? (MPSK_MAPPING | MPSK_INFO) : (MPSK_MAPPING | MPSK_INFO | MPSK_ERROR), "CreateTargetForID(%u) %s", targetID,
          ok ? "done" : "FAILED");
     return ok;
 }
