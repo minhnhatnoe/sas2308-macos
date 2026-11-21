@@ -206,6 +206,7 @@ size_t	 mps_compat_strlcpy(char *dst, const char *src, size_t size);
 void	mps_compat_kassert_where(const char *file, int line, const char *expr);
 void	mps_compat_kassert(const char *fmt, ...) __printflike(1, 2);
 void	mps_compat_panic(const char *fmt, ...) __printflike(1, 2);
+u_int	mps_compat_kassert_hits(void);	/* both of the above, since load (D55) */
 
 #define KASSERT(exp, msg) do {						\
 	if (__predict_false(!(exp))) {					\

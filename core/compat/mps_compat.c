@@ -457,9 +457,23 @@ sbuf_delete(struct sbuf *s)
 
 /* ---- KASSERT / panic ------------------------------------------------------ */
 
+/*
+ * Neither panics (design.md "No panic"): both log and return. Every hit is
+ * counted for the statistics ("KASSERT hits", D55), so a hardware run can be
+ * checked for them. One counter for all controllers.
+ */
+static volatile u_int mps_compat_assert_hits;
+
+u_int
+mps_compat_kassert_hits(void)
+{
+	return (mps_compat_assert_hits);
+}
+
 void
 mps_compat_kassert_where(const char *file, int line, const char *expr)
 {
+	__atomic_add_fetch(&mps_compat_assert_hits, 1, __ATOMIC_RELAXED);
 	mps_compat_log(NULL, 0, "KASSERT failed: %s at %s:%d", expr, file,
 	    line);
 }
@@ -485,6 +499,7 @@ mps_compat_panic(const char *fmt, ...)
 	va_start(ap, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
+	__atomic_add_fetch(&mps_compat_assert_hits, 1, __ATOMIC_RELAXED);
 	mps_compat_log(NULL, 0, "panic: %s", buf);
 	mps_os_assert_fail(buf);
 }

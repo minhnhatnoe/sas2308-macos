@@ -2669,6 +2669,17 @@ static void DeviationTests()
         CHECK(LogClass(mark, "event SasTopologyChangeList (0x1c) asks for an ack") & MPS_INFO);
     }
 
+    if (Want("D55")) {
+        /* our KASSERT and panic() log and return: counted, so a hardware run can be checked for them */
+        Rig g({0x0009});
+        const uint32_t before = g.Stats().kassert_hits;
+        gHost.panicsAllowed = 2;
+        KASSERT(g.sc == nullptr, ("D55 test %d", 1));
+        mps_compat_panic("D55 test %d", 2);
+        gHost.panicsAllowed = 0;
+        CHECK(gHost.panics >= 2 && g.Stats().kassert_hits == before + 2);
+    }
+
     if (Want("D30")) {
         /* an interrupt that finds an empty queue reads no register; a fault is found by mps_periodic (1 s) */
         Rig g({0x0009});

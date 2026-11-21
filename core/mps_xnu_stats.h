@@ -85,6 +85,7 @@ struct mps_xnu_stats {
 	uint32_t	timer_rearms;		/* family timer re-armed: held, or IOC owned it less long (D4) */
 	uint32_t	resume_ready;		/* wakes by the READY path: no diag reset (D12) */
 	uint32_t	resume_diag_reset;	/* wakes that needed the diag reset */
+	uint32_t	kassert_hits;		/* KASSERT failures and panic() calls survived, all controllers (D55) */
 };
 
 #endif /* !_MPS_XNU_STATS_H_ */

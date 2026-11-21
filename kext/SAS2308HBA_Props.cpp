@@ -472,6 +472,7 @@ SAS2308HBA::PublishStats(bool force)
         /* also a top-level property: ioreg -l -k "IOC Temperature (C)" */
         setProperty(kIocTemperatureKey, (unsigned long long)st.ioc_temp_c, 32);
     }
+    SetNumber(d, "KASSERT hits", st.kassert_hits);   /* KASSERT / panic() survived, all controllers (D55) */
     SetNumber(d, "Debug mask", mask);
     OSString *state = OSString::withCString(gone ? "gone" : fSuspended ? "suspended" : resetting ? "resetting" : "operational");
     if (state) {

@@ -683,6 +683,7 @@ mps_xnu_stats_update(struct mps_softc *sc)
 {
 	sc->xnu.stats.chain_alloc_fail = (uint32_t)sc->chain_alloc_fail;
 	sc->xnu.stats.chain_free_low = (uint32_t)sc->chain_free_lowwater;
+	sc->xnu.stats.kassert_hits = mps_compat_kassert_hits();
 	if (sc->sassc != NULL && sc->sassc->sim != NULL)
 		sc->xnu.stats.held = sc->sassc->sim->held_total;
 }
