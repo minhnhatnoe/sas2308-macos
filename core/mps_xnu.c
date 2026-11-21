@@ -87,46 +87,67 @@ mps_xnu_parse_level(const char *s)
 	return (-1);
 }
 
+/*
+ * One precedence decides both the os_log category and the type of a line
+ * (D24): the most verbose class first (a line tagged XINFO or TRACE is
+ * debug detail whatever else it carries, D22; no line combines XINFO with
+ * FAULT or ERROR), then the most serious, then the most specific:
+ * MPS_RECOVERY|MPS_INFO is "recovery", MPS_INIT|MPS_FAULT is "fault".
+ */
+static const uint32_t mps_xnu_class_order[] = { MPS_XINFO, MPS_TRACE,
+    MPS_FAULT, MPS_ERROR, MPS_RECOVERY, MPS_EVENT, MPS_MAPPING, MPS_INIT,
+    MPS_LOG, MPS_USER, MPS_INFO };
+
+static uint32_t
+mps_xnu_class_pick(uint32_t cls)
+{
+	size_t i;
+
+	for (i = 0; i < nitems(mps_xnu_class_order); i++)
+		if (cls & mps_xnu_class_order[i])
+			return (mps_xnu_class_order[i]);
+	return (0);
+}
+
 const char *
 mps_xnu_category(uint32_t cls)
 {
-	/* Most specific first: MPS_RECOVERY|MPS_INFO is "recovery". */
-	static const uint32_t order[] = { MPS_FAULT, MPS_RECOVERY, MPS_EVENT,
-	    MPS_MAPPING, MPS_INIT, MPS_LOG, MPS_USER, MPS_ERROR, MPS_TRACE,
-	    MPS_XINFO, MPS_INFO };
-	size_t i, j;
+	uint32_t c = mps_xnu_class_pick(cls);
+	size_t j;
 
-	for (i = 0; i < nitems(order); i++) {
-		if ((cls & order[i]) == 0)
-			continue;
-		for (j = 0; j < nitems(mps_xnu_classes); j++)
-			if (mps_xnu_classes[j].flag == order[i])
-				return (mps_xnu_classes[j].name);
-	}
+	for (j = 0; j < nitems(mps_xnu_classes); j++)
+		if (mps_xnu_classes[j].flag == c)
+			return (mps_xnu_classes[j].name);
 	return ("info");
 }
 
 /*
- * os_log type: a line tagged XINFO or TRACE is DEBUG whatever else it
- * carries (the most verbose class wins, D22: "Freezing devq" is
- * XINFO|RECOVERY; no line combines XINFO with FAULT or ERROR);
- * errors/faults are ERROR; lines tagged with an info-level class are
- * DEFAULT (shown by `log stream`, persisted); LOG/USER only lines are DEBUG
- * (need `log stream --level debug`).  FreeBSD printf/device_printf lines
- * (class 0, e.g. a config page read failure) go to the console: DEFAULT.
+ * os_log type of the class mps_xnu_class_pick() chose: fault is FAULT (IOC
+ * fault, controller disabled, failed attach or resume; a surprise removal
+ * is an expected user action and is logged as error); error is ERROR;
+ * info, recovery, init, event, mapping are DEFAULT (shown by `log stream`,
+ * persisted); xinfo, trace, log, user are DEBUG (`log stream --level
+ * debug`).  FreeBSD printf/device_printf lines (class 0, e.g. a config
+ * page read failure) go to the console: DEFAULT.
  */
 int
 mps_xnu_log_type(uint32_t cls)
 {
-	if (cls == 0)
-		return (MPS_XNU_LOG_DEFAULT);
-	if (cls & (MPS_XINFO | MPS_TRACE))
-		return (MPS_XNU_LOG_DEBUG);
-	if (cls & (MPS_FAULT | MPS_ERROR))
+	switch (mps_xnu_class_pick(cls)) {
+	case MPS_FAULT:
+		return (MPS_XNU_LOG_FAULT);
+	case MPS_ERROR:
 		return (MPS_XNU_LOG_ERROR);
-	if (cls & (MPS_INFO | MPS_RECOVERY | MPS_INIT | MPS_EVENT | MPS_MAPPING))
+	case 0:
+	case MPS_INFO:
+	case MPS_RECOVERY:
+	case MPS_INIT:
+	case MPS_EVENT:
+	case MPS_MAPPING:
 		return (MPS_XNU_LOG_DEFAULT);
-	return (MPS_XNU_LOG_DEBUG);
+	default:
+		return (MPS_XNU_LOG_DEBUG);
+	}
 }
 
 void
@@ -613,7 +634,8 @@ mps_xnu_gone_check(void *arg)
 	}
 	sc->xnu.gone_tries = 0;
 	sc->mps_flags |= MPS_FLAGS_XNU_GONE;
-	mps_dprint(sc, MPS_FAULT, "register 0x%02x reads 0xffffffff and the "
+	/* XNU: error, not fault: an unplugged dock is a user action (D24) */
+	mps_dprint(sc, MPS_ERROR, "register 0x%02x reads 0xffffffff and the "
 	    "PCI config space does not answer: controller gone (surprise "
 	    "removal)\n", sc->xnu.gone_offset);
 	/* the reinit task fails everything (mps_reinit -> mps_xnu_disable) */
@@ -627,7 +649,7 @@ mps_xnu_disable(struct mps_softc *sc, int error)
 		return;
 	sc->xnu.disabled = 1;
 	if (sc->mps_flags & MPS_FLAGS_XNU_GONE)
-		mps_dprint(sc, MPS_FAULT, "surprise removal: controller "
+		mps_dprint(sc, MPS_ERROR, "surprise removal: controller "
 		    "disabled\n");
 	else
 		mps_dprint(sc, MPS_FAULT, "reinit failed (error %d) after %d "

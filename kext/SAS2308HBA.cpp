@@ -185,7 +185,8 @@ SAS2308HBA::HostControllerDead(void *hba)
     self->fBusLeadOff = true;
     self->fGlue.Unlock();
     if (first) {
-        self->Klog(MPSK_FAULT | MPSK_INFO, "controller is gone or disabled: disabling bus mastering");
+        /* error: the core's line before this one says which (fault: disabled; error: removed, D24) */
+        self->Klog(MPSK_ERROR | MPSK_INFO, "controller is gone or disabled: disabling bus mastering");
         if (self->fPCI)
             self->fPCI->setBusLeadEnable(false);
     }

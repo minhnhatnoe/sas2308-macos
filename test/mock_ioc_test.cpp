@@ -2152,7 +2152,7 @@ static void CheckConditionLogTests(Rig &g)
     CHECK(mps_xnu_log_type(LogClass(mark, "failed: IOCStatus scsi io data error (0x0046)")) == MPS_XNU_LOG_ERROR);
 
     /* the class -> os_log type map (the kext's LogType) */
-    CHECK(mps_xnu_log_type(MPS_ERROR) == MPS_XNU_LOG_ERROR && mps_xnu_log_type(MPS_FAULT) == MPS_XNU_LOG_ERROR);
+    CHECK(mps_xnu_log_type(MPS_ERROR) == MPS_XNU_LOG_ERROR && mps_xnu_log_type(MPS_FAULT) == MPS_XNU_LOG_FAULT);   /* D24 */
     CHECK(mps_xnu_log_type(MPS_RECOVERY) == MPS_XNU_LOG_DEFAULT && mps_xnu_log_type(0) == MPS_XNU_LOG_DEFAULT);
     CHECK(mps_xnu_log_type(MPS_INIT | MPS_INFO) == MPS_XNU_LOG_DEFAULT);
     CHECK(mps_xnu_log_type(MPS_XINFO) == MPS_XNU_LOG_DEBUG && mps_xnu_log_type(MPS_TRACE) == MPS_XNU_LOG_DEBUG);
@@ -3375,5 +3375,45 @@ static void DeviationTests()
               !HasLog(mark, "NULL handle for target"));
         for (size_t i = mark; i < gHost.log.size(); i++)
             CHECK(mps_xnu_log_type(gHost.log[i].cls) != MPS_XNU_LOG_DEBUG);  /* only what persists is printed */
+    }
+
+    if (Want("D24")) {
+        /* MPS_FAULT is os_log FAULT; type and category come from the same class */
+        CHECK(mps_xnu_log_type(MPS_FAULT) == MPS_XNU_LOG_FAULT && mps_xnu_log_type(MPS_INIT | MPS_FAULT) == MPS_XNU_LOG_FAULT);
+        CHECK(mps_xnu_log_type(MPS_ERROR | MPS_RECOVERY) == MPS_XNU_LOG_ERROR);
+        CHECK(strcmp(mps_xnu_category(MPS_ERROR | MPS_RECOVERY), "error") == 0);
+        CHECK(strcmp(mps_xnu_category(MPS_XINFO | MPS_RECOVERY), "xinfo") == 0);
+        for (uint32_t cls = 1; cls <= MPS_DEBUG_ALL; cls++) {
+            const char *cat = mps_xnu_category(cls);
+            uint32_t one = 0;
+            for (uint32_t b = 1; b <= MPS_DEBUG_ALL; b <<= 1)
+                if ((cls & b) && strcmp(mps_xnu_category(b), cat) == 0) one = b;
+            CHECK(one != 0 && mps_xnu_log_type(cls) == mps_xnu_log_type(one));
+        }
+        /* an IOC fault and a failed reinit: FAULT lines */
+        {
+            Rig g({0x0009});
+            size_t mark = LogMark();
+            g.ioc.Fault(0x1234);
+            g.ioc.nowUs += 1100000;
+            g.Callouts();
+            CHECK(mps_xnu_log_type(LogClass(mark, "IOC Fault 0x")) == MPS_XNU_LOG_FAULT);
+            g.ioc.diagStuck = true;
+            mark = LogMark();
+            CHECK(g.ForceReinit() != 0 && g.Gone());
+            CHECK(mps_xnu_log_type(LogClass(mark, "attempts: controller disabled")) == MPS_XNU_LOG_FAULT);
+        }
+        /* a surprise removal (an unplugged dock): ERROR, no FAULT line */
+        {
+            Rig g({0x0009});
+            size_t mark = LogMark();
+            g.ioc.dead = true;
+            HostAdvance(1300);
+            CHECK(g.Gone() && HasLog(mark, "controller gone (surprise removal)"));
+            CHECK(mps_xnu_log_type(LogClass(mark, "controller gone (surprise removal)")) == MPS_XNU_LOG_ERROR);
+            CHECK(mps_xnu_log_type(LogClass(mark, "surprise removal: controller disabled")) == MPS_XNU_LOG_ERROR);
+            for (size_t i = mark; i < gHost.log.size(); i++)
+                CHECK(mps_xnu_log_type(gHost.log[i].cls) != MPS_XNU_LOG_FAULT);
+        }
     }
 }

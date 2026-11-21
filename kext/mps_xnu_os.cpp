@@ -114,6 +114,8 @@ static os_log_t LogFor(uint32_t cls)
 static os_log_type_t LogType(uint32_t cls)
 {
     switch (mps_xnu_log_type(cls)) {
+    case MPS_XNU_LOG_FAULT:
+        return OS_LOG_TYPE_FAULT;
     case MPS_XNU_LOG_ERROR:
         return OS_LOG_TYPE_ERROR;
     case MPS_XNU_LOG_DEFAULT:
