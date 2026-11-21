@@ -55,7 +55,7 @@ CORE_CFLAGS := $(COMMON) $(HIDDEN) -std=gnu11 -Wno-sign-compare -Wno-sign-conver
                -Wno-implicit-int-conversion -Wno-conditional-uninitialized
 
 KEXT_SRCS := SAS2308HBA.cpp SAS2308HBA_PM.cpp SAS2308HBA_Hotplug.cpp SAS2308HBA_Props.cpp SAS2308Glue.cpp
-KEXT_HDRS := SAS2308HBA.h SAS2308HBA_Targets.h SAS2308Glue.h mps_xnu_os.h ../core/mps_xnu_stats.h
+KEXT_HDRS := SAS2308HBA.h SAS2308HBA_Targets.h SAS2308HBA_PCIe.h SAS2308Glue.h mps_xnu_os.h ../core/mps_xnu_stats.h
 OBJS := $(patsubst %.cpp,$(BUILD)/%.o,$(KEXT_SRCS)) $(BUILD)/mps_xnu_os.o $(BUILD)/mps_kext.o $(CORE_OBJS) \
         $(BUILD)/SAS2308HBA_info.o
 

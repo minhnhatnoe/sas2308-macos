@@ -414,7 +414,17 @@ SAS2308HBA::InitializeController(void)
      * the MPI2 system interface registers, BAR3 = 64-bit diagnostic
      * memory. FreeBSD maps PCIR_BAR(1) as well.
      */
-    fMap = fPCI->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress1);
+    /*
+     * D75 (hardware A/B): the default device mapping is non-posted
+     * (nGnRnE); kIOMapPostedWrite lets the doorbell and host-index writes
+     * post (ordering is the H3 barriers' job in the MMIO hooks). Chosen by
+     * the boot-arg or personality key sas2308_posted_write (default 0).
+     */
+    {
+        char v[8] = "";
+        fPostedWrite = HostGetenv(this, "sas2308_posted_write", v, sizeof(v)) && v[0] == '1';
+    }
+    fMap = fPCI->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress1, fPostedWrite ? kIOMapPostedWrite : 0);
     if (!fMap || fMap->getLength() < 0x100) {
         Klog(MPSK_FAULT | MPSK_INIT, "cannot map BAR1");
         goto fail;
@@ -424,10 +434,11 @@ SAS2308HBA::InitializeController(void)
     fMapper = IOMapper::copyMapperForDevice(fPCI);
     fHost.mapper = fMapper;
     fTunnelled = fPCI->getProperty(kIOPCITunnelledKey) == kOSBooleanTrue;
-    Klog(MPSK_INIT | MPSK_INFO, "PCI %04x:%04x subsys %04x:%04x, BAR1 %llu bytes mapped, DMA mapper %s, %s",
+    Klog(MPSK_INIT | MPSK_INFO, "PCI %04x:%04x subsys %04x:%04x, BAR1 %llu bytes mapped (%s), DMA mapper %s, %s",
          fPCI->configRead16(kIOPCIConfigVendorID), fPCI->configRead16(kIOPCIConfigDeviceID),
          fPCI->configRead16(kIOPCIConfigSubSystemVendorID), fPCI->configRead16(kIOPCIConfigSubSystemID),
-         (unsigned long long)fMap->getLength(), fMapper ? "present" : "ABSENT (bus address = physical)",
+         (unsigned long long)fMap->getLength(), fPostedWrite ? "posted writes" : "default, non-posted",
+         fMapper ? "present" : "ABSENT (bus address = physical)",
          fTunnelled ? "Thunderbolt tunnel (IOPCITunnelled)" : "not tunnelled");
 
     fGlue.fMps = mps_kext_create(&fHost, fPCI->configRead16(kIOPCIConfigDeviceID));

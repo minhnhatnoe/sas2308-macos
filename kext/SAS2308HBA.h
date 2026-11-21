@@ -205,6 +205,7 @@ private:
     uint32_t       fPciRestores = 0;        /* restoreDeviceState calls, and failures */
     uint32_t       fPciRestoreFailures = 0;
     bool           fTunnelled = false;      /* IOPCITunnelled: behind Thunderbolt */
+    bool           fPostedWrite = false;    /* BAR1 mapped kIOMapPostedWrite (sas2308_posted_write, D75) */
 
     /* power management (SAS2308HBA_PM.cpp) */
     bool           fPMInitialized = false;

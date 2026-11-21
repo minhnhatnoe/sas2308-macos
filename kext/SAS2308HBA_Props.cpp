@@ -300,6 +300,7 @@ SAS2308HBA::PublishPcieLink(bool log)
     SetNumber(d, "Device Control", devCtl);
     SetNumber(d, "Link Capabilities", linkCap);
     SetNumber(d, "Link Status", linkSta);
+    d->setObject("BAR1 Posted Writes", fPostedWrite ? kOSBooleanTrue : kOSBooleanFalse);   /* D75 */
     setProperty(kPcieLinkKey, d);
     d->release();
     if (log)
