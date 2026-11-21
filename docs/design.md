@@ -951,6 +951,15 @@ below failed against the unfixed code (or did not build) and passes after.
 | L10 | the hotplug body runs on a compat taskqueue with its own kernel thread (`mps_kext_tq_*`), as FreeBSD's event taskqueue / `xpt_scanner_thread`, not on a HIGH thread call; compat gains `taskqueue_enqueue_flags(TASKQUEUE_FAIL_IF_PENDING)` and `taskqueue_cancel`. The done call stays a thread call | glue `H1` (removal during a create: two runs, no nesting; it nested before), `L10` |
 | D43 | the OS TM waiter pumps the reply queue only when its caller holds the family's work-loop gate (`IOWorkLoop::inGate`, the counterpart of `mps_wait_command`'s NO_SLEEP; counted "TM waits in gate"); the target drain only sleeps; the 1 s timer delivers nothing: completions left with no kick for two ticks are counted once per stall ("Lost completion kicks") and logged once, and go out with the next interrupt or the family's timeout | glue `D43` |
 
+Verified (2026-11-21, build 430A4B8A): default mask 0x3, 0 log lines in 5 min idle; `lose 1` under
+IO timed out at 60.0 s, abort/LUN/target reset, one-attempt reinit 1118 ms, 0 application errors, TM
+waits in gate 0, lost kicks 0, KASSERT hits 0; 2 sleep/wake cycles without a reset (343/348 ms);
+restart with a mounted JHFS+ volume clean (13 s, 202 files verify); SMART PASSED on all 7 (the two
+drives without SMART after `smartctl -x` recovered at reboot: not a driver issue as far as seen);
+1757 IOPS, 1945.3 MB/s, 0 mismatches. Follow-up for G2: each wake logs 4 "IOC in unexpected reset
+state" FAULT lines (FreeBSD's `mps_transition_ready`), now visible by default, although RESET after
+sleep is expected. Details: the deviations plan, "Batch G1 hardware results".
+
 Not changed here (batch G2, experiments decide): D46, D21, D50, D15b, D65. KEEP-WITH-EVIDENCE items of
 the evaluations (L16c, D56, D58's post-queue lines, D63) stay as they are.
 

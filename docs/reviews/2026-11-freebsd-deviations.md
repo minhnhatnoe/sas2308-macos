@@ -376,6 +376,32 @@ functions themselves are in the XNU-only mps_xnu.c). Scripts and outputs: Mac `~
   mismatches, 0 errors**. `sas2308ctl stats` after: 0 IO timeouts, 0 reinits / diag resets, 0
   halt caps / stops (fresh boot), 0 config page failures, 0 KASSERT hits, 0 lost kicks.
 
+### Batch G1 hardware results
+
+Build **430A4B8A-5B0C-341E-8CBF-F2388BF576E4** from bca741f (no build fixes needed; 5626d4e after it is
+docs only). Raw outputs: Mac `~/hwG1`.
+- **Default log:** mask 0x3 (info,fault), level info. 5 min idle: **0 lines**.
+- **Forced recovery under IO** (random reads on all 7): `lose 1`: the family timeout fired at
+  **60.0 s** (D15a), abort → LUN reset → target reset → reinit **1118 ms** (one attempt, D55b); the lost
+  IO completed after 68.9 s at most, IO stalled about 8.5 s per reinit, **0 application errors**.
+  `sas2308ctl reinit`: 1169 ms. "TM waits in gate" **0** (D43), "Lost completion kicks" 0, "KASSERT
+  hits" 0, "Reinit failed attempts" 0. The default log showed the recovery (FreeBSD's info|recovery
+  lines), no "NULL handle" chatter.
+- **Sleep/wake under IO:** 2 suspend/resume cycles (one a dark wake), resume without a diag reset
+  (343 / 348 ms), 0 timeouts, 0 errors. **Follow-up (G2):** each wake logs 4 FreeBSD
+  `mps_transition_ready` "IOC in unexpected reset state" lines at FAULT, now visible at the default
+  mask, although a RESET state after sleep is expected; the port's resume path should treat it as
+  expected (not a fault there) without changing FreeBSD's text elsewhere.
+- **Restart with a mounted JHFS+ volume** (G1TEST on disk9 drive6): 13 s from request to boot, no
+  panic (the routine launchd shutdown stall report only), verifyVolume OK, **202/202 files verify**.
+- **SMART:** `smartctl -a` on all 7 after the install reboot: all **PASSED**. disk4 drive1 and disk5
+  drive2, which reported "SMART Status: Not Supported" after an earlier `smartctl -x`
+  (entry 76), recovered with the reboot. Not a driver issue as far as seen: smartmontools' `-x` on
+  macOS left the two nubs without SMART until reboot; reads were unaffected. disk9 rc 64 = one old
+  entry in its error log.
+- **Regression:** random 4K read QD32 all 7, 60 s: **1757 IOPS**; seq 1 MiB read all 7, 60 s:
+  **1945.3 MB/s**; verify **0 mismatches, 0 errors**; 0 timeouts / reinits beyond the tests.
+
 ### Hardware tests still to run
 
 Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found with
