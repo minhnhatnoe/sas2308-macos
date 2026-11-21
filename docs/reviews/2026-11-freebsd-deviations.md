@@ -65,6 +65,23 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | B | D51 | done | d75366f | core `D51` | `kmutil unload` under 64K QD16 reads on all 7 raw drives: unloaded in ~2 s, no panic, no outstanding-IO or fault line, the reads end with errors; reload: 7 drives |
 | B | D43 | done | 1414bbc | glue `D43` | `Lost completion kicks` 0 through all batch B tests |
 | B | debug triggers (`sas2308ctl reinit/hold/lose`) | done | 3fc7ac5 | glue `debug` | used below |
+| C | D37 | done | 3f35ef8 | core `D37` | regression OK |
+| C | D36 | done | 99afc6c | glue `D36` | regression OK |
+| C | D27 | done | a8a8407 | core `D27` (did not build before: new API) | attach log `IOCCapabilities: ...<...>` |
+| C | D16 | done | 24ec6d2 | core `D16` | forced reinits under IO: OK (below) |
+| C | D35, D67 | done | 7080f64 | core `D35` (3.1 M held-ccb checks before, 2501 after), `D67`; thin CAM test | forced reinit + lost command under IO: 0 errors |
+| C | D17 | done | afe2fc5 | core `D17` | lost command: abort, LUN and target reset, 0 errors |
+| C | D40 | done | 8914685 | core `D40` | attach OK (one HBA) |
+| C | D42 | done | 4684bb2 | core `D42` | regression OK |
+| C | D41 | done | b185c8a | core `D41` | regression OK |
+| C | D39 | done | 23e5890 | core `D39` (did not build before: new API) | reinits under IO, two reboots and the D34 shutdown on the queue threads: OK |
+| C | D33 | done | adb3ee7 | core `D33` | `mps.max_io_pages` from the personality: 257 segments, 2040 commands |
+| C | D32 | done | 14ac253 | core `D32` | max transfer 1 MiB, task data 9.06 MiB (unchanged) |
+| C | D21 | done | 7dc658f | none new (location only, same value; tests follow the move) | "Core OS commands" 2040 |
+| C | D54 | done | 2cdc5a9 | core `D54` | lost command recovery requested its reinit through the wrapper |
+| C | D78 | done | 08c020f | core `D78`; whole suite with QUEUE_MACRO_DEBUG_TRASH/ASSERTIONS | n/a (host only) |
+| C | D6 | done | b8e6b94 | core `D6` (2 page reads during a stuck IDENTIFY; 1000 reads -> 0 mappings) | see "Batch C hardware results"; M5c retries / re-add slots kept: still to run, test 8 |
+| C | KEEP comments D38, D65, D69, D17 | done | 0e8927d, 7080f64, afe2fc5 | none (comments) | |
 
 ### Batch A hardware results
 
@@ -118,6 +135,42 @@ failures, IOC 57 C. Debug triggers: `sas2308ctl reinit | hold <ms> | lose <n>`.
   drive: **0 mismatches, 0 errors**. `sas2308ctl stats` after: 0 timeouts, 0 TMs, 0 recoveries,
   0 reinits, 0 stale/bad replies, 0 lost kicks, 0 transient all-ones reads; IOC 58 C.
 
+### Batch C hardware results
+
+Build **6DD7CE42** (fix-batch-C 0e8927d), installed 2026-11-20 20:33, 7 drives, 0 config page
+failures, IOC 59 C. Rollback: `~/sas2308-rollback-9E6663B6` (batch B build).
+
+- **D6 on hardware**: discovery read the 14 SAS Device Page 0s (7 drives + parents) and every
+  IO Unit Page 7 (temperature, every 30 s) into `malloc`'d pages mapped at load: 0 failures, 0
+  retries. No mapping leaks: `ioclasscount` IODMACommand 21525 and IOGeneralMemoryDescriptor
+  960/959 unchanged across 13 temperature reads and the regression; `ioalloccount` IOMalloc
+  223648 K -> 223645 K. Kext memory (`Controller Limits`): heap 1.21 MiB, DMA 3.08 MiB (the
+  1 KiB config buffer gone), task data 9.06 MiB (2040 x 4656 B: +8 B per task for D32's
+  segment list after the ccb; 257 segments, as before). System wired after boot 77022 pages
+  (16 KiB), 77628 after the tests (batch B build, 1 h uptime: 75527): no kext share in the
+  growth (IOMalloc flat).
+- **D16 / D35 / D39 / D54 / D17, forced recovery under IO** (64K random reads QD16 on all 7 raw
+  drives, 70 s; `sas2308ctl reinit` at 15 s, `sas2308ctl lose 1` at 35 s): 2 reinits (diag
+  resets, PCI restores 2), the lost command timed out once and went abort -> LUN reset ->
+  target reset -> reinit (`controller reinit requested: ...` through the D54 wrapper), 7 UAs
+  re-sent (D3); **0 sasbench errors, 0 mismatches**, max latency 39.1 s (the lost command),
+  1082 IOPS overall; 41 tasks held during the recoveries, all released (held 0 after).
+- **D34, shutdown at full write rate** (run on this build): region 3-4 % of each drive, 4 GiB,
+  written and verified with seed 11; then a seed-22 writer (1 MiB, QD4, all 7 raw drives) and
+  `shutdown -r now` 6 s later. After the boot every 4 KiB block of every drive holds seed 22 or
+  seed 11 (blocks not holding 22 + blocks not holding 11 = 1048576 exactly on all 7; 2.84-2.89
+  GiB of seed 22 per drive), 0 read errors, every logged mismatch `stale-data(old seed)`: no
+  torn, misdirected or corrupted block. The SYNCHRONIZE CACHE trace could not be taken: with
+  `log config ... persist:debug` and trace level set 4 s before the shutdown, nothing of the
+  kext's shutdown path reached the log store (logd stops before `systemWillShutdown`; only the
+  mask-change line 4 s earlier was persisted). The dock keeps the drives powered across the
+  Mac's restart, so a cache flush is not what this run can prove; data integrity it does.
+- **Regression** (drives unmounted): random 4K read QD32 all 7, 60 s: **1765 IOPS**; seq 1 MiB
+  read QD2 all 7, 60 s: **1944.6 MB/s**; verify 64 KiB random QD64, 256 MiB per drive: **0
+  mismatches, 0 errors**. `sas2308ctl stats` after: 0 timeouts, 0 TMs, 0 recoveries, 0 reinits
+  (this boot), 0 stale replies, 0 lost kicks, 0 transient all-ones reads, 0 config page
+  failures/retries; no error or fault log line in this boot.
+
 ### Hardware tests still to run
 
 Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found with
@@ -156,6 +209,14 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
    whether the controller is still there`, then `... PCI config space does not answer: controller
    gone` about 100 ms later; a link blip without an unplug shows `transient, ignored` and
    `Transient all-ones reads` +1 instead.
+8. **D6 / M5c, breakout replug under IO** (batch C; decides removing the page 0 retries and the
+   16 re-add slots). Build 6DD7CE42 or later. Start `sasbench -b 4K -q 32 -p rand -t 300` on all
+   7 raw drives (unmounted). Pull one SFF-8087 breakout cable (its drives drop), wait 20 s, plug it
+   back. Expect: its drives come back with their old target ids, the others keep full rate,
+   `sas2308ctl stats`: "Config page failures" 0 and, the new question, "Config page retries" and
+   "Device re-adds scheduled" 0 (with D6 a page read no longer waits for a shared buffer). If both
+   stay 0 over 3 replugs, the retries (`mps_xnu_get_sas_device_pg0`) and re-add slots
+   (`MPS_XNU_EVENT_READD` for adds; D8's re-IDENTIFY keeps the slot machinery) can go.
 
 ## Ranked table: changes (CHANGE)
 
@@ -224,7 +285,7 @@ zeroing (D); D78 QUEUE_MACRO_DEBUG in host tests (C); D29 "Event acks sent" coun
 | D4 | timer re-arm once from HandleTimeout times out once | B | SCSIParallelTimer behaviour (source not available) |
 | D12 | 5x sleep/wake logging which resume path ran, UA and re-IDENTIFY counts | B | READY path works on the 9207 |
 | D13 | MSI address/data before/after a forced diag reset | B | defence vs live issue |
-| D34 | `shutdown -r` while 7 drives write at full rate with write cache on; verify after boot; SYNCHRONIZE CACHE reached each drive before the MUR | B | suspend/shutdown constants |
+| D34 | `shutdown -r` while 7 drives write at full rate with write cache on; verify after boot; SYNCHRONIZE CACHE reached each drive before the MUR | B (run with C) | done: every block old or new data, 0 corrupt; trace not obtainable (logd stops first) |
 | D29 | "Event acks sent" after boot + hot-plug | D | 0 -> remove acks (FreeBSD); >0 -> keep with the event codes in a comment |
 | D9 | SMART unsafe-shutdown count of a SATA SSD over 3 `shutdown -r` | D (needs an SSD) | SSU port verified |
 | D75 | BAR1 with kIOMapPostedWrite vs default: random 4K QD32 IOPS, 0 errors | D | mapping type |

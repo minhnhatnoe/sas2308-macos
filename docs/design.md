@@ -84,18 +84,19 @@ on the host). xnu column: public KPIs only (`kmutil` check below).
 |---|---|---|---|
 | `struct mtx`, `mtx_init/lock/unlock/owned/assert/destroy` | owner tracking (`mtx_owner` = `mps_os_curthread()`), mutex registry for `DELAY` | `IOLockAlloc/Lock/Unlock/Free` (lck_mtx), owner = `current_thread()` | flag, single thread |
 | `msleep(chan, mtx, pri, wmesg, timo)`, `wakeup`, `pause` | ticks → µs, `hz` = 1000 | `IOLockSleep` / `IOLockSleepDeadline` (`THREAD_UNINT`, `clock_interval_to_deadline`), `THREAD_TIMED_OUT` → `EWOULDBLOCK`; `IOLockWakeup` (its lock argument is unused by xnu; one lock per kext load is passed); `pause` → `IOSleep` | advance virtual clock, run the "other threads" hook |
-| `DELAY(us)` | ≥ 1 ms with an mps `mtx` held by the caller: drop it while waiting (XNU: keeps the M4 rule *no sleep with mps_mtx held*) | `IOSleep(ms)` + `IODelay(rest)` | virtual clock + hook |
+| `DELAY(us)` | the caller's locks stay held, as FreeBSD's spin (D16; until batch C a held `mtx` was dropped for ≥ 1 ms) | `IOSleep(ms)` + `IODelay(rest)` | virtual clock + hook |
 | `ticks`, `sbinuptime`, `getmicrouptime`, `getmicrotime` | from `mps_os_uptime_us`, `mps_os_walltime` | `mach_absolute_time` → `absolutetime_to_nanoseconds`; `clock_get_calendar_microtime` | virtual |
-| `malloc(9)`/`free(9)` (`M_ZERO`, `M_NOWAIT`, `M_WAITOK`) | size header, zeroing, live count | `IOMalloc`/`IOFree` (mps_mtx is a blocking mutex, so allocation may block) | `malloc`/`free` |
+| `malloc(9)`/`free(9)` (`M_ZERO`, `M_NOWAIT`, `M_WAITOK`) | 32-byte header (size, magic, the map the block is loaded on: `free` drops that DMA mapping, D6), zeroing, live count | `IOMalloc`/`IOFree` (mps_mtx is a blocking mutex, so allocation may block) | `malloc`/`free` |
 | `bus_space_read_4/write_4` (`mps_regread/regwrite`) | — | volatile 32-bit MMIO at `mps_bhandle` = BAR1 virtual address (`mapDeviceMemoryWithRegister`); no mapping reads all-ones | mock registers |
-| `bus_dma_template_*`, `bus_dma_tag_create/destroy`, `bus_dmamem_alloc/free`, `bus_dmamap_load/unload/create/destroy/sync`, `bus_dmamap_load_ccb` | tags carry align/lowaddr/maxsize/nsegments/maxsegsz; `load_ccb` checks and passes a `CAM_DATA_SG_PADDR` list through; `sync` is a no-op (DART PCIe DMA is coherent) | `IOBufferMemoryDescriptor::inTaskWithPhysicalMask` (4 KiB aligned; physically contiguous and below 4 GiB only without a mapper) + `IODMACommand::withSpecification(kMapped, 32 or 64 address bits, maxsegsz, mapper)` on `IOMapper::copyMapperForDevice` (DART): IOVA < 4 GiB when `lowaddr` is 32-bit, as many segments as the tag allows (chain pool), every segment checked against alignment/lowaddr/maxsegsz; the list is computed at alloc, `load` copies it | mock regions, 4 KiB pieces |
+| `bus_dma_template_*`, `bus_dma_tag_create/destroy`, `bus_dmamem_alloc/free`, `bus_dmamap_load/unload/create/destroy/sync`, `bus_dmamap_load_ccb` | tags carry align/lowaddr/boundary (inherited, the smaller one: D41)/maxsize/nsegments/maxsegsz; `load` takes `bus_dmamem_alloc` memory or a core `malloc` block (config page, IDENTIFY: `mps_os_dmamap_load_buf` maps it; released at unload, next load, `free`, destroy: D6); errors as busdma (callback, return 0 except ENOMEM: D42); `load_ccb` checks and passes a `CAM_DATA_SG_PADDR` list through, split at the tag's boundary (D41); `sync` is a no-op (DART PCIe DMA is coherent) | `IOBufferMemoryDescriptor::inTaskWithPhysicalMask` (4 KiB aligned; physically contiguous and below 4 GiB only without a mapper) + `IODMACommand::withSpecification(kMapped, 32 or 64 address bits, maxsegsz, mapper)` on `IOMapper::copyMapperForDevice` (DART): IOVA < 4 GiB when `lowaddr` is 32-bit, as many segments as the tag allows (chain pool), every segment checked against alignment/lowaddr/maxsegsz; the list is computed at alloc, `load` copies it | mock regions, 4 KiB pieces |
 | `callout_init_mtx`, `callout_reset[_sbt]`, `callout_stop/drain/pending` | sorted list per `mtx`, run with the mtx held by `mps_compat_callout_run(mtx)` | one `thread_call` per mtx, `thread_call_enter_delayed` at the earliest deadline (`nanoseconds_to_absolutetime`, +1 µs so it never fires early), `thread_call_cancel` to disarm; queued/running invocations counted so `mtx_destroy` waits for them (`thread_call_cancel_wait` is `kpi.private`) | the test advances time and calls `mps_compat_callout_run` |
-| `taskqueue_create/enqueue/drain/free`, `TASK_INIT` | FIFO, tasks run without the mtx, one thread at a time per queue (`tq_active`: an invocation that finds the queue running returns, the running one picks the task up; FreeBSD's mps queues have one thread) | one `thread_call` per queue (`mps_compat_taskqueue_run`), invocations counted; `taskqueue_free` waits for a running one; a call kicked while it runs starts a second invocation on another thread | the test runs the queue; a queue kicked while it runs gets a nested invocation (`threadCallQueues`, xnu semantics) |
-| `config_intrhook_establish` | list, run by `mps_compat_intrhook_run()` | called from `StartController` after `EnableInterrupt()` (mps_startup: unmask, port enable) | `Rig::Start` |
-| `device_printf`, `mps_dprint`, `printf`, `hexdump` | one `mps_os_log(dev, class, line)` per line | `os_log_with_type`, one handle per class (category = most specific class), type ERROR/DEFAULT/DEBUG as M4; `IOLog` with `sas2308_iolog=1` | captured |
+| `taskqueue_create/enqueue/drain/free`, `TASK_INIT` | FIFO, tasks run without the mtx; `mps_compat_taskqueue_thread` = FreeBSD's `taskqueue_thread_loop` (sleeps on the queue, runs it, leaves after `taskqueue_free` once the queue is empty); drain sleeps until the task is neither queued nor running (D39) | one kernel thread per queue (`kernel_thread_start`), a kick is a wakeup; `taskqueue_free` waits for the thread to leave (`tq_exited`) | no threads: the test runs a queue when kicked (`tq_active` keeps nested invocations out) |
+| `config_intrhook_establish` | list; `mps_compat_intrhook_run(arg)` runs the hooks of one instance (`ich_arg`, D40) | called from `StartController` after `EnableInterrupt()` (mps_startup: unmask, port enable) | `Rig::Start` |
+| `TUNABLE_INT_FETCH`, `TUNABLE_STR_FETCH` (kenv) | `hw.mps.X` / `dev.mps.N.X` read as `mps.X` / `mps.N.X` through `mps_os_getenv` (D33) | boot-arg of that name (`PE_parse_boot_arg_str`), else the personality's property (Info.plist: `mps.max_io_pages` 256) | `gHost.tunables` (defaults = Info.plist's) |
+| `device_printf`, `mps_dprint`, `printf`, `hexdump`, `snprintf` | kernel printf formats incl. `%b` (`mps_compat_vsnprintf`, D27); one `mps_os_log(dev, class, line)` per line | `os_log_with_type`, one handle per class (category = most specific class), type ERROR/DEFAULT/DEBUG as M4; `IOLog` with `sas2308_iolog=1` | captured |
 | `KASSERT`, `panic` | file/line + message | logged as a `fault` line, no panic (M2–M4 rule) | aborts the test |
 | `mps_pci_setup_interrupts/free_interrupts`, `mps_pci_restore` (mps_pci.c) | `mps_xnu.c` → `mps_os_*` | the family's `IOFilterInterruptEventSource` (MSI index chosen in `CreateDeviceInterrupt`), enabled in `StartController`, `HandleInterruptRequest` → `mps_intr_msi`; restore = memory decode + bus mastering on; `mps_os_controller_dead` = bus mastering off | counters |
-| CAM: `union ccb`, `xpt_action`, `xpt_done`, `xpt_freeze/release_devq`, `xpt_freeze/release_simq`, `CAM_REQUEUE_REQ`, `xpt_rescan`, `xpt_async`, `xpt_register_async` | thin CAM: a ccb finished with `CAM_REQUEUE_REQ` or sent to a frozen sim/devq is held in arrival order and re-sent to `mpssas_action` on release (M4's *held IO*); `xpt_done` calls `ccb_h.cbfcnp` with mps_mtx held; rescan/async call the registered callbacks | `XPT_SCSI_IO` ccb in each task's HBA data (CDB, LUN number, `CAM_DATA_SG_PADDR` list from `gen64IOVMSegments`, ccb sense buffer, timeout 0); cbfcnp queues the task for `DeliverCompletions` (no family call under mps_mtx); `XPT_XNU_TM` for the six TM methods; `AC_XNU_SCAN`/`AC_LOST_DEVICE` → `mps_xnu_target_present` sampled → hotplug thread | test builds ccbs |
+| CAM: `union ccb`, `xpt_action`, `xpt_done`, `xpt_freeze/release_devq`, `xpt_freeze/release_simq`, `CAM_REQUEUE_REQ`, `xpt_rescan`, `xpt_async`, `xpt_register_async` | thin CAM (CAM's func codes and values, D37): a ccb finished with `CAM_REQUEUE_REQ` or sent to a frozen sim/devq is held in arrival order and re-sent to `mpssas_action` on release (M4's *held IO*); a release by a completion runs the held queue once, when mps_mtx is let go, and a frozen SIM stops a run (D35); a requeue must be backed by a freeze (assert, D67); a freeze through the SIM's own path (`xpt_periph`, the TM ccb) holds the whole target (D17); `xpt_done` calls `ccb_h.cbfcnp` with mps_mtx held; rescan/async call the registered callbacks | `XPT_SCSI_IO` ccb in each task's HBA data (CDB, LUN number, `CAM_DATA_SG_PADDR` list from `gen64IOVMSegments` in segments after the ccb, as many as `buffer_dmat` allows: D32; ccb sense buffer); cbfcnp queues the task for `DeliverCompletions` (no family call under mps_mtx); `XPT_RESET_DEV` for OS LUN/target resets (D10); `AC_XNU_SCAN` → `mps_xnu_target_present` sampled → hotplug thread | test builds ccbs |
 
 `hz` = 1000 (one tick = 1 ms). `PAGE_SIZE` inside the core is 4096 (MPI2 SGE sizing,
 FreeBSD `maxio` arithmetic), independent of the 16 KiB arm64 page.
@@ -115,9 +116,11 @@ FreeBSD `maxio` arithmetic), independent of the 16 KiB arm64 page.
   OS-requested TMs go FreeBSD's ways (D10: target/LUN reset = `XPT_RESET_DEV`, abort = the
   task's timeout recovery, the rest rejected); IOs held during recovery (CAM requeue);
   SAS Device Page 0 / persistent mapping not read (simple target-id mapping).
-- Tunable defaults for XNU in `mps_get_tunables`: `max_io_pages` 256 (1 MiB); the queue
-  sizes are FreeBSD's since branch queue-freebsd (see "Queue sizes as FreeBSD"; before:
-  64 SCSI IOs plus internal commands, `max_prireqframes` 4, later 256 + 8 and 8).
+- `mps_get_tunables` is FreeBSD's (batch C, D33): FreeBSD's defaults, then the loader
+  tunables as `mps.X` / `mps.N.X` boot-args or personality keys; the personality sets
+  `mps.max_io_pages` 256 (1 MiB per IO, D32; FreeBSD's default -1 would size every task
+  for the IOC's 4.5 MiB); the queue sizes are FreeBSD's since branch queue-freebsd (see
+  "Queue sizes as FreeBSD"; the kext keeps 8 normal frames from the OS: D21).
 
 ### Status and decisions (M5a-1)
 Done: `core/compat/` (kernel API + thin CAM), `mps.c` (whole IOC side), `mps_table.c`,
@@ -249,8 +252,8 @@ to `core/mps_xnu_stats.h` (only `<stdint.h>`) so the class can read a snapshot.
 - Attach (`InitializeController`, the `Rig` order): `mps_kext_create` (`mps_compat_device_init`,
   `mps_bhandle` = BAR1) → `mps_kext_attach`: `mps_get_tunables`, debug mask, parent DMA tag,
   `mps_attach` (never `mps_free` after a failure: it frees itself), `xpt_register_async(AC_XNU_SCAN |
-  AC_BUS_RESET | AC_SENT_BDR)` (AC_LOST_DEVICE until batch C, D36)`. `StartController`: `EnableInterrupt()`, then
-  `mps_compat_intrhook_run()` (mps_startup: unmask, port enable).
+  AC_BUS_RESET | AC_SENT_BDR)` (AC_LOST_DEVICE until batch C, D36). `StartController`: `EnableInterrupt()`, then
+  `mps_compat_intrhook_run(sc)` (mps_startup: unmask, port enable; this instance's hooks only, D40).
 - IO: `ProcessParallelTask` maps the buffer (`gen64IOVMSegments`, ≤ `buffer_dmat` nsegments,
   ≤ 16 MiB − 1 per segment) into the `bus_dma_segment_t` list of an `XPT_SCSI_IO` ccb that lives in
   the task's HBA data (`ReportHBASpecificTaskDataSize` = ccb + path + 257 segments), LUN number,
@@ -464,12 +467,10 @@ key; it would need SAS IO Unit Page 0, not ported); `IOPCIUseDeviceMapper` (Appl
 the DART is always used on Apple silicon).
 
 ### SAS Device Page 0 (core/mps_config.c)
-`mps_config_get_sas_device_pg0` is FreeBSD's, verbatim except two XNU lines: the page buffer is
-`sc->xnu.cfg_page` (one `bus_dmamem_alloc` of 1 KiB, allocated on first use, freed by `mps_free`)
-lent to the command's map with `bus_dmamap_xnu_lend` (compat: `bus_dmamap_load` only maps
-`bus_dmamem_alloc` memory; the lend ends at the next `bus_dmamap_unload`, which the function now
-calls before `mps_free_command`), instead of `malloc`. `bus_dmamap_load` now cuts the segment list
-to `buflen`. `mpssas_add_device` reads the device's page and its parent's as FreeBSD does
+`mps_config_get_sas_device_pg0` is FreeBSD's, verbatim (since batch C, D6: the page is
+`malloc`'d and compat's `bus_dmamap_load` maps it for the IOC; until then one shared 1 KiB
+`bus_dmamem_alloc` buffer was lent to each command, and a second reader got ENOMEM).
+`bus_dmamap_load` cuts the segment list to `buflen`. `mpssas_add_device` reads the device's page and its parent's as FreeBSD does
 (SASAddress, DeviceInfo, DeviceName, enclosure, slot, parent address/devinfo); a device page read
 that the firmware fails skips the device (FreeBSD); one that fails on our side is retried (M5c). Still not ported: SATA identify (`mpssas_get_sas_address_for_sata_disk`,
 so a SATA disk keeps the IOC's made-up SAS address) and `mps_mapping.c` (target IDs from
@@ -796,6 +797,41 @@ wake with 29/00 (the MUR / port enable resets the links), so D3 stays essential;
 unchanged across a forced diag reset; a task held 35 s is re-armed, not timed out; a lost command
 times out once and recovers through the whole escalation; unload under IO is clean. Random 4K QD32
 1768 IOPS, seq 1 MiB 1945.4 MB/s, verify 0 mismatches.
+
+## FreeBSD deviation fixes, batch C (branch fix-batch-C, 2026-11-20)
+Compat fidelity items of `docs/reviews/2026-11-freebsd-deviations.md`: the core goes back to FreeBSD's
+text, the difference moves into compat or the kext (final fixes in `docs/reviews/2026-11-decisions.md`).
+Each host test failed on the code before its fix (`MOCK_ONLY=<id>` / `KGLUE_ONLY=<id>`), except
+where noted. `tools/diff-vs-freebsd.sh -s`: 1265 added / 3954 removed lines before, 1198 / 3836 after.
+
+| id | fix | host test |
+|---|---|---|
+| D37 | `cam_compat.h` has CAM's own `XPT_*` codes (with `XPT_FC_*`), `AC_ADVINFO_CHANGED` and `CAM_PRIORITY_NORMAL`; `xpt_action` holds by `XPT_FC_DEV_QUEUED` | core `D37` |
+| D36 | the kext no longer listens for `AC_LOST_DEVICE` (nothing posts it; removals arrive as `AC_XNU_SCAN`) | glue `D36` |
+| D27 | `%b` in compat (`mps_compat_vsnprintf`, FreeBSD subr_prf.c output: no `0x`); the 7 `%b` sites are verbatim, `MPS_XNU_BITS` gone; clang checks the formats as `freebsd_kprintf` | core `D27` (new API) |
+| D16 | `DELAY` keeps the caller's locks (FreeBSD's spin; the handshake is atomic again); the mutex registry is gone | core `D16` |
+| D35 | `xpt_done` marks the held-queue run, which happens once when the SIM's mutex is let go (`mtx_release_fn`, CAM's done thread); a frozen SIM stops a run at once, the rest stays held in order (merge) | core `D35` (2000 posted + 500 held reinit: 3.1 M held-ccb checks before, 2501 after); thin CAM test |
+| D67 | `xpt_done` asserts that a requeue is backed by a freeze or releases one outside a run | core `D67` |
+| D17 | `xpt_periph` is a sentinel: a freeze through the SIM's own path (the TM ccb) holds the whole target in compat; `mpssas_prepare_for_tm`'s path is FreeBSD's (tid, lun); the kext's completion callback says why retries reorder | core `D17` |
+| D40 | `mps_compat_intrhook_run(arg)` runs only that instance's hooks | core `D40` |
+| D42 | `bus_dmamap_load` errors as busdma: to the callback, returned only if ENOMEM | core `D42` |
+| D41 | tags inherit the parent's boundary (the smaller one); `bus_dmamap_load_ccb` splits a segment at the boundary (4 GiB for `buffer_dmat`, FINAL M5), EFBIG -> `CAM_REQ_TOO_BIG` if the list gets too long (not a requeue: same list forever) | core `D41` |
+| D39 | one kernel thread per taskqueue (`mps_compat_taskqueue_thread` = `taskqueue_thread_loop`, `kernel_thread_start`); drain sleeps, free waits for the thread to leave | core `D39` (new API) |
+| D33 | `mps_get_tunables` verbatim; `TUNABLE_*_FETCH` read `mps.X` / `mps.N.X` from boot-args, then the personality (`mps_os_getenv`, `SAS2308HBA::HostGetenv`) | core `D33` |
+| D32 | `MPS_MAXIO_PAGES` in the core; `mps.max_io_pages` 256 in Info.plist; the kext takes `sc->maxio` (`mps_kext_limits.maxio`) for `kIOMaximumByteCount*` and sizes each task's segment list from `buffer_dmat` (task data size asked after `InitializeController`) | core `D32` |
+| D21 | `mps.c` sizing is FreeBSD's; `mps_kext_max_tasks` = normal frames - `MPSK_INTERNAL_CMDS` (8), with the reason in the kext | existing tests follow the move (same value) |
+| D54 | `mpsvar.h`: `mps_reinit(sc)` queues the reinit task (`mps_xnu_request_reinit(sc, __func__)`), so FreeBSD's callout/completion call sites are verbatim; `(mps_reinit)(sc)` is the reset (task, `mps_wait_command`) | core `D54` |
+| D78 | `compat/queue.h` has FreeBSD's `QUEUE_MACRO_DEBUG_TRASH` and `_ASSERTIONS`; the host build turns them on | core `D78` |
+| D6 | `bus_dmamap_load` maps a core `malloc` block (`mps_os_dmamap_load_buf`: IOMemoryDescriptor + IODMACommand on the DART), released at unload, next load, `free` of the block (the malloc header records the map) and destroy; config pages and IDENTIFY use `malloc`/`free` verbatim; the lent buffer and `cfg_busy` are gone. The page 0 retries and re-add slots stay until the breakout-replug test | core `D6` (2 page reads during a stuck IDENTIFY: ENOMEM before; 1000 reads -> 0 mappings; free/reload release) |
+
+Comments for KEEP items in the files touched: D38 (malloc may block), D65 (openings not enforced),
+D69 (boot hold no-ops), D17 (`mps_kext_io_done`). Hardware tests and results: the deviations plan.
+
+Verified on the Mac (build 6DD7CE42, 2026-11-20): all config pages read into `malloc`'d pages, 0
+failures, no IODMACommand/descriptor growth across the temperature polls; a forced reinit and a lost
+command under IO on all 7 drives recover with 0 errors (DELAY with the lock, the taskqueue thread, the
+deferred held run); a `shutdown -r` at full write rate leaves every block with old or new data, none
+corrupt (D34). Random 4K QD32 1765 IOPS, seq 1 MiB 1944.6 MB/s, verify 0 mismatches.
 
 ## What is implemented (M1 – M4)
 > **Names after M5.** The tables and sections below are the M1–M4 history and use the names of
