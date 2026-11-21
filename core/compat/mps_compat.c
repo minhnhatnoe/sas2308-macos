@@ -1090,7 +1090,10 @@ bus_dma_template_fill(bus_dma_template_t *t, bus_dma_param_t *kv, u_int count)
 				t->dt_alignment = kv[i].num;
 			break;
 		case BD_PARAM_BOUNDARY:
-			t->dt_boundary = kv[i].num;
+			/* the parent's, or the smaller of two (tag_create) */
+			if (t->dt_boundary == 0 || (kv[i].num != 0 &&
+			    kv[i].num < t->dt_boundary))
+				t->dt_boundary = kv[i].num;
 			break;
 		case BD_PARAM_LOWADDR:
 			if (kv[i].num < t->dt_lowaddr)

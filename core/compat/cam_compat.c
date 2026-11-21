@@ -670,16 +670,60 @@ xpt_register_async(int event, void (*cbfunc)(void *, uint32_t,
  * addresses (IODMACommand segments).  Anything else, a list that does not
  * add up to dxfer_len (EINVAL), more segments than the tag allows or a
  * segment longer than its maxsegsz (EFBIG) is refused, and the callback is
- * not called.
+ * not called.  A segment that crosses the tag's boundary (buffer_dmat: 4 GiB,
+ * an MPI2 SGE must not) is split there, as busdma's load does; EFBIG if the
+ * split list has more segments than the tag allows (D41).
  */
+static int
+cam_xnu_split_boundary(bus_dma_tag_t dmat, const bus_dma_segment_t *in,
+    int n, bus_dma_segment_t **outp, int *noutp)
+{
+	bus_dma_segment_t *out;
+	bus_addr_t bmask, addr;
+	bus_size_t len, chunk;
+	int i, cross = 0, max, nout = 0;
+
+	*outp = NULL;
+	if (dmat->dt_boundary == 0)
+		return (0);
+	bmask = dmat->dt_boundary - 1;
+	for (i = 0; i < n && !cross; i++)
+		cross = (in[i].ds_addr & ~bmask) !=
+		    ((in[i].ds_addr + in[i].ds_len - 1) & ~bmask);
+	if (!cross)
+		return (0);
+	max = (dmat->dt_nsegments > 0) ? dmat->dt_nsegments : 2 * n;
+	out = mps_compat_malloc(sizeof(*out) * (size_t)max, NULL, M_NOWAIT);
+	if (out == NULL)
+		return (ENOMEM);
+	for (i = 0; i < n; i++) {
+		for (addr = in[i].ds_addr, len = in[i].ds_len; len > 0;
+		    addr += chunk, len -= chunk) {
+			chunk = dmat->dt_boundary - (addr & bmask);
+			if (chunk > len)
+				chunk = len;
+			if (nout == max) {
+				mps_compat_free(out, NULL);
+				return (EFBIG);
+			}
+			out[nout].ds_addr = addr;
+			out[nout].ds_len = chunk;
+			nout++;
+		}
+	}
+	*outp = out;
+	*noutp = nout;
+	return (0);
+}
+
 int
 bus_dmamap_load_ccb(bus_dma_tag_t dmat, bus_dmamap_t map, union ccb *ccb,
     bus_dmamap_callback_t *callback, void *callback_arg, int flags)
 {
 	struct ccb_scsiio *csio = &ccb->csio;
-	bus_dma_segment_t *segs;
+	bus_dma_segment_t *segs, *split;
 	uint64_t total = 0;
-	int i;
+	int i, error, nsplit = 0;
 
 	(void)map;
 	(void)flags;
@@ -700,8 +744,15 @@ bus_dmamap_load_ccb(bus_dma_tag_t dmat, bus_dmamap_t map, union ccb *ccb,
 	}
 	if (total != csio->dxfer_len || total > dmat->dt_maxsize)
 		return (EINVAL);
-	callback(callback_arg, (bus_dma_segment_t *)(void *)csio->data_ptr,
-	    csio->sglist_cnt, 0);
+	error = cam_xnu_split_boundary(dmat, segs, csio->sglist_cnt, &split,
+	    &nsplit);
+	if (error != 0)
+		return (error);
+	if (split != NULL) {
+		callback(callback_arg, split, nsplit, 0);
+		mps_compat_free(split, NULL);
+	} else
+		callback(callback_arg, segs, csio->sglist_cnt, 0);
 	return (0);
 }
 

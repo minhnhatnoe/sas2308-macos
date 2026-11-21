@@ -2889,6 +2889,46 @@ static void DeviationTests()
         bus_dmamap_destroy(sc->buffer_dmat, map);
     }
 
+    if (Want("D41")) {
+        /* busdma boundary: inherited from the parent tag, enforced (split) in load_ccb */
+        Rig g;
+        struct mps_softc *sc = g.sc;
+        CHECK(sc->buffer_dmat->dt_boundary == BUS_SPACE_MAXSIZE_32BIT + 1ull);
+        bus_dma_tag_t child, child2;
+        CHECK(bus_dma_tag_create(sc->buffer_dmat, 1, 0, BUS_SPACE_MAXADDR, BUS_SPACE_MAXADDR, NULL, NULL,
+                                 1 << 20, 4, 1 << 20, 0, NULL, NULL, &child) == 0);
+        CHECK(child->dt_boundary == BUS_SPACE_MAXSIZE_32BIT + 1ull);      /* inherited */
+        CHECK(bus_dma_tag_create(sc->buffer_dmat, 1, 0x10000, BUS_SPACE_MAXADDR, BUS_SPACE_MAXADDR, NULL,
+                                 NULL, 1 << 20, 2, 1 << 20, 0, NULL, NULL, &child2) == 0);
+        CHECK(child2->dt_boundary == 0x10000);                             /* the smaller one */
+        static bus_dma_segment_t got[8];
+        static int gotN;
+        gotN = -1;
+        auto cb = [](void *, bus_dma_segment_t *s, int n, int error) {
+            gotN = error ? -error : n;
+            for (int i = 0; i < n && i < 8; i++) got[i] = s[i];
+        };
+        bus_dma_segment_t sg[1] = {{0xFFFFF000ull, 0x2000}};    /* crosses 4 GiB */
+        union ccb *ccb = (union ccb *)calloc(1, sizeof(union ccb));
+        ccb->ccb_h.flags = CAM_DATA_SG_PADDR | CAM_DIR_IN;
+        ccb->csio.data_ptr = (uint8_t *)sg;
+        ccb->csio.sglist_cnt = 1;
+        ccb->csio.dxfer_len = 0x2000;
+        CHECK(bus_dmamap_load_ccb(child, NULL, ccb, cb, nullptr, 0) == 0);
+        CHECK(gotN == 2 && got[0].ds_addr == 0xFFFFF000ull && got[0].ds_len == 0x1000 &&
+              got[1].ds_addr == 0x100000000ull && got[1].ds_len == 0x1000);
+        sg[0].ds_addr = 0x1FFFF000ull;                          /* 64 KiB boundary of child2 */
+        gotN = -1;
+        CHECK(bus_dmamap_load_ccb(child2, NULL, ccb, cb, nullptr, 0) == 0 && gotN == 2);
+        sg[0].ds_len = 0x12000;                                 /* three pieces: more than 2 */
+        ccb->csio.dxfer_len = 0x12000;
+        gotN = -1;
+        CHECK(bus_dmamap_load_ccb(child2, NULL, ccb, cb, nullptr, 0) == EFBIG && gotN == -1);
+        free(ccb);
+        bus_dma_tag_destroy(child);
+        bus_dma_tag_destroy(child2);
+    }
+
     if (Want("D18")) {
         /*
          * An "impossible" SGL state (no room left for a chain element):
