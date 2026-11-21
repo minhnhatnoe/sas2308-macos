@@ -345,12 +345,14 @@ SAS2308Glue::FindTask(uint32_t target, uint64_t lun, uint64_t tag)
 //	No lock held.
 //-----------------------------------------------------------------------------
 
-void
+uint32_t
 SAS2308Glue::DeliverCompletions(void)
 {
+    uint32_t n = 0;
+
     if (!fMps || !fLock)
-        return;
-    for (;;) {
+        return 0;
+    for (;; n++) {
         struct mps_kext_io_result res;
         void *task = mps_kext_next_done(fMps, &res);
         if (!task)
@@ -387,6 +389,37 @@ SAS2308Glue::DeliverCompletions(void)
         }
         fPort->CompleteTask(task, done, res.scsi_status, res.transferred, res.sense, res.sense_len);
     }
+    return n;
+}
+
+//-----------------------------------------------------------------------------
+//	TimerDeliver - the statistics timer (1 s, work loop) delivers what is
+//	on the done queue with no done call queued or running: every completion
+//	is kicked (interrupt path, done call), so these are lost kicks. Counted
+//	and logged once, so a missing kick shows up in tests and statistics
+//	instead of costing a silent second of latency (D43).
+//-----------------------------------------------------------------------------
+
+void
+SAS2308Glue::TimerDeliver(void)
+{
+    if (!fMps || !fLock)
+        return;
+    Lock();
+    const bool kicked = fDonePending != 0;
+    Unlock();
+    if (kicked)
+        return;                                     /* the done call delivers them */
+    const uint32_t n = DeliverCompletions();
+    if (n == 0)
+        return;
+    Lock();
+    const bool first = fKStats.lostKicks == 0;
+    fKStats.lostKicks += n;
+    Unlock();
+    if (first)
+        Klog(MPSK_ERROR, "%u completions were not kicked: delivered by the 1 s timer (counted as "
+             "\"Lost completion kicks\", logged once)", n);
 }
 
 //-----------------------------------------------------------------------------

@@ -410,6 +410,7 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Reinit failed attempts", st.reinit_failures);
     SetNumber(d, "Reinit max ms", st.reinit_max_ms);
     SetNumber(d, "Controller dead", ks.deadEvents);
+    SetNumber(d, "Lost completion kicks", ks.lostKicks);
     SetNumber(d, "Transient all-ones reads", st.transient_allones);
     {
         uint16_t cmd, ctl;
@@ -500,7 +501,7 @@ SAS2308HBA::StatsTimerFired(OSObject *owner, IOTimerEventSource *sender)
     self->fGlue.Unlock();
     if (!run)
         return;
-    self->DeliverCompletions();                     /* belt and braces: nothing should wait here */
+    self->fGlue.TimerDeliver();                     /* lost kicks: delivered, counted (D43) */
     self->PublishStats(false);
     sender->setTimeoutMS(kStatsPublishMs);
 }

@@ -93,6 +93,7 @@ public:
         uint32_t familyTimeouts;        /* HandleTimeout calls */
         uint32_t tmRequests, tmRequestsFailed;
         uint32_t deadEvents;            /* controller declared dead */
+        uint32_t lostKicks;             /* completions only the 1 s timer delivered (D43) */
     };
     struct Slot {                       /* an outstanding task, for AbortTaskRequest() */
         void       *task;
@@ -116,7 +117,8 @@ public:
 
     Response ProcessTask(void *task);
     void HandleTimeout(void *task);
-    void DeliverCompletions(void);      /* no lock held */
+    uint32_t DeliverCompletions(void);  /* no lock held; returns how many */
+    void TimerDeliver(void);            /* the 1 s statistics timer: lost kicks (D43) */
     void *FindTask(uint32_t target, uint64_t lun, uint64_t tag);
 
     void ScheduleDone(void);            /* fLock held */

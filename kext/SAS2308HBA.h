@@ -153,7 +153,7 @@ private:
     /* the gate and delivery live in fGlue (SAS2308Glue.cpp) */
     bool Enter(void) { return fGlue.Enter(); }
     void Leave(void) { fGlue.Leave(); }
-    void DeliverCompletions(void) { fGlue.DeliverCompletions(); }
+    void DeliverCompletions(void) { (void)fGlue.DeliverCompletions(); }
     void ReleaseResources(void);        /* idempotent */
     static void DoneThread(thread_call_param_t self, thread_call_param_t);
     SCSIServiceResponse SendTaskMgmt(uint8_t taskType, SCSITargetIdentifier theT,

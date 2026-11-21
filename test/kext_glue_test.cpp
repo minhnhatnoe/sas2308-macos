@@ -155,8 +155,10 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
     bool CallCancel(int which) override { return calls[which].Cancel(); }
     void Log(uint32_t cls, const char *line) override { mps_kext_log(nullptr, cls, line); }
 
+    bool loseKicks = false;                 /* a done kick that never arrives (D43) */
     static void HostDoneKick(void *hba) {
         Family *f = (Family *)hba;
+        if (f->loseKicks) return;
         f->glue.Lock(); f->glue.ScheduleDone(); f->glue.Unlock();
     }
     static void HostAsync(void *hba, int event, uint64_t tids, uint64_t present, const uint32_t *gens) {
@@ -771,6 +773,42 @@ int main()
         CHECK(h->completions == 1 && h->done == SAS2308GluePort::kDoneRetry && m.tms.size() == tms2);
         CHECK(mps_kext_resume(f.k) == 0);
         f.Run(3000);
+        f.Detach();
+    }
+
+    if (Want("D43")) {
+        /*
+         * The 1 s statistics timer still delivers completions nobody
+         * kicked, but counts them (and logs once): a lost kick shows up
+         * instead of being hidden. A completion whose kick is on its way
+         * is left to the done call.
+         */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const size_t mark = gHost.log.size();
+        f.glue.TimerDeliver();                      /* nothing waiting: nothing counted */
+        CHECK(f.glue.fKStats.lostKicks == 0);
+        f.loseKicks = true;
+        FakeTask *a = f.NewRead(f.Tid(0x0009)), *b = f.NewRead(f.Tid(0x0009));
+        CHECK(f.Submit(a) == SAS2308Glue::kInProcess && f.Submit(b) == SAS2308Glue::kInProcess);
+        mps_intr_msi(gHost.sc);                     /* completed off the interrupt path: kicks the done call */
+        HostRunPending();
+        CHECK(a->completions == 0 && b->completions == 0);   /* the kick was lost */
+        f.glue.TimerDeliver();
+        CHECK(a->completions == 1 && b->completions == 1 && f.glue.fKStats.lostKicks == 2);
+        f.loseKicks = false;
+        FakeTask *c = f.NewRead(f.Tid(0x0009));
+        CHECK(f.Submit(c) == SAS2308Glue::kInProcess);
+        mps_intr_msi(gHost.sc);                     /* kicked: the done call is queued, not run yet */
+        f.glue.TimerDeliver();
+        CHECK(c->completions == 0 && f.glue.fKStats.lostKicks == 2);
+        HostRunPending();
+        CHECK(c->completions == 1);
+        size_t lines = 0;
+        for (size_t i = mark; i < gHost.log.size(); i++)
+            lines += gHost.log[i].line.find("not kicked") != std::string::npos;
+        CHECK(lines == 1);
         f.Detach();
     }
 
