@@ -160,6 +160,7 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | G2 | IO timer (core callout; `sas2308_family_timer`, default 0) | done | 8df1186 | glue `C1`, `C1-family`, `C1-backstop`, `D4`, `D43` | F1 4K point +7.2 % (7 drives QD2), +14.5 % (QD1) |
 | G2 | D65 (no per-device cap, KEEP-WITH-EVIDENCE) | done | bee8d0b | none (comment) | QD1 drive unchanged next to QD 1024 / 2000 |
 | G2 | build fixes (Mac build) | done | ee94a31 | n/a | n/a |
+| vendor | FreeBSD release/14.5.0 import (2 upstream commits, 3 lines, no conflicts, no new deviation) | done | 9c0a5f9, 72654ac | all host tests | smoke test on 830E83B5 (see "FreeBSD 14.5.0 import hardware results") |
 
 ### Batch A hardware results
 
@@ -491,6 +492,28 @@ and `~/sasbench/profile/<tag>` for the 4K point.
 - **Regression** (21A171AA): random 4K read QD32 all 7, 60 s: **1767 IOPS**; seq 1 MiB read all 7,
   60 s: **1945.2 MB/s**; verify 256 MiB per drive **0 mismatches, 0 errors**; 0 IO timeouts, 0
   recoveries, 0 diag resets, 0 KASSERT hits, 0 lost kicks, 0 rejected tasks; "Ordered tags sent" 86.
+
+### FreeBSD 14.5.0 import hardware results
+
+Build **830E83B5-D729-3439-B6D9-592E227B457C** (branch import-fbsd-14.5, merge 72654ac); rollback
+copy `~/sas2308-rollback-21A171AA`. Raw outputs: Mac `~/hw145` (the G1 scripts with paths changed).
+Upstream changed only a dprint string and loop-header whitespace, so this is a smoke test, not an
+A/B.
+- **Install:** VNC approval, reboot; 7 drives, 0 config page failures, temperature read OK.
+- **SMART** `smartctl -a`: PASSED on all 7. drive6 (disk9) returns rc 64 for one old ATA error
+  log entry (UNC at power-on hour 21639, 130 h before this test; the count was already 1 in G1).
+- **Idle:** default level and mask (2, 0x3): 0 lines in 5 min, 0 with info+debug.
+- **Forced recovery under IO** (random 4K QD8 on all 7, `lose 1`, then `reinit`): timeout at
+  60.6 s, abort, LUN reset, target reset, reinit 1118 ms; forced reinit 1124 ms; 0 application
+  errors; KASSERT 0, TM waits in gate 0, lost kicks 0.
+- **Sleep/wake under IO:** 2 suspend/resume cycles (the sleep and a maintenance sleep before the
+  full wake), both without a reset (350 / 340 ms), 0 errors, 28 default lines, 0 fault lines.
+- **Restart with a mounted JHFS+ volume** (F145TEST on drive6, 256+64 MiB + 200 small files, one
+  file dirty at shutdown): request to kernel boot 12 s, 0 driver lines in the shutdown window,
+  `verifyVolume` OK, 202/202 shasums OK. The shutdownStall report and the kernelmanagerd
+  "restricted lookup table" line come with every restart on this Mac (G1 had both).
+- **Regression:** random 4K read QD32 all 7: **1764 IOPS** (G2 1767); seq 1 MiB read all 7:
+  **1945.2 MB/s** (G2 1945.2); verify **0 mismatches, 0 errors**.
 
 ### Hardware tests still to run
 

@@ -1545,3 +1545,14 @@ blocks: take ours and check for a newly needed include; `/* XNU: */` code: keep 
 carry the fix). Tried with real upstream commits on 2026-11-20: stable/14 merged cleanly, main
 gave 12 conflict hunks in 6 files, half of them #include blocks. The review of this setup is
 `docs/reviews/2026-11-vendor.md`.
+
+First real update, 2026-11-21: release/14.3.0 -> release/14.5.0 (4099b5c82880, tag
+`vendor/freebsd-mps/14.5.0`). Upstream changed 3 lines in two commits (cff07c11c, a typo in an
+`mps.c` dprint; b149250d3, style(9) in two `mps_sas.c` loop headers), nothing in `mpi/` or in the
+unported files. The merge (72654ac) had no conflicts and needed no decisions beyond keeping
+upstream; `tools/diff-vs-freebsd.sh -s` against the new base: 10978 upstream lines, 7393 common,
+1368 added, 3585 removed, 299 XNU lines, no new deviation. Kext **830E83B5** passed the smoke
+test: 7 drives, SMART PASSED on all 7, 0 default log lines in 5 min idle, a forced recovery under
+IO, a sleep/wake under IO, a restart with a mounted JHFS+ volume, and the regression (1764 IOPS
+random 4K QD32, 1945.2 MB/s seq 1 MiB, verify 0 mismatches). Details:
+`docs/reviews/2026-11-freebsd-deviations.md`, "FreeBSD 14.5.0 import hardware results".

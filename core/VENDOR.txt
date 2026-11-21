@@ -69,8 +69,8 @@ while 14 is supported: import each new 14.x release after the host tests, a
 Mac kext build and a short hardware smoke test. Move to 15.x only when 14
 reaches end of life or a needed fix exists only there; record the decision
 here. A fix needed from main is imported on the vendor branch as its own
-commit naming the upstream hash. (2026-11-20: release/14.4.0 and 14.5.0
-exist; 14.5.0 is the next import.)
+commit naming the upstream hash. (2026-11-21: release/14.5.0 imported,
+which includes 14.4.0; the next is the next 14.x release tag.)
 
 Updating
 --------
@@ -94,3 +94,13 @@ Tried 2026-11-20 with real upstream commits: stable/14 head (typo and
 style(9) fixes in mps.c, mps_sas.c) merged without conflict; main head
 (hostboot support, probe on completion, sys/cdefs.h removal, style(9))
 gave 6 conflicting files, 12 hunks, 6 of them in #include blocks.
+
+Imports
+-------
+14.3.0  8c9ce319  2025-06-06  initial import (2026-11-20)
+14.5.0  4099b5c8  2026-09-04  2026-11-21: 2 upstream commits since 14.3.0,
+        3 lines: cff07c11c typo in an mps.c dprint ("reseting"),
+        b149250d3 style(9) in two mps_sas.c loop headers. Clean merge, no
+        conflicts, no unported-file changes, no new deviation; kext
+        830E83B5 passed the hardware smoke test (design.md "Updating from
+        FreeBSD").
