@@ -973,6 +973,17 @@ int mps_kext_suspend(struct mps_kext *k, uint32_t drain_ms, int shutdown)
 
     if (!k->attached)
         return ENXIO;
+    /*
+     * Shutdown: FreeBSD's shutdown_final handler first, START STOP UNIT to
+     * the SATA SSDs (enable_ssu default; D9), while the IOC still runs.
+     * RB_NOSYNC: its 10 s bound, not 60 s (the halt watchdog is 30 s).
+     */
+    mps_lock(sc);
+    const int running = (sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED | MPS_FLAGS_SHUTDOWN |
+                                          MPS_FLAGS_DIAGRESET)) == 0 && !sc->xnu.suspending;
+    mps_unlock(sc);
+    if (shutdown && running)
+        mpssas_ir_shutdown(sc, RB_NOSYNC);
     mps_lock(sc);
     error = mps_xnu_suspend(sc, drain_ms, shutdown);
     mps_unlock(sc);

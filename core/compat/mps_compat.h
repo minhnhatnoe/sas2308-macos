@@ -423,6 +423,7 @@ void	mtx_unlock(struct mtx *m);
 int	msleep(void *chan, struct mtx *mtx, int pri, const char *wmesg, int timo);
 void	wakeup(void *chan);
 void	pause(const char *wmesg, int timo);
+#define RB_NOSYNC	0x004		/* reboot.h: mpssas_ir_shutdown's howto (D9) */
 /* the caller's locks stay held (FreeBSD); 1 ms and more may sleep */
 void	DELAY(int us);
 

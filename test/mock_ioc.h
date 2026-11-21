@@ -127,6 +127,8 @@ struct MockIocModel {
     bool dropIdentify = false;                 /* lose IDENTIFY replies */
     std::set<uint16_t> identifyFail;           /* IDENTIFY of these handles fails */
     std::set<uint16_t> sataSsd;                /* IDENTIFY word 217 = 1 (non-rotating) */
+    struct ScsiOp { uint16_t handle; uint8_t op, b1, b4; };
+    std::vector<ScsiOp> scsiOps;               /* every SCSI IO request: handle, CDB bytes 0, 1, 4 (D9) */
     std::map<uint16_t, int> identifyFailN;     /* the next N IDENTIFYs of a handle fail */
     std::set<uint16_t> identifyStuck;          /* the next IDENTIFY of these handles gets no reply ... */
     std::vector<std::pair<uint16_t, uint16_t>> stuckIds;   /* ... (SMID, handle) until a TARGET_RESET */
@@ -757,6 +759,7 @@ struct MockIocModel {
             for (uint16_t h : devices) known |= h == q->DevHandle;
             CHECK(known);
             ioCount[q->DevHandle]++;
+            scsiOps.push_back({q->DevHandle, q->CDB.CDB32[0], q->CDB.CDB32[1], q->CDB.CDB32[4]});
             nowUs += 37;                            /* the IO takes a little time: nonzero latency */
             lastSgl = WalkSgl(f, true, &lastChains);
             lastDataLength = q->DataLength; lastControl = q->Control;

@@ -1754,6 +1754,30 @@ mps_sc_failed_io_info(struct mps_softc *sc, struct ccb_scsiio *csio,
 	}
 }
 
+/*
+ * XNU: FreeBSD's INQUIRY snoop of mpssas_scsiio_complete (D9), for a GOOD
+ * INQUIRY: the target's devinfo (no mapping table); the data is a physical
+ * segment list (CAM_DATA_SG_PADDR), so the peripheral type is not read: a
+ * SATA end device that is not ATAPI is what the SATL reports as T_DIRECT.
+ */
+static void
+mpssas_xnu_mark_ssu(struct mps_softc *sc, struct mps_command *cm,
+    struct ccb_scsiio *csio)
+{
+	struct mpssas_target *target = cm->cm_targ;
+
+	if ((csio->cdb_io.cdb_bytes[0] == INQUIRY) && target != NULL &&
+	    !target->supports_SSU &&
+	    (target->devinfo & MPI2_SAS_DEVICE_INFO_SATA_DEVICE) &&
+	    ((target->devinfo & MPI2_SAS_DEVICE_INFO_MASK_DEVICE_TYPE) ==
+	    MPI2_SAS_DEVICE_INFO_END_DEVICE) &&
+	    (target->devinfo & MPI2_SAS_DEVICE_INFO_ATAPI_DEVICE) == 0) {
+		target->supports_SSU = TRUE;
+		mps_dprint(sc, MPS_XINFO, "Target %d supports SSU\n",
+		    target->tid);
+	}
+}
+
 static void
 mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 {
@@ -1862,7 +1886,17 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 		}
 	}
 
-	/* XNU: no START STOP UNIT at shutdown (SSU_refcount) */
+	/*
+	 * If this is a Start Stop Unit command and it was issued by the driver
+	 * during shutdown, decrement the refcount to account for all of the
+	 * commands that were sent.  All SSU commands should be completed before
+	 * shutdown completes, meaning SSU_refcount will be 0 after SSU_started
+	 * is TRUE.
+	 */
+	if (sc->SSU_started && (csio->cdb_io.cdb_bytes[0] == START_STOP_UNIT)) {
+		mps_dprint(sc, MPS_INFO, "Decrementing SSU count.\n");
+		sc->SSU_refcount--;
+	}
 
 	/* XNU: an SGL that did not fit its frame (D18): never posted */
 	if (cm->cm_flags & MPS_CM_FLAGS_XNU_SGL_FAILED)
@@ -1886,6 +1920,14 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 			else {
 				mpssas_set_ccbstatus(ccb, CAM_REQ_CMP);
 				ccb->csio.scsi_status = SCSI_STATUS_OK;
+				/*
+				 * XNU: FreeBSD marks SSU targets only on a
+				 * reply frame (below; CAM's probe INQUIRY
+				 * usually underruns); SAM asks for exactly
+				 * the INQUIRY length, which completes here
+				 * (D9).
+				 */
+				mpssas_xnu_mark_ssu(sc, cm, csio);
 			}
 			if (sassc->flags & MPSSAS_QUEUE_FROZEN) {
 				ccb->ccb_h.status |= CAM_RELEASE_SIMQ;
@@ -1990,7 +2032,15 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 			ccb->ccb_h.status |= CAM_AUTOSNS_VALID;
 		}
 
-		/* XNU: no TLR, no SATA START STOP UNIT (no mapping table) */
+		/*
+		 * XNU: no TLR (D53).
+		 *
+		 * If this is a SATA direct-access end device, mark it so that
+		 * a SCSI StartStopUnit command will be sent to it when the
+		 * driver is being shutdown.
+		 */
+		if (mpssas_get_ccbstatus(ccb) == CAM_REQ_CMP)	/* XNU */
+			mpssas_xnu_mark_ssu(sc, cm, csio);
 		break;
 	case MPI2_IOCSTATUS_SCSI_INVALID_DEVHANDLE:
 	case MPI2_IOCSTATUS_SCSI_DEVICE_NOT_THERE:

@@ -864,6 +864,34 @@ int main()
         f.Detach();
     }
 
+    if (Want("D9")) {
+        /* FreeBSD's shutdown: START STOP UNIT (stop) to SATA SSDs only (enable_ssu default), before the MUR */
+        MockIocModel m; m.devices = {0x0009, 0x000B, 0x000C}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        m.sataSerial[0x000B] = "S6SSD001"; m.sataSsd.insert(0x000B);      /* SATA SSD */
+        m.sataSerial[0x000C] = "ZR50HDD0";                                /* SATA HDD */
+        Family f; f.Attach(&m);
+        for (uint16_t h : {0x0009, 0x000B, 0x000C}) {                     /* SAM's INQUIRY at nub creation */
+            FakeTask *q = f.NewRead(f.Tid(h));
+            q->cdb[0] = 0x12; q->cdb[1] = 0; q->cdb[4] = 36; q->cdb[5] = 0; q->cdbLen = 6; q->len = 36;
+            CHECK(f.Submit(q) == SAS2308Glue::kInProcess);
+            HostRunPending();
+            CHECK(q->completions == 1 && q->done == SAS2308GluePort::kDoneStatus);
+        }
+        auto ssus = [&m]() {
+            std::vector<MockIocModel::ScsiOp> v;
+            for (const auto &o : m.scsiOps) if (o.op == 0x1B) v.push_back(o);
+            return v;
+        };
+        CHECK(ssus().empty());
+        const int murs = m.murCount;
+        CHECK(mps_kext_suspend(f.k, 1000, 1) == 0);                       /* systemWillShutdown */
+        std::vector<MockIocModel::ScsiOp> v = ssus();
+        CHECK(v.size() == 1 && v[0].handle == 0x000B && v[0].b4 == 0 && v[0].b1 == 0);   /* stop, not immediate */
+        CHECK(m.murCount == murs + 1);                                     /* then the IOC stopped */
+        f.Detach();
+    }
+
     if (Want("D45")) {
         /* no slot table: the glue's per-task state is in the task's HBA data, the family finds tasks */
         MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;

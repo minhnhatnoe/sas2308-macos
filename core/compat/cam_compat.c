@@ -182,6 +182,48 @@ xpt_free_ccb(union ccb *ccb)
 	mps_compat_free(ccb, NULL);
 }
 
+/* cam_xpt.c: "(noperiph:mps0:0:<target>:<lun>): " without a periph */
+void
+xpt_path_string(struct cam_path *path, char *str, size_t str_len)
+{
+	struct cam_sim *sim = cam_xnu_sim_for_path(path->path_id);
+
+	snprintf(str, str_len, "(noperiph:%s%u:%u:%u:%jd): ",
+	    sim != NULL ? cam_sim_name(sim) : "xpt",
+	    sim != NULL ? cam_sim_unit(sim) : 0,
+	    sim != NULL ? cam_sim_bus(sim) : 0, (unsigned)path->target_id,
+	    (intmax_t)path->lun_id);
+}
+
+/* scsi_all.c scsi_start_stop + cam_fill_csio (no retry_count: no periph) */
+void
+scsi_start_stop(struct ccb_scsiio *csio, uint32_t retries,
+    void (*cbfcnp)(struct cam_periph *, union ccb *), uint8_t tag_action,
+    int start, int load_eject, int immediate, uint8_t sense_len,
+    uint32_t timeout)
+{
+	uint8_t *cdb = csio->cdb_io.cdb_bytes;
+
+	(void)retries;
+	bzero(cdb, 6);
+	cdb[0] = START_STOP_UNIT;
+	if (immediate)
+		cdb[1] |= 0x01;			/* SSS_IMMED */
+	if (start)
+		cdb[4] |= 0x01;			/* SSS_START */
+	if (load_eject)
+		cdb[4] |= 0x02;			/* SSS_LOEJ */
+	csio->ccb_h.func_code = XPT_SCSI_IO;
+	csio->ccb_h.flags = CAM_DIR_NONE;
+	csio->ccb_h.cbfcnp = cbfcnp;
+	csio->ccb_h.timeout = timeout;
+	csio->data_ptr = NULL;
+	csio->dxfer_len = 0;
+	csio->sense_len = sense_len;
+	csio->cdb_len = 6;
+	csio->tag_action = tag_action;
+}
+
 /* ---- queue freezing and the held queue ---------------------------------------- */
 
 static struct cam_sim *

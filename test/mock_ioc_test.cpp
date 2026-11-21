@@ -1944,7 +1944,7 @@ static void TemperatureTests()
         MockIocModel &m = g.ioc;
         auto busy = [&g]() {
             int n = 0;
-            for (u_int i = 1; i < g.sc->num_reqs; i++)
+            for (int i = 1; i < g.sc->num_reqs; i++)
                 n += g.sc->commands[i].cm_state != MPS_CM_STATE_FREE;
             return n;
         };

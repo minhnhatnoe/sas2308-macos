@@ -327,6 +327,16 @@ union ccb	*xpt_alloc_ccb(void);
 union ccb	*xpt_alloc_ccb_nowait(void);
 void		 xpt_free_ccb(union ccb *ccb);
 
+void		 xpt_path_string(struct cam_path *path, char *str, size_t str_len);
+
+/* scsi_all.h subset: START STOP UNIT to SATA disks at shutdown (D9) */
+#define INQUIRY			0x12
+#define START_STOP_UNIT		0x1B
+void		 scsi_start_stop(struct ccb_scsiio *csio, uint32_t retries,
+		    void (*cbfcnp)(struct cam_periph *, union ccb *),
+		    uint8_t tag_action, int start, int load_eject,
+		    int immediate, uint8_t sense_len, uint32_t timeout);
+
 void		 xpt_action(union ccb *ccb);
 int		 bus_dmamap_load_ccb(bus_dma_tag_t dmat, bus_dmamap_t map,
 		    union ccb *ccb, bus_dmamap_callback_t *callback,

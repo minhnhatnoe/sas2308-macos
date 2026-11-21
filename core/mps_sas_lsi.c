@@ -85,6 +85,9 @@ static int mpssas_get_sata_identify(struct mps_softc *sc, u16 handle,
     u32 devinfo);
 static void mpssas_ata_id_complete(struct mps_softc *, struct mps_command *);
 static void mpssas_ata_id_timeout(struct mps_softc *, struct mps_command *);
+static void mpssas_SSU_to_SATA_devices(struct mps_softc *sc, int howto);
+static void mpssas_stop_unit_done(struct cam_periph *periph,
+    union ccb *done_ccb);
 
 void
 mpssas_evt_handler(struct mps_softc *sc, uintptr_t data,
@@ -798,4 +801,219 @@ mpssas_ata_id_timeout(struct mps_softc *sc, struct mps_command *cm)
 	 * set a completion handler to make sure we free all resources.
 	 */
 	cm->cm_complete = mpssas_ata_id_complete;
+}
+
+/**
+ * mpssas_SSU_to_SATA_devices 
+ * @sc: per adapter object
+ * @howto: mast of RB_* bits for how we're rebooting
+ *
+ * Looks through the target list and issues a StartStopUnit SCSI command to each
+ * SATA direct-access device.  This helps to ensure that data corruption is
+ * avoided when the system is being shut down.  This must be called after the IR
+ * System Shutdown RAID Action is sent if in IR mode.
+ *
+ * Return nothing.
+ */
+static void
+mpssas_SSU_to_SATA_devices(struct mps_softc *sc, int howto)
+{
+	struct mpssas_softc *sassc = sc->sassc;
+	union ccb *ccb;
+	path_id_t pathid = cam_sim_path(sassc->sim);
+	target_id_t targetid;
+	struct mpssas_target *target;
+	char path_str[64];
+	int timeout;
+
+	/*
+	 * For each target, issue a StartStopUnit command to stop the device.
+	 */
+	sc->SSU_started = TRUE;
+	sc->SSU_refcount = 0;
+	/* XNU: no mapping table: every target id (sassc->maxtargets) */
+	for (targetid = 0; targetid < sassc->maxtargets; targetid++) {
+		target = &sassc->targets[targetid];
+		if (target->handle == 0x0) {
+			continue;
+		}
+
+		ccb = xpt_alloc_ccb_nowait();
+		if (ccb == NULL) {
+			mps_dprint(sc, MPS_FAULT, "Unable to alloc CCB to stop "
+			    "unit.\n");
+			return;
+		}
+
+		/*
+		 * The stop_at_shutdown flag will be set if this device is
+		 * a SATA direct-access end device.
+		 */
+		if (target->stop_at_shutdown) {
+			if (xpt_create_path(&ccb->ccb_h.path,
+			    xpt_periph, pathid, targetid,
+			    CAM_LUN_WILDCARD) != CAM_REQ_CMP) {
+				mps_dprint(sc, MPS_FAULT, "Unable to create "
+				    "LUN path to stop unit.\n");
+				xpt_free_ccb(ccb);
+				return;
+			}
+			xpt_path_string(ccb->ccb_h.path, path_str,
+			    sizeof(path_str));
+
+			mps_dprint(sc, MPS_INFO, "Sending StopUnit: path %s "
+			    "handle %d\n", path_str, target->handle);
+			
+			/*
+			 * Issue a START STOP UNIT command for the target.
+			 * Increment the SSU counter to be used to count the
+			 * number of required replies.
+			 */
+			mps_dprint(sc, MPS_INFO, "Incrementing SSU count\n");
+			sc->SSU_refcount++;
+			ccb->ccb_h.target_id =
+			    xpt_path_target_id(ccb->ccb_h.path);
+			ccb->ccb_h.ppriv_ptr1 = sassc;
+			scsi_start_stop(&ccb->csio,
+			    /*retries*/0,
+			    mpssas_stop_unit_done,
+			    MSG_SIMPLE_Q_TAG,
+			    /*start*/FALSE,
+			    /*load/eject*/0,
+			    /*immediate*/FALSE,
+			    MPS_SENSE_LEN,
+			    /*timeout*/10000);
+			mps_lock(sc);	/* XNU: the thin CAM's xpt_action wants the SIM lock */
+			xpt_action(ccb);
+			mps_unlock(sc);
+		}
+		/* XNU: not leaked for a target that gets no SSU */
+		else
+			xpt_free_ccb(ccb);
+	}
+
+	/*
+	 * Timeout after 60 seconds by default or 10 seconds if howto has
+	 * RB_NOSYNC set which indicates we're likely handling a panic.
+	 */
+	timeout = 600;
+	if (howto & RB_NOSYNC)
+		timeout = 100;
+
+	/*
+	 * Wait until all of the SSU commands have completed or timeout has
+	 * expired.  Pause for 100ms each time through.  If any command
+	 * times out, the target will be reset in the SCSI command timeout
+	 * routine.
+	 */
+	while (sc->SSU_refcount > 0) {
+		pause("mpswait", hz/10);
+		/*
+		 * XNU: always polled: the family delivers interrupts from its
+		 * work loop, which the shutdown thread may be waiting behind.
+		 */
+		mps_lock(sc);
+		mps_intr_locked(sc);
+		mps_unlock(sc);
+
+		if (--timeout == 0) {
+			mps_dprint(sc, MPS_FAULT, "Time has expired waiting "
+			    "for SSU commands to complete.\n");
+			break;
+		}
+	}
+}
+
+static void
+mpssas_stop_unit_done(struct cam_periph *periph, union ccb *done_ccb)
+{
+	struct mpssas_softc *sassc;
+	char path_str[64];
+
+	if (done_ccb == NULL)
+		return;
+
+	sassc = (struct mpssas_softc *)done_ccb->ccb_h.ppriv_ptr1;
+
+	xpt_path_string(done_ccb->ccb_h.path, path_str, sizeof(path_str));
+	mps_dprint(sassc->sc, MPS_INFO, "Completing stop unit for %s\n",
+	    path_str);
+
+	/*
+	 * Nothing more to do except free the CCB and path.  If the command
+	 * timed out, an abort reset, then target reset will be issued during
+	 * the SCSI Command process.
+	 */
+	xpt_free_path(done_ccb->ccb_h.path);
+	xpt_free_ccb(done_ccb);
+}
+
+/**
+ * mpssas_ir_shutdown - IR shutdown notification
+ * @sc: per adapter object
+ * @howto: mast of RB_* bits for how we're rebooting
+ *
+ * Sending RAID Action to alert the Integrated RAID subsystem of the IOC that
+ * the host system is shutting down.
+ *
+ * Return nothing.
+ */
+void
+mpssas_ir_shutdown(struct mps_softc *sc, int howto)
+{
+	target_id_t targetid;
+	struct mpssas_target *target;
+
+	mps_dprint(sc, MPS_TRACE, "%s\n", __func__);
+
+	/*
+	 * XNU: IT firmware only (D53): no IR volumes to tell about the
+	 * shutdown (ir_firmware, the RAID ACTION and its mapping-table walk
+	 * are gone).  Called from the kext's systemWillShutdown before the
+	 * IOC is stopped (mps_kext_suspend), not from shutdown_final.
+	 */
+
+	/*
+	 * All of the targets must have the correct value set for
+	 * 'stop_at_shutdown' for the current 'enable_ssu' sysctl variable.
+	 *
+	 * The possible values for the 'enable_ssu' variable are:
+	 * 0: disable to SSD and HDD
+	 * 1: disable only to HDD (default)
+	 * 2: disable only to SSD
+	 * 3: enable to SSD and HDD
+	 * anything else will default to 1.
+	 */
+	for (targetid = 0; targetid < sc->sassc->maxtargets; targetid++) {	/* XNU */
+		target = &sc->sassc->targets[targetid];
+		if (target->handle == 0x0) {
+			continue;
+		}
+
+		if (target->supports_SSU) {
+			switch (sc->enable_ssu) {
+			case MPS_SSU_DISABLE_SSD_DISABLE_HDD:
+				target->stop_at_shutdown = FALSE;
+				break;
+			case MPS_SSU_DISABLE_SSD_ENABLE_HDD:
+				target->stop_at_shutdown = TRUE;
+				if (target->flags & MPS_TARGET_IS_SATA_SSD) {
+					target->stop_at_shutdown = FALSE;
+				}
+				break;
+			case MPS_SSU_ENABLE_SSD_ENABLE_HDD:
+				target->stop_at_shutdown = TRUE;
+				break;
+			case MPS_SSU_ENABLE_SSD_DISABLE_HDD:
+			default:
+				target->stop_at_shutdown = TRUE;
+				if ((target->flags &
+				    MPS_TARGET_IS_SATA_SSD) == 0) {
+					target->stop_at_shutdown = FALSE;
+				}
+				break;
+			}
+		}
+	}
+	mpssas_SSU_to_SATA_devices(sc, howto);
 }
