@@ -276,7 +276,15 @@ struct cam_sim {
 	/*
 	 * XNU: openings (here and the devq's max_openings) are stored, not
 	 * enforced: the family's ReportMaximumTaskCount (mps_kext_max_tasks)
-	 * is the throttle, and a SIM out of commands requeues (D65).
+	 * is the throttle, and a SIM out of commands requeues (D65). CAM's
+	 * per-device cap (maxtags 255, cam_xpt.c) is not reproduced either:
+	 * the family hands out its controller-wide task pool before the SIM
+	 * sees a task (IOSCSIParallelInterfaceDevice::SendSCSICommand), so a
+	 * cap here could not keep one device from the others' tasks, and on
+	 * the Mac (batch G2, 9207-8i, Exos SATA) a QD1 random read on one
+	 * disk was unchanged (84 IOPS, p99 20.0-20.5 ms) next to another disk
+	 * at QD 1024 or 2000, which itself kept its throughput (203 / 202 IOPS;
+	 * the IOC queues past NCQ's 32).
 	 */
 	int			 max_tagged_dev_openings;
 	int			 max_dev_openings;
