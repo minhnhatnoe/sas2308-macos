@@ -1,0 +1,4 @@
+smartctl 7.5 2025-04-30 r5714 [Darwin 27.0.0 arm64] (local build)
+Copyright (C) 2002-25, Bruce Allen, Christian Franke, www.smartmontools.org
+
+Smartctl open device: /dev/disk5 failed: Operation not supported by device

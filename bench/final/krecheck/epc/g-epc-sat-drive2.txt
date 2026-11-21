@@ -1,0 +1,8 @@
+smartctl 7.5 2025-04-30 r5714 [Darwin 27.0.0 arm64] (local build)
+Copyright (C) 2002-25, Bruce Allen, Christian Franke, www.smartmontools.org
+
+=======> INVALID ARGUMENT TO -g: epc
+=======> VALID ARGUMENTS ARE: aam, apm, dsn, lookahead, security, wcache, rcache, wcreorder, wcache-sct <=======
+
+Use smartctl -h to get a usage summary
+

@@ -1,0 +1,3 @@
+job 0: /dev/rdisk5 read zone=3-3.000001 name=drive2 bytes [540006240256, 540006416384) lba512 [1054699688, 1054700032) blocks=43 disk=18000207937536
+/dev/rdisk5    read   3-3.000001 seq   bs=4096     qd=1     3.0s  R    73.3 MB/s  W     0.0 MB/s     17886 IOPS  p50      54us p99      100us max     9400us err 0 mis 0
+AGGREGATE 1 jobs 3.0s  R 73.3 MB/s  W 0.0 MB/s  total 73.3 MB/s  17886 IOPS  p50 54us p99 100us max 9400us errors 0 mismatches 0

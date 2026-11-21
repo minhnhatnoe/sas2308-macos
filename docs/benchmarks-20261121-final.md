@@ -500,3 +500,43 @@ final run 4.3k / 4.5k = post-write slow phase (reproduced 3 of 3, gone after 35-
 (53 us) = fast state; 01:00 recheck 18.1k = fast state (first touch), 11.8k = normal state. Idle
 spread within a state 0.1-0.5 %; no region-size dependence up to 4 MiB. A benchmark of drive
 cache hits must wait >= 60 s after writes and run long enough (or report both states).
+
+## K recheck 2: EPC (2026-11-21)
+Question: do the drives' EPC power-condition timers (Idle_A = electronics power-reduced a few
+seconds after the last media access) explain the two hit states (fast 54 us right after a media
+read, normal 80 us from ~4 s on)? Plan: read the Idle_A/B/C and Standby_Z timers through the SATL,
+then rerun the fast->normal transition with Idle_A disabled (volatile) or set to 60 s. Run
+06:23-06:26 on 085DA9D6; scripts `bench/final/scripts/krecheck-epc{1,2,3}.sh`, raw outputs
+`bench/final/krecheck/epc/`.
+
+**Result: the EPC timers cannot be read or changed through this path, so the test stopped after
+step 1.**
+- `smartctl` 7.5 has no EPC support: `-g epc` is rejected ("VALID ARGUMENTS ARE: aam, apm, dsn,
+  lookahead, security, wcache, rcache, wcreorder, wcache-sct"), with and without `-d sat`; `-s` has
+  no EPC setting either (`smartctl-h.txt`). Only `-s standby,N` exists, which is the legacy
+  standby timer, not EPC.
+- Underneath, Darwin smartctl goes through Apple's SMART interface, which carries only SMART
+  commands and IDENTIFY: `ATA_READ_LOG_EXT ... failed: 48-bit ATA commands not implemented`, so the
+  Power Conditions log (GP log 0x08, where the timers live) cannot be read, and `CHECK POWER MODE
+  not implemented` (`checkpower-drive3.txt`), so the current power condition (0x81 = Idle_A)
+  cannot be polled either. SET FEATURES (EPC subcommand 0x4A) already fails through this path for
+  write cache (see "Write cache on/off").
+- IDENTIFY (drive3, same model and firmware SN02; `identify-drive3.txt`): word 119 bit 7 = 1
+  **EPC supported**, word 120 bit 7 = 1 **EPC enabled**; APM not supported (word 83 bit 3 = 0),
+  PUIS supported but off, device-initiated SATA power management supported but off (word 79 bit
+  3 = 0). So the drive may enter Idle_A/B/C on its own timers, but their values are unknown.
+- `-l devstat` (Device Statistics, SMART log 0x04) fails (`ATA_SMART_READ_LOG failed`); SCT
+  status only reports "Device State: Active (0)" (SCT does not distinguish the EPC idle states).
+- Side effect: right after `smartctl -x` (in which the Device Statistics SMART READ LOG failed),
+  drive2 (disk5) and drive1 (disk4) switched to `SMART Status: Not Supported`, and every
+  further `smartctl` open of them fails ("Operation not supported by device"); the other five
+  drives stay `Verified`. The I/O path is unaffected (drive2 3 s QD1 re-read after it: 17,886
+  IOPS, p50 54 us, 0 errors); driver counters moved only by "Err check condition" +1,421 (the
+  failing pass-through commands of the two `-x` calls; recovered sense +14), nothing else. Expect
+  SMART on those two to return only after re-enumeration (reboot or kext reload).
+
+Not done (needs a tool that can send ATA PASS-THROUGH or SCSI MODE SELECT directly, e.g.
+openSeaChest_PowerControl or sg3_utils against the Power Condition mode page 0x1A, which SAT
+translates to EPC; no install in this task): reading the timers, disabling Idle_A, and the
+before/after transition runs. The hypothesis stays open; consistent with it: the step comes
+~4 s after the last media access and is a fixed +26 us per hit.

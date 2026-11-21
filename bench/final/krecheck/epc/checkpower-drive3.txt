@@ -1,0 +1,21 @@
+smartctl 7.5 2025-04-30 r5714 [Darwin 27.0.0 arm64] (local build)
+Copyright (C) 2002-25, Bruce Allen, Christian Franke, www.smartmontools.org
+
+CHECK POWER MODE not implemented, ignoring -n option
+=== START OF INFORMATION SECTION ===
+Model Family:     Seagate Exos X18
+Device Model:     ST18000NM000J-2TV103
+Serial Number:    drive3
+LU WWN Device Id: (WWN removed)
+Firmware Version: SN02
+User Capacity:    18,000,207,937,536 bytes [18.0 TB]
+Sector Sizes:     512 bytes logical, 4096 bytes physical
+Rotation Rate:    7200 rpm
+Form Factor:      3.5 inches
+Device is:        In smartctl database 7.5/5706
+ATA Version is:   ACS-4 (minor revision not indicated)
+SATA Version is:  SATA 3.3, 6.0 Gb/s (current: 6.0 Gb/s)
+Local Time is:    Sat Nov 21 06:25:42 2026 EST
+SMART support is: Available - device has SMART capability.
+SMART support is: Enabled
+

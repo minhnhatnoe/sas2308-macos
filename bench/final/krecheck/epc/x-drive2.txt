@@ -1,0 +1,290 @@
+smartctl 7.5 2025-04-30 r5714 [Darwin 27.0.0 arm64] (local build)
+Copyright (C) 2002-25, Bruce Allen, Christian Franke, www.smartmontools.org
+
+=== START OF INFORMATION SECTION ===
+Model Family:     Seagate Exos X18
+Device Model:     ST18000NM000J-2TV103
+Serial Number:    drive2
+LU WWN Device Id: (WWN removed)
+Firmware Version: SN02
+User Capacity:    18,000,207,937,536 bytes [18.0 TB]
+Sector Sizes:     512 bytes logical, 4096 bytes physical
+Rotation Rate:    7200 rpm
+Form Factor:      3.5 inches
+Device is:        In smartctl database 7.5/5706
+ATA Version is:   ACS-4 (minor revision not indicated)
+SATA Version is:  SATA 3.3, 6.0 Gb/s (current: 6.0 Gb/s)
+Local Time is:    Sat Nov 21 06:23:33 2026 EST
+SMART support is: Available - device has SMART capability.
+SMART support is: Enabled
+AAM feature is:   Unavailable
+APM feature is:   Unavailable
+Rd look-ahead is: Enabled
+Write cache is:   Enabled
+DSN feature is:   Disabled
+ATA Security is:  Disabled, NOT FROZEN [SEC1]
+
+=== START OF READ SMART DATA SECTION ===
+SMART overall-health self-assessment test result: PASSED
+
+General SMART Values:
+Offline data collection status:  (0x82)	Offline data collection activity
+					was completed without error.
+					Auto Offline Data Collection: Enabled.
+Self-test execution status:      (   0)	The previous self-test routine completed
+					without error or no self-test has ever 
+					been run.
+Total time to complete Offline 
+data collection: 		(  559) seconds.
+Offline data collection
+capabilities: 			 (0x7b) SMART execute Offline immediate.
+					Auto Offline data collection on/off support.
+					Suspend Offline collection upon new
+					command.
+					Offline surface scan supported.
+					Self-test supported.
+					Conveyance Self-test supported.
+					Selective Self-test supported.
+SMART capabilities:            (0x0003)	Saves SMART data before entering
+					power-saving mode.
+					Supports SMART auto save timer.
+Error logging capability:        (0x01)	Error logging supported.
+					General Purpose Logging supported.
+Short self-test routine 
+recommended polling time: 	 (   1) minutes.
+Extended self-test routine
+recommended polling time: 	 (1555) minutes.
+Conveyance self-test routine
+recommended polling time: 	 (   2) minutes.
+SCT capabilities: 	       (0x70bd)	SCT Status supported.
+					SCT Error Recovery Control supported.
+					SCT Feature Control supported.
+					SCT Data Table supported.
+
+SMART Attributes Data Structure revision number: 10
+Vendor Specific SMART Attributes with Thresholds:
+ID# ATTRIBUTE_NAME          FLAGS    VALUE WORST THRESH FAIL RAW_VALUE
+  1 Raw_Read_Error_Rate     POSR--   079   064   044    -    0/88056215
+  3 Spin_Up_Time            PO----   091   090   000    -    0
+  4 Start_Stop_Count        -O--CK   100   100   020    -    408
+  5 Reallocated_Sector_Ct   PO--CK   100   100   010    -    0
+  7 Seek_Error_Rate         POSR--   083   060   045    -    0/197480400
+  9 Power_On_Hours          -O--CK   075   075   000    -    22112
+ 10 Spin_Retry_Count        PO--C-   100   100   097    -    0
+ 12 Power_Cycle_Count       -O--CK   100   100   020    -    123
+ 18 Head_Health             PO-R--   100   100   050    -    0
+187 Reported_Uncorrect      -O--CK   100   100   000    -    0
+188 Command_Timeout         -O--CK   100   099   000    -    2 2 4
+190 Airflow_Temperature_Cel -O---K   069   043   000    -    31 (Min/Max 24/35)
+192 Power-Off_Retract_Count -O--CK   100   100   000    -    59
+193 Load_Cycle_Count        -O--CK   088   088   000    -    25153
+194 Temperature_Celsius     -O---K   031   057   000    -    31 (0 15 0 0 0)
+197 Current_Pending_Sector  -O--C-   100   100   000    -    0
+198 Offline_Uncorrectable   ----C-   100   100   000    -    0
+199 UDMA_CRC_Error_Count    -OSRCK   200   200   000    -    1
+200 Pressure_Limit          PO---K   100   100   001    -    0
+240 Head_Flying_Hours       ------   100   253   000    -    18252h+03m+59.332s
+241 Total_LBAs_Written      ------   100   253   000    -    72537295306
+242 Total_LBAs_Read         ------   100   253   000    -    1076670244631
+                            ||||||_ K auto-keep
+                            |||||__ C event count
+                            ||||___ R error rate
+                            |||____ S speed/performance
+                            ||_____ O updated online
+                            |______ P prefailure warning
+
+ATA_READ_LOG_EXT (addr=0x00:0x00, page=0, n=1) failed: 48-bit ATA commands not implemented
+Read GP Log Directory failed
+
+SMART Log Directory Version 1 [multi-sector log support]
+Address    Access  R/W   Size  Description
+0x00           SL  R/O      1  Log Directory
+0x01           SL  R/O      1  Summary SMART error log
+0x02           SL  R/O      5  Comprehensive SMART error log
+0x04           SL  R/O      8  Device Statistics log
+0x06           SL  R/O      1  SMART self-test log
+0x09           SL  R/W      1  Selective self-test log
+0x30           SL  R/O      9  IDENTIFY DEVICE data log
+0x80-0x9f      SL  R/W     16  Host vendor specific log
+0xa1           SL  VS     160  Device vendor specific log
+0xa4           SL  VS     160  Device vendor specific log
+0xa8-0xa9      SL  VS     136  Device vendor specific log
+0xb1           SL  VS     160  Device vendor specific log
+0xc1           SL  VS       8  Device vendor specific log
+0xc3           SL  VS      24  Device vendor specific log
+0xc7           SL  VS       8  Device vendor specific log
+0xc9           SL  VS       8  Device vendor specific log
+0xca           SL  VS      16  Device vendor specific log
+0xcd           SL  VS       1  Device vendor specific log
+0xda           SL  VS       1  Device vendor specific log
+0xe0           SL  R/W      1  SCT Command/Status
+0xe1           SL  R/W      1  SCT Data Transfer
+
+SMART Extended Comprehensive Error Log (GP Log 0x03) not supported
+
+SMART Error Log Version: 1
+No Errors Logged
+
+SMART Extended Self-test Log (GP Log 0x07) not supported
+
+SMART Self-test log structure revision number 1
+Num  Test_Description    Status                  Remaining  LifeTime(hours)  LBA_of_first_error
+# 1  Conveyance offline  Completed without error       00%     21983         -
+# 2  Short offline       Completed without error       00%     21983         -
+# 3  Short offline       Completed without error       00%     21983         -
+# 4  Short offline       Aborted by host               90%     21983         -
+
+SMART Selective self-test log data structure revision number 1
+ SPAN  MIN_LBA  MAX_LBA  CURRENT_TEST_STATUS
+    1        0        0  Not_testing
+    2        0        0  Not_testing
+    3        0        0  Not_testing
+    4        0        0  Not_testing
+    5        0        0  Not_testing
+Selective self-test flags (0x0):
+  After scanning selected spans, do NOT read-scan remainder of disk.
+If Selective self-test is pending on power-up, resume after 0 minute delay.
+
+SCT Status Version:                  3
+SCT Version (vendor specific):       522 (0x020a)
+Device State:                        Active (0)
+Current Temperature:                    31 Celsius
+Power Cycle Min/Max Temperature:     24/35 Celsius
+Lifetime    Min/Max Temperature:     15/57 Celsius
+Under/Over Temperature Limit Count:   0/0
+SMART Status:                        0xc24f (PASSED)
+Vendor specific:
+00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+00 00 00 00 02 00 00 00 00 00 00 00 00 00 00 00
+
+SCT Temperature History Version:     2
+Temperature Sampling Period:         4 minutes
+Temperature Logging Interval:        59 minutes
+Min/Max recommended Temperature:     10/40 Celsius
+Min/Max Temperature Limit:            5/60 Celsius
+Temperature History Size (Index):    128 (62)
+
+Index    Estimated Time   Temperature Celsius
+  63    2026-11-16 00:52    34  ***************
+  64    2026-11-16 01:51    33  **************
+  65    2026-11-16 02:50    33  **************
+  66    2026-11-16 03:49    33  **************
+  67    2026-11-16 04:48     ?  -
+  68    2026-11-16 05:47    31  ************
+  69    2026-11-16 06:46     ?  -
+  70    2026-11-16 07:45    32  *************
+  71    2026-11-16 08:44     ?  -
+  72    2026-11-16 09:43    31  ************
+  73    2026-11-16 10:42     ?  -
+  74    2026-11-16 11:41    31  ************
+  75    2026-11-16 12:40     ?  -
+  76    2026-11-16 13:39    31  ************
+  77    2026-11-16 14:38    31  ************
+  78    2026-11-16 15:37    31  ************
+  79    2026-11-16 16:36     ?  -
+  80    2026-11-16 17:35    31  ************
+  81    2026-11-16 18:34    32  *************
+  82    2026-11-16 19:33    31  ************
+  83    2026-11-16 20:32    32  *************
+  84    2026-11-16 21:31     ?  -
+  85    2026-11-16 22:30    32  *************
+  86    2026-11-16 23:29    33  **************
+  87    2026-11-17 00:28    33  **************
+  88    2026-11-17 01:27    32  *************
+  89    2026-11-17 02:26    33  **************
+ ...    ..(  2 skipped).    ..  **************
+  92    2026-11-17 05:23    33  **************
+  93    2026-11-17 06:22    32  *************
+  94    2026-11-17 07:21     ?  -
+  95    2026-11-17 08:20    32  *************
+  96    2026-11-17 09:19     ?  -
+  97    2026-11-17 10:18    32  *************
+  98    2026-11-17 11:17     ?  -
+  99    2026-11-17 12:16    32  *************
+ 100    2026-11-17 13:15     ?  -
+ 101    2026-11-17 14:14    32  *************
+ 102    2026-11-17 15:13    34  ***************
+ 103    2026-11-17 16:12     ?  -
+ 104    2026-11-17 17:11    33  **************
+ 105    2026-11-17 18:10    34  ***************
+ 106    2026-11-17 19:09     ?  -
+ 107    2026-11-17 20:08    34  ***************
+ 108    2026-11-17 21:07     ?  -
+ 109    2026-11-17 22:06    33  **************
+ 110    2026-11-17 23:05     ?  -
+ 111    2026-11-18 00:04    33  **************
+ 112    2026-11-18 01:03     ?  -
+ 113    2026-11-18 02:02    32  *************
+ 114    2026-11-18 03:01    32  *************
+ 115    2026-11-18 04:00    29  **********
+ 116    2026-11-18 04:59    28  *********
+ 117    2026-11-18 05:58    29  **********
+ 118    2026-11-18 06:57    29  **********
+ 119    2026-11-18 07:56    28  *********
+ ...    ..(  8 skipped).    ..  *********
+   0    2026-11-18 16:47    28  *********
+   1    2026-11-18 17:46     ?  -
+   2    2026-11-18 18:45    28  *********
+ ...    ..(  3 skipped).    ..  *********
+   6    2026-11-18 22:41    28  *********
+   7    2026-11-18 23:40    29  **********
+   8    2026-11-19 00:39    31  ************
+   9    2026-11-19 01:38    31  ************
+  10    2026-11-19 02:37     ?  -
+  11    2026-11-19 03:36    30  ***********
+  12    2026-11-19 04:35     ?  -
+  13    2026-11-19 05:34    30  ***********
+  14    2026-11-19 06:33    29  **********
+  15    2026-11-19 07:32     ?  -
+  16    2026-11-19 08:31    29  **********
+  17    2026-11-19 09:30     ?  -
+  18    2026-11-19 10:29    29  **********
+  19    2026-11-19 11:28     ?  -
+  20    2026-11-19 12:27    25  ******
+  21    2026-11-19 13:26     ?  -
+  22    2026-11-19 14:25    27  ********
+  23    2026-11-19 15:24     ?  -
+  24    2026-11-19 16:23    27  ********
+  25    2026-11-19 17:22     ?  -
+  26    2026-11-19 18:21    28  *********
+  27    2026-11-19 19:20    27  ********
+ ...    ..(  5 skipped).    ..  ********
+  33    2026-11-20 01:14    27  ********
+  34    2026-11-20 02:13     ?  -
+  35    2026-11-20 03:12    24  *****
+  36    2026-11-20 04:11    28  *********
+  37    2026-11-20 05:10    34  ***************
+  38    2026-11-20 06:09    33  **************
+  39    2026-11-20 07:08    26  *******
+ ...    ..(  5 skipped).    ..  *******
+  45    2026-11-20 13:02    26  *******
+  46    2026-11-20 14:01    27  ********
+  47    2026-11-20 15:00    27  ********
+  48    2026-11-20 15:59    30  ***********
+  49    2026-11-20 16:58    27  ********
+  50    2026-11-20 17:57    24  *****
+  51    2026-11-20 18:56    28  *********
+  52    2026-11-20 19:55    28  *********
+  53    2026-11-20 20:54    30  ***********
+ ...    ..(  2 skipped).    ..  ***********
+  56    2026-11-20 23:51    30  ***********
+  57    2026-11-21 00:50    32  *************
+  58    2026-11-21 01:49    25  ******
+  59    2026-11-21 02:48    27  ********
+  60    2026-11-21 03:47    28  *********
+  61    2026-11-21 04:46    28  *********
+  62    2026-11-21 05:45    34  ***************
+
+SMART WRITE LOG does not return COUNT and LBA_LOW register
+SCT (Get) Error Recovery Control command failed
+
+Device Statistics (SMART Log 0x04)
+Page  Offset Size        Value Flags Description
+ATA_SMART_READ_LOG failed: Undefined error: 0
+Read Device Statistics pages 0x00-0x06 failed
+
+Pending Defects log (GP Log 0x0c) not supported
+
+ATA_READ_LOG_EXT (addr=0x11:0x00, page=0, n=1) failed: 48-bit ATA commands not implemented
+Read SATA Phy Event Counters failed
+
