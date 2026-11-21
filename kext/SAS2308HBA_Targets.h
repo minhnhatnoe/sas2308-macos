@@ -17,8 +17,11 @@
  * (a CreateTargetForID() in progress completes and is recorded as created),
  * then let IOSCSIParallelInterfaceController::willTerminate destroy the
  * targets. The family's loop runs `index < fHighestSupportedDeviceID'
- * (IOSCSIParallelInterfaceController.cpp:522), so the highest ID (63) is
- * never destroyed there: Leftovers() returns what the family loop missed.
+ * (IOSCSIParallelInterfaceController.cpp:522), so the highest ID is never
+ * destroyed there: TakeCreated() hands out what the family loop missed.
+ *
+ * One entry per target ID, as many as the controller has (IOCFacts
+ * MaxTargets + MaxVolumes, D7); the owner provides the zeroed storage.
  */
 #ifndef SAS2308HBA_TARGETS_H
 #define SAS2308HBA_TARGETS_H
@@ -28,138 +31,172 @@
 class SAS2308TargetTable
 {
 public:
-    static constexpr uint32_t kMaxTargets = 64;
-
     enum Action { kNone, kCreate, kDestroy };
+
     struct Work {
         Action   action;
         uint32_t targetID;
         uint32_t gen;               /* kCreate: the generation of the device */
     };
+    struct Entry {                  /* one target ID; all-zero = nothing */
+        uint32_t gen;               /* generation of the nub created / being created */
+        uint32_t wantGen;           /* generation of a wanted create */
+        uint8_t  flags;             /* kCreated, kWantCreate, kWantDestroy, kBusy */
+    };
+    enum : uint8_t {
+        kCreated     = 1,           /* CreateTargetForID() succeeded, not destroyed */
+        kWantCreate  = 2,
+        kWantDestroy = 4,
+        kBusy        = 8            /* handed to the hotplug thread, not Done() yet */
+    };
+
+    SAS2308TargetTable() = default;
+    SAS2308TargetTable(const SAS2308TargetTable &) = delete;
+    SAS2308TargetTable &operator=(const SAS2308TargetTable &) = delete;
+
+    /* `count' zeroed entries, IDs 0 .. count-1; returns the old storage (Release) */
+    void Attach(Entry *entries, uint32_t count) { fE = entries; fCount = count; }
+    Entry *Release(uint32_t *count)
+    {
+        Entry *e = fE;
+        if (count)
+            *count = fCount;
+        fE = nullptr;
+        fCount = 0;
+        return e;
+    }
+    uint32_t Count() const { return fCount; }
 
     /*
-     * A rescan or lost-device event: for each ID in `ids', bit set in
-     * `present' = the core has the device; gens[id] (NULL: unknown, no
-     * change) = its generation (mps_xnu_target_gen), which changes when a
-     * different disk is behind the ID (review C2). A nub is never kept
-     * across a generation change: destroy, then create. Returns true if
-     * the hotplug thread has work.
+     * A rescan or lost-device event for one ID: `present' = the core has
+     * the device; *gen (NULL: unknown, no change) = its generation
+     * (mps_xnu_target_gen), which changes when a different disk is behind
+     * the ID (review C2). A nub is never kept across a generation change:
+     * destroy, then create. Returns true if the hotplug thread has work.
      */
-    bool Update(uint64_t ids, uint64_t present, const uint32_t *gens = nullptr)
+    bool Update(uint32_t id, bool present, const uint32_t *genp = nullptr)
     {
-        bool changed = false;
-        if (fStopped)
+        if (fStopped || id >= fCount)
             return false;
-        for (uint32_t i = 0; i < kMaxTargets; i++) {
-            const uint64_t bit = 1ull << i;
-            if (!(ids & bit))
-                continue;
-            /* busy: the hotplug thread is creating (not yet created) or destroying (still created) it */
-            const bool busy = (fBusy & bit) != 0;
-            const bool created = (fCreated & bit) != 0;
-            const bool willExist = busy ? (created ? (fWantCreate & bit) != 0 : !(fWantDestroy & bit))
-                                        : ((created && !(fWantDestroy & bit)) || (fWantCreate & bit));
-            /* the generation the nub will have once the pending work is done */
-            const uint32_t willGen = (fWantCreate & bit) ? fWantGen[i] : fGen[i];
-            const uint32_t gen = gens ? gens[i] : willGen;
-            if ((present & bit) && !willExist) {
-                fWantCreate |= bit;                 /* created and not destroying: Next() skips it */
-                fWantGen[i] = gen;
-                /* back while its nub is created or destroyed: kept, unless another disk */
-                if (!((created || busy) && gens && gen != fGen[i]))
-                    fWantDestroy &= ~bit;
-                changed = true;
-            } else if ((present & bit) && gen != willGen) {
-                /* a different disk behind the ID: the old nub goes first */
-                if (created || busy)
-                    fWantDestroy |= bit;
-                fWantCreate |= bit;
-                fWantGen[i] = gen;
-                changed = true;
-            } else if (!(present & bit) && willExist) {
-                fWantCreate &= ~bit;
-                if (created || busy)                /* a create in progress is destroyed after it */
-                    fWantDestroy |= bit;
-                changed = true;
-            }
+        Entry &e = fE[id];
+        /* busy: the hotplug thread is creating (not yet created) or destroying (still created) it */
+        const bool busy = (e.flags & kBusy) != 0;
+        const bool created = (e.flags & kCreated) != 0;
+        const bool wantC = (e.flags & kWantCreate) != 0, wantD = (e.flags & kWantDestroy) != 0;
+        const bool willExist = busy ? (created ? wantC : !wantD) : ((created && !wantD) || wantC);
+        /* the generation the nub will have once the pending work is done */
+        const uint32_t willGen = wantC ? e.wantGen : e.gen;
+        const uint32_t gen = genp ? *genp : willGen;
+        if (present && !willExist) {
+            e.flags |= kWantCreate;                 /* created and not destroying: Next() skips it */
+            e.wantGen = gen;
+            /* back while its nub is created or destroyed: kept, unless another disk */
+            if (!((created || busy) && genp && gen != e.gen))
+                e.flags &= (uint8_t)~kWantDestroy;
+            return true;
         }
-        return changed;
+        if (present && gen != willGen) {
+            /* a different disk behind the ID: the old nub goes first */
+            if (created || busy)
+                e.flags |= kWantDestroy;
+            e.flags |= kWantCreate;
+            e.wantGen = gen;
+            return true;
+        }
+        if (!present && willExist) {
+            e.flags &= (uint8_t)~kWantCreate;
+            if (created || busy)                    /* a create in progress is destroyed after it */
+                e.flags |= kWantDestroy;
+            return true;
+        }
+        return false;
     }
-
     /* The next piece of work at or after `cursor' (advanced past it). */
     Work Next(uint32_t &cursor)
     {
-        for (; !fStopped && fStarted && cursor < kMaxTargets; cursor++) {
-            const uint64_t bit = 1ull << cursor;
-            if (fBusy & bit)
+        for (; !fStopped && fStarted && cursor < fCount; cursor++) {
+            Entry &e = fE[cursor];
+            if (e.flags & kBusy)
                 continue;
-            if (fWantDestroy & bit) {
-                fWantDestroy &= ~bit;
-                if (fCreated & bit) {
+            if (e.flags & kWantDestroy) {
+                e.flags &= (uint8_t)~kWantDestroy;
+                if (e.flags & kCreated) {
                     /* a wanted create (new generation) follows: the cursor stays on this ID */
-                    fBusy |= bit;
+                    e.flags |= kBusy;
+                    fBusy++;
                     return Work{kDestroy, cursor, 0};
                 }
             }
-            if (fWantCreate & bit) {
-                fWantCreate &= ~bit;
-                if (!(fCreated & bit)) {
-                    fBusy |= bit;
-                    fGen[cursor] = fWantGen[cursor];
-                    return Work{kCreate, cursor, fGen[cursor]};
+            if (e.flags & kWantCreate) {
+                e.flags &= (uint8_t)~kWantCreate;
+                if (!(e.flags & kCreated)) {
+                    e.flags |= kBusy;
+                    fBusy++;
+                    e.gen = e.wantGen;
+                    return Work{kCreate, cursor, e.gen};
                 }
             }
         }
-        return Work{kNone, kMaxTargets, 0};
+        return Work{kNone, fCount, 0};
     }
-
     /* The hotplug thread finished `w' (ok: CreateTargetForID() result). */
     void Done(const Work &w, bool ok)
     {
-        if (w.action == kNone || w.targetID >= kMaxTargets)
+        if (w.action == kNone || w.targetID >= fCount)
             return;
-        const uint64_t bit = 1ull << w.targetID;
-        fBusy &= ~bit;
+        Entry &e = fE[w.targetID];
+        if (e.flags & kBusy) {
+            e.flags &= (uint8_t)~kBusy;
+            fBusy--;
+        }
         if (w.action == kCreate && ok)
-            fCreated |= bit;
+            e.flags |= kCreated;
         else if (w.action == kDestroy)
-            fCreated &= ~bit;
+            e.flags &= (uint8_t)~kCreated;
     }
-
     void Start() { fStarted = true; }
     /* No more work: termination or stop. Pending wishes are dropped. */
     void Stop()
     {
         fStopped = true;
-        fWantCreate = fWantDestroy = 0;
+        for (uint32_t i = 0; i < fCount; i++)
+            fE[i].flags &= (uint8_t)~(kWantCreate | kWantDestroy);
     }
     /*
      * After the family's willTerminate destroyed IDs 0 .. familyLimit - 1:
-     * the created targets it did not destroy (ID 63 with familyLimit 63).
-     * Every target counts as destroyed afterwards.
+     * true if `id' (>= familyLimit) still has a nub, which the caller
+     * destroys; it counts as destroyed from now on. ForgetAll(): every
+     * target counts as destroyed.
      */
-    uint64_t Leftovers(uint32_t familyLimit)
+    bool TakeCreated(uint32_t id)
     {
-        const uint64_t missed = familyLimit >= kMaxTargets ? 0 : fCreated & ~((1ull << familyLimit) - 1);
-        fCreated = 0;
-        return missed;
+        if (id >= fCount || !(fE[id].flags & kCreated))
+            return false;
+        fE[id].flags &= (uint8_t)~kCreated;
+        return true;
     }
-
+    void ForgetAll()
+    {
+        for (uint32_t i = 0; i < fCount; i++)
+            fE[i].flags &= (uint8_t)~kCreated;
+    }
     bool Stopped() const { return fStopped; }
     bool Busy() const { return fBusy != 0; }
-    bool Created(uint32_t id) const { return id < kMaxTargets && (fCreated & (1ull << id)); }
+    bool Created(uint32_t id) const { return id < fCount && (fE[id].flags & kCreated); }
     /* the generation of the nub created or being created for `id' */
-    uint32_t Gen(uint32_t id) const { return id < kMaxTargets ? fGen[id] : 0; }
-    uint64_t CreatedMask() const { return fCreated; }
-    bool Pending() const { return (fWantCreate | fWantDestroy) != 0; }
+    uint32_t Gen(uint32_t id) const { return id < fCount ? fE[id].gen : 0; }
+    bool Pending() const
+    {
+        for (uint32_t i = 0; i < fCount; i++)
+            if (fE[i].flags & (kWantCreate | kWantDestroy))
+                return true;
+        return false;
+    }
 
 private:
-    uint64_t fCreated = 0;      /* CreateTargetForID() succeeded, not destroyed */
-    uint64_t fWantCreate = 0;
-    uint64_t fWantDestroy = 0;
-    uint64_t fBusy = 0;         /* handed to the hotplug thread, not Done() yet */
-    uint32_t fGen[kMaxTargets] = {};        /* generation of the nub created / being created */
-    uint32_t fWantGen[kMaxTargets] = {};    /* generation of a wanted create */
+    Entry   *fE = nullptr;
+    uint32_t fCount = 0;
+    uint32_t fBusy = 0;         /* entries with kBusy */
     bool     fStarted = false;  /* StartController ran */
     bool     fStopped = false;  /* willTerminate / stop: no new work */
 };

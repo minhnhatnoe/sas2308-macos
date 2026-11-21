@@ -28,7 +28,12 @@ SAS2308Glue::Init(SAS2308GluePort *port)
 void
 SAS2308Glue::Fini(void)
 {
+    uint32_t n = 0;
+    SAS2308TargetTable::Entry *e = fTargets.Release(&n);
+    if (e)
+        mps_kext_zfree(e, sizeof(*e) * n);
     fMaxTasks = 0;
+    fMaxTargets = 0;
     if (fLock != nullptr) {
         mps_kext_lock_free(fLock);
         fLock = nullptr;
@@ -90,15 +95,32 @@ SAS2308Glue::Attached(void)
 {
     const uint32_t segs = mps_kext_max_segs(fMps);
     const uint32_t tasks = mps_kext_max_tasks(fMps);
-    if (tasks == 0 || segs == 0) {
-        Klog(MPSK_ERROR | MPSK_INIT, "no OS tasks (%u) or segments (%u)", tasks, segs);
+    const uint32_t targets = mps_kext_max_targets(fMps);
+    if (tasks == 0 || segs == 0 || targets == 0) {
+        Klog(MPSK_ERROR | MPSK_INIT, "no OS tasks (%u), segments (%u) or target IDs (%u)", tasks, segs, targets);
         return false;
     }
+    /* the target table, one entry per ID: sized once, as the family reads ReportHighestSupportedDeviceID once */
+    SAS2308TargetTable::Entry *e = nullptr;
+    if (fTargets.Count() != targets) {
+        e = (SAS2308TargetTable::Entry *)mps_kext_zalloc(sizeof(*e) * targets);
+        if (!e) {
+            Klog(MPSK_ERROR | MPSK_INIT, "no memory for %u target IDs", targets);
+            return false;
+        }
+    }
     Lock();
+    uint32_t oldCount = 0;
+    SAS2308TargetTable::Entry *old = e ? fTargets.Release(&oldCount) : nullptr;
+    if (e)
+        fTargets.Attach(e, targets);
     fCoreAttached = true;
     fMaxSegs = segs;
     fMaxTasks = tasks;
+    fMaxTargets = targets;
     Unlock();
+    if (old)
+        mps_kext_zfree(old, sizeof(*old) * oldCount);
     return true;
 }
 
@@ -247,7 +269,7 @@ SAS2308Glue::ProcessTask(void *task)
 {
     SAS2308GluePort::TaskDesc d;
 
-    if (!fPort->TaskDescribe(task, &d) || d.target >= kMaxTargets)
+    if (!fPort->TaskDescribe(task, &d) || d.target >= fMaxTargets)
         return kFailure;
     if (d.cdbLen == 0 || d.cdbLen > sizeof(d.cdb))
         return kRejected;
@@ -686,22 +708,27 @@ SAS2308Glue::QuiesceDone(void)
 //-----------------------------------------------------------------------------
 
 void
-SAS2308Glue::Async(int event, uint64_t tids, uint64_t present, const uint32_t *gens)
+SAS2308Glue::Async(int event, uint32_t tid, const uint8_t *present, const uint32_t *gens, uint32_t count)
 {
     if (event == MPSK_ASYNC_BUS_RESET) {
         Klog(MPSK_MAPPING | MPSK_RECOVERY, "IOC reset: targets wait for the rediscovery");
         return;
     }
     if (event == MPSK_ASYNC_SENT_BDR) {
-        for (uint32_t i = 0; i < kMaxTargets; i++)
-            if (tids & (1ull << i))
-                Klog(MPSK_RECOVERY, "target %u: target reset sent", i);
+        Klog(MPSK_RECOVERY, "target %u: target reset sent", tid);
         return;
     }
     if (!fLock)
         return;
     Lock();
-    if (fTargets.Update(tids, present, gens))
+    bool work = false;
+    const uint32_t n = count < fTargets.Count() ? count : fTargets.Count();
+    for (uint32_t i = (tid == MPSK_ALL_TARGETS ? 0 : tid); i < n; i++) {
+        work |= fTargets.Update(i, present[i] != 0, gens ? &gens[i] : nullptr);
+        if (tid != MPSK_ALL_TARGETS)
+            break;
+    }
+    if (work)
         ScheduleHotplug();
     Unlock();
 }
@@ -829,7 +856,7 @@ SAS2308Glue::WillTerminate(void)
         if (!present)
             FlushMapWait(kAllTargets, SAS2308GluePort::kDoneGone);
         DeliverCompletions();
-        for (uint32_t id = 0; !present && id < kMaxTargets; id++) {
+        for (uint32_t id = 0; !present && id < fMaxTargets; id++) {
             if (!Enter())
                 break;
             const int left = mps_kext_target_drain(fMps, id, kDrainReinitMs);
@@ -856,24 +883,25 @@ SAS2308Glue::StopTargets(void)
 
 //-----------------------------------------------------------------------------
 //	TerminateTargets - after IOSCSIParallelInterfaceController::willTerminate:
-//	its loop destroys IDs 0 .. familyLimit - 1 only, so destroy ID 63
-//	ourselves (DestroyTargetForID of a missing ID is a no-op).
+//	its loop destroys IDs 0 .. familyLimit - 1 only, so destroy the highest
+//	ID ourselves (DestroyTargetForID of a missing ID is a no-op).
 //-----------------------------------------------------------------------------
 
 void
 SAS2308Glue::TerminateTargets(uint32_t familyLimit)
 {
-    uint64_t left = 0;
-
-    if (fLock) {
+    if (!fLock)
+        return;
+    for (uint32_t i = familyLimit; i < fMaxTargets; i++) {
         Lock();
-        left = fTargets.Leftovers(familyLimit);
+        const bool left = fTargets.TakeCreated(i);
         Unlock();
-    }
-    for (uint32_t i = 0; i < kMaxTargets; i++) {
-        if (left & (1ull << i)) {
+        if (left) {
             fPort->DestroyTarget(i);
             Klog(MPSK_MAPPING | MPSK_INFO, "target %u destroyed (missed by the family's willTerminate)", i);
         }
     }
+    Lock();
+    fTargets.ForgetAll();
+    Unlock();
 }

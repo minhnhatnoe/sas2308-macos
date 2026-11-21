@@ -445,17 +445,35 @@ mpssas_add_device(struct mps_softc *sc, u16 handle, u8 linkrate){
 	}
 
 	/*
-	 * XNU: the target id comes from mps_xnu_get_tid() instead of
-	 * mps_mapping.c, keyed like mps_mapping_get_tid on the device's
-	 * identity (SAS address, IDENTIFY-derived for SATA).
+	 * use_phynum:
+	 *  1 - use the PhyNum field as a fallback to the mapping logic
+	 *  0 - never use the PhyNum field
+	 * -1 - only use the PhyNum field
+	 *
+	 * Note that using the Phy number to map a device can cause device adds
+	 * to fail if multiple enclosures/expanders are in the topology. For
+	 * example, if two devices are in the same slot number in two different
+	 * enclosures within the topology, only one of those devices will be
+	 * added. PhyNum mapping should not be used if multiple enclosures are
+	 * in the topology.
+	 *
+	 * XNU: mps_xnu_get_tid() instead of mps_mapping_get_tid() (no
+	 * mps_mapping.c), keyed the same way on the device's identity (SAS
+	 * address, IDENTIFY-derived for SATA); a PhyNum id keeps no identity
+	 * (its generation does not change).
 	 */
-	id = mps_xnu_get_tid(sc, handle, sas_address);
+	id = MPS_MAP_BAD_ID;
+	if (sc->use_phynum != -1) 
+		id = mps_xnu_get_tid(sc, handle, sas_address);
 	if (id == MPS_MAP_BAD_ID) {
-		mps_dprint(sc, MPS_INFO, "failure at %s:%d/%s()! "
-		    "Could not get ID for device with handle 0x%04x\n",
-		    __FILE__, __LINE__, __func__, handle);
-		error = ENXIO;
-		goto out;
+		if ((sc->use_phynum == 0)
+		 || ((id = config_page.PhyNum) > sassc->maxtargets)) {
+			mps_dprint(sc, MPS_INFO, "failure at %s:%d/%s()! "
+			    "Could not get ID for device with handle 0x%04x\n",
+			    __FILE__, __LINE__, __func__, handle);
+			error = ENXIO;
+			goto out;
+		}
 	}
 	mps_dprint(sc, MPS_MAPPING, "%s: Target ID for added device is %d.\n",
 	    __func__, id);

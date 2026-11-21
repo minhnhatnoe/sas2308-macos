@@ -90,7 +90,7 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
     struct mps_kext *k = nullptr;
     HostThreadCall calls[2];
     std::set<uint32_t> nubs;
-    uint32_t creates[64]{}, destroys[64]{};
+    uint32_t creates[1024]{}, destroys[1024]{};
     std::function<void(uint32_t)> onCreate;
     bool ignoreTimeouts = false;            /* a family whose timer never fires */
     std::vector<FakeTask *> tasks;
@@ -168,9 +168,10 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         f->glue.Lock(); f->glue.ScheduleDone(); f->glue.Unlock();
     }
     int asyncCalls = 0;
-    static void HostAsync(void *hba, int event, uint64_t tids, uint64_t present, const uint32_t *gens) {
+    static void HostAsync(void *hba, int event, uint32_t tid, const uint8_t *present, const uint32_t *gens,
+                          uint32_t count) {
         ((Family *)hba)->asyncCalls++;
-        ((Family *)hba)->glue.Async(event, tids, present, gens);
+        ((Family *)hba)->glue.Async(event, tid, present, gens, count);
     }
 
     /* InitializeController + StartController */
@@ -217,12 +218,13 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         CHECK(ioc->liveAllocs == 0);
     }
 
-    /* SAS2308HBA::willTerminate: our part, the family's destroy loop (IDs 0..62), ID 63 */
+    /* SAS2308HBA::willTerminate: our part, the family's destroy loop (IDs 0..highest-1), the highest */
     void WillTerminate() {
         (void)glue.WillTerminate();
-        for (uint32_t id = 0; id < SAS2308Glue::kMaxTargets - 1; id++)
+        const uint32_t highest = glue.fMaxTargets - 1;      /* ReportHighestSupportedDeviceID */
+        for (uint32_t id = 0; id < highest; id++)
             if (nubs.count(id)) DestroyTarget(id);
-        glue.TerminateTargets(SAS2308Glue::kMaxTargets - 1);
+        glue.TerminateTargets(highest);
     }
     FakeTask *NewRead(uint32_t target, uint32_t timeoutMs = 30000) {
         FakeTask *t = new FakeTask;
@@ -512,7 +514,7 @@ int main()
         int sentBefore = 0;
         gHost.onOtherThreads = [&]() {
             struct mps_softc *sc = gHost.sc;
-            if (!held && (sc->xnu.tid_unverified & (1ull << tb))) {
+            if (!held && sc->xnu.tids[tb].unverified) {
                 sentBefore = m.ioCount[0x000B];
                 held = f.NewRead(tb);               /* the old nub, identity open: held */
                 CHECK(f.Submit(held) == SAS2308Glue::kInProcess);
@@ -531,13 +533,13 @@ int main()
         CHECK(m.ioCount[0x000B] == sentBefore);   /* nothing of the old disk's reached the new one */
         CHECK(f.destroys[tb] == 1 && f.creates[tb] == 2 && f.nubs.count(tb));
         /* the mechanism itself: a task from a nub of an older generation is refused */
-        mps_lock(gHost.sc); gHost.sc->xnu.tid_gen[tb]++; mps_unlock(gHost.sc);
+        mps_lock(gHost.sc); gHost.sc->xnu.tids[tb].gen++; mps_unlock(gHost.sc);
         const int sent = m.ioCount[0x000B];
         FakeTask *stale = f.NewRead(tb);
         CHECK(f.Submit(stale) == SAS2308Glue::kInProcess);
         HostRunPending();
         CHECK(stale->completions == 1 && stale->done == SAS2308GluePort::kDoneGone && m.ioCount[0x000B] == sent);
-        mps_lock(gHost.sc); gHost.sc->xnu.tid_gen[tb]--; mps_unlock(gHost.sc);
+        mps_lock(gHost.sc); gHost.sc->xnu.tids[tb].gen--; mps_unlock(gHost.sc);
         FakeTask *fresh = f.NewRead(tb);            /* the new nub works */
         CHECK(f.Submit(fresh) == SAS2308Glue::kInProcess);
         HostRunPending();
@@ -833,6 +835,32 @@ int main()
         CHECK(f.asyncCalls == calls);
         xpt_free_path(path);
         mps_unlock(sc);
+        f.Detach();
+    }
+
+    if (Want("D7")) {
+        /* 70 devices, MaxTargets 128: 70 nubs (the 65th had none); the highest ID destroyed at termination */
+        MockIocModel m; m.maxTargets = 128; m.strictEventMasks = false;
+        m.devices.clear();
+        for (uint16_t i = 0; i < 70; i++)
+            m.devices.push_back((uint16_t)(0x0100 + i));
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        CHECK(f.glue.fMaxTargets == mps_kext_max_targets(f.k) && f.glue.fMaxTargets >= 128);
+        CHECK(f.nubs.size() == 70);
+        const uint32_t last = f.Tid(0x0100 + 69);
+        CHECK(f.nubs.count(last) && last >= 64);
+        FakeTask *t = f.NewRead(last);
+        CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        CHECK(t->completions == 1 && t->done == SAS2308GluePort::kDoneStatus && t->scsiStatus == 0);
+        /* the 70th removed: its nub goes */
+        m.devices.pop_back();
+        m.PostTopologyEvent({(uint16_t)(0x0100 + 69)}, MPI2_EVENT_SAS_TOPO_RC_TARG_NOT_RESPONDING);
+        HostRunPending();
+        CHECK(f.nubs.size() == 69 && !f.nubs.count(last) && f.destroys[last] == 1);
+        f.WillTerminate();
+        CHECK(f.nubs.empty());
         f.Detach();
     }
 

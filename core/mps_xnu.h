@@ -30,7 +30,6 @@ struct mps_softc;
  * the kext's (mps_kext_max_tasks).
  */
 #define MPS_XNU_REINIT_TRIES	3	/* mps_reinit attempts on nested faults */
-#define MPS_XNU_MAX_TARGETS	64	/* target ids handed out */
 #define MPS_XNU_CFG_TRIES	3	/* page 0 attempts in a row (10, 20 ms apart) */
 #define MPS_XNU_READD_SLOTS	16	/* devices waiting for a later add */
 #define MPS_XNU_READD_TRIES	8	/* later attempts, 1 s .. 5 s apart */
@@ -107,6 +106,25 @@ int	mps_xnu_ratelimit_flush(struct mps_xnu_ratelimit *rl, uint64_t now_ms,
 
 /* ---- per-controller XNU state: struct mps_softc member `xnu' ------------- */
 
+/* what mps_mapping.c's tables would keep about a target id (mps_xnu_get_tid) */
+struct mps_xnu_tid {
+	/*
+	 * Device identity behind the id (SAS address from page 0, or the
+	 * IDENTIFY-derived one for SATA): a different disk behind the same
+	 * handle or bay gets a new generation, so the OS drops the old nub.
+	 */
+	uint64_t		 ident;
+	uint32_t		 gen;
+	uint16_t		 handle;	/* last handle */
+	/*
+	 * D8: the id had a device when a reinit started (its rediscovery may
+	 * keep its identity); kept on trust after a failed IDENTIFY: its devq
+	 * is frozen until a re-IDENTIFY decides.
+	 */
+	uint8_t			 reset_live;
+	uint8_t			 unverified;
+};
+
 struct mps_xnu {
 	struct mps_xnu_stats	 stats;
 	struct mps_xnu_ratelimit ioerr_rl[MPS_XNU_RL_SLOTS];
@@ -120,21 +138,12 @@ struct mps_xnu {
 	int			 final_drain;		/* mps_free polls the reply queue (D51) */
 	u_int			 debug_lose;		/* debug: next SCSI IOs not posted */
 	uint32_t		 gone_offset;		/* the register that read all-ones */
-	uint16_t		 tid_handle[MPS_XNU_MAX_TARGETS]; /* last handle */
 	/*
-	 * Device identity behind a target id (SAS address from page 0, or the
-	 * IDENTIFY-derived one for SATA): a different disk behind the same
-	 * handle or bay gets a new generation, so the OS drops the old nub.
+	 * Per target id, sassc->maxtargets of them (D7: IOCFacts MaxTargets +
+	 * MaxVolumes, as FreeBSD's id space), allocated with sassc->targets.
 	 */
-	uint64_t		 tid_ident[MPS_XNU_MAX_TARGETS];
-	uint32_t		 tid_gen[MPS_XNU_MAX_TARGETS];
-	/*
-	 * D8: ids that had a device when a reinit started (its rediscovery
-	 * may keep their identity), and ids kept on trust after a failed
-	 * IDENTIFY: their devq is frozen until a re-IDENTIFY decides.
-	 */
-	uint64_t		 tid_reset_live;
-	uint64_t		 tid_unverified;
+	struct mps_xnu_tid	*tids;
+	u_int			 ntids;
 	int			 reinit_running;	/* mps_reinit() between start and end */
 	int			 stop_reinit;		/* suspend: a running reinit gives up */
 	int			 reinit_owed;		/* abandoned reinit left IN_STARTUP held */
@@ -217,6 +226,9 @@ void	mps_xnu_temperature(struct mps_softc *sc);
  * that last had this identity (0: unknown) or, failing that, this handle
  */
 u_int	mps_xnu_get_tid(struct mps_softc *sc, uint16_t handle, uint64_t ident);
+/* the per-id tables for sassc->maxtargets ids (mps_attach_sas); 0 or ENOMEM */
+int	mps_xnu_alloc_tids(struct mps_softc *sc);
+void	mps_xnu_free_tids(struct mps_softc *sc);
 /* generation of the device behind target `tid' (changes with its identity) */
 uint32_t mps_xnu_target_gen(struct mps_softc *sc, u_int tid);
 /* 1 if target `tid' is attached and not being removed (*handle set) */

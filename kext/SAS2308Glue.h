@@ -78,7 +78,6 @@ protected:
 class SAS2308_HIDDEN SAS2308Glue
 {
 public:
-    static constexpr uint32_t kMaxTargets = MPSK_MAX_TARGETS;
     /*
      * A removed target's IO, before its nub goes: after this long without
      * it (MPS_RESET_TIMEOUT 30 s for the removal's target reset, plus as
@@ -109,7 +108,7 @@ public:
 
     bool Enter(void);                   /* gate around mps_kext_* calls; false once stopping */
     void Leave(void);
-    bool Attached(void);                /* mps_attach done: fCoreAttached, fMaxSegs, fMaxTasks; false: no memory */
+    bool Attached(void);                /* mps_attach done: fCoreAttached, fMaxSegs, fMaxTasks, fMaxTargets; false: no memory */
     void Start(void);                   /* StartController */
     void StopCore(void);                /* no new calls, wait for running ones, mps_free */
 
@@ -124,8 +123,8 @@ public:
     void DoneCallBody(void);            /* the done thread call */
     void QuiesceDone(void);             /* fLock not held; may sleep */
 
-    /* CAM async event (mps_mtx held): `present'/`gens' sampled per target id */
-    void Async(int event, uint64_t tids, uint64_t present, const uint32_t *gens);
+    /* CAM async event (mps_mtx held) for `tid' or MPSK_ALL_TARGETS: `present'/`gens' sampled per target id */
+    void Async(int event, uint32_t tid, const uint8_t *present, const uint32_t *gens, uint32_t count);
     void ScheduleHotplug(void);         /* fLock held */
     void HotplugCallBody(void);         /* the hotplug thread call */
     void QuiesceHotplug(void);          /* fLock not held; may sleep */
@@ -141,6 +140,7 @@ public:
     struct mps_kext   *fMps = nullptr;
     uint32_t           fMaxSegs = 0;            /* per IO, from the core's buffer_dmat */
     uint32_t           fMaxTasks = 0;           /* ReportMaximumTaskCount, from IOCFacts at attach */
+    uint32_t           fMaxTargets = 0;         /* target IDs 0 .. fMaxTargets-1, from IOCFacts at attach (D7) */
     uint32_t           fOutstanding = 0;        /* accepted tasks not completed to the family yet */
     bool               fStarted = false;
     bool               fStopping = false;       /* no new mps_kext_* calls */

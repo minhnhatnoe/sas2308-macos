@@ -263,7 +263,7 @@ SAS2308HBA::PortTaskDescribe(SCSIParallelTaskIdentifier task, SAS2308GluePort::T
     case kSCSITask_ACA:             d->attr = MPSK_ATTR_ACA; break;
     default:                        d->attr = MPSK_ATTR_SIMPLE; break;
     }
-    return GetTargetIdentifier(task) < kMaxTargets;
+    return GetTargetIdentifier(task) < fGlue.fMaxTargets;
 }
 
 /* the family owns the IODMACommand and its memory descriptor: prepare the range, list it, complete it */
@@ -616,7 +616,7 @@ SAS2308HBA::ReleaseResources(void)
 //	(all-ones registers), disables the controller synchronously and delivers
 //	every completion, so no IO is left on a nub; it stops the hotplug thread
 //	and waits for a target creation in progress. Then the family destroys
-//	the targets; we destroy what its loop misses (ID 63,
+//	the targets; we destroy what its loop misses (the highest ID,
 //	SAS2308HBA_Targets.h).							[PROTECTED]
 //-----------------------------------------------------------------------------
 
@@ -649,8 +649,16 @@ SAS2308HBA::free(void)
 #pragma mark Capabilities
 #endif
 
-SCSIInitiatorIdentifier SAS2308HBA::ReportInitiatorIdentifier(void) { return kMaxTargets; }
-SCSIDeviceIdentifier SAS2308HBA::ReportHighestSupportedDeviceID(void) { return kMaxTargets - 1; }
+/*
+ * Target IDs 0 .. MaxTargets + MaxVolumes - 1 (IOCFacts, as FreeBSD's
+ * sassc->maxtargets, D7); the family asks after InitializeController, once.
+ * The initiator gets the first ID past them.
+ */
+SCSIInitiatorIdentifier SAS2308HBA::ReportInitiatorIdentifier(void) { return fGlue.fMaxTargets; }
+SCSIDeviceIdentifier SAS2308HBA::ReportHighestSupportedDeviceID(void)
+{
+    return fGlue.fMaxTargets ? fGlue.fMaxTargets - 1 : 0;
+}
 
 //-----------------------------------------------------------------------------
 //	ReportHBAHighestLogicalUnitNumber - the family answers
@@ -862,7 +870,7 @@ SCSIServiceResponse
 SAS2308HBA::SendTaskMgmt(uint8_t taskType, SCSITargetIdentifier theT,
                          SCSILogicalUnitNumber theL, SCSITaggedTaskIdentifier theQ)
 {
-    if (theT >= kMaxTargets)
+    if (theT >= fGlue.fMaxTargets)
         return kSCSIServiceResponse_FUNCTION_REJECTED;
     Klog(MPSK_RECOVERY | MPSK_USER, "OS requests %s on target %u lun %llu tag %llu", mps_kext_tm_type_str(taskType),
          (unsigned)theT, (unsigned long long)theL, (unsigned long long)theQ);

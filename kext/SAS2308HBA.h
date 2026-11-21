@@ -72,7 +72,6 @@ class SAS2308HBA : public IOSCSIParallelInterfaceController
     OSDeclareDefaultStructors(SAS2308HBA)
 
 public:
-    static constexpr uint32_t kMaxTargets = MPSK_MAX_TARGETS;   /* target IDs 0..63 */
     static constexpr uint32_t kMaxLun = 255;                    /* peripheral LUN addressing */
     static constexpr uint32_t kStatsPublishMs = 1000;           /* statistics timer */
     static constexpr uint32_t kSleepDrainMs = 10000;            /* system sleep: IO drain bound */
@@ -167,7 +166,8 @@ private:
     void ResumeController(void);                                  /* wake */
 
     /* ---- SAS2308HBA_Hotplug.cpp */
-    static void HostAsync(void *hba, int event, uint64_t tids, uint64_t present, const uint32_t *gens);
+    static void HostAsync(void *hba, int event, uint32_t tid, const uint8_t *present, const uint32_t *gens,
+                          uint32_t count);
     static void HotplugThread(thread_call_param_t self, thread_call_param_t);
     OSDictionary *CopyTargetProperties(SCSITargetIdentifier targetID);
     void PublishTargetCharacteristics(SCSITargetIdentifier targetID);

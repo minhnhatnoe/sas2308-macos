@@ -41,7 +41,6 @@ static_assert(MPSK_DEVINFO_SSP_TARGET == MPI2_SAS_DEVICE_INFO_SSP_TARGET &&
               MPSK_DEVINFO_STP_TARGET == MPI2_SAS_DEVICE_INFO_STP_TARGET &&
               MPSK_DEVINFO_SATA_DEVICE == MPI2_SAS_DEVICE_INFO_SATA_DEVICE, "device info bits");
 static_assert(MPSK_LEVEL_INFO == MPS_LEVEL_INFO && MPSK_LEVEL_TRACE == MPS_LEVEL_TRACE, "levels");
-static_assert(MPSK_MAX_TARGETS == MPS_XNU_MAX_TARGETS, "sizes");
 static_assert(sizeof(struct mps_kext_seg) == sizeof(bus_dma_segment_t) &&
               __builtin_offsetof(struct mps_kext_seg, addr) == __builtin_offsetof(bus_dma_segment_t, ds_addr) &&
               __builtin_offsetof(struct mps_kext_seg, len) == __builtin_offsetof(bus_dma_segment_t, ds_len),
@@ -103,9 +102,12 @@ struct mps_kext {
     void                   *inline_owner;   /* this thread drains the done queue itself */
     void                   *done_lock;      /* leaf lock for the done queue (mps_os_lock) */
     struct mps_kext_task   *done_head, *done_tail;
+    uint32_t                ntargets;   /* target ids (sassc->maxtargets, D7): the arrays below */
     /* CAM da's DA_FLAG_RETRY_UA (D3): per target, the LUNs (bit 63: 63 and up) armed by our reset */
-    uint64_t                ua_luns[MPSK_MAX_TARGETS];
-    uint32_t                ua_gen[MPSK_MAX_TARGETS];   /* the target's generation when armed */
+    uint64_t               *ua_luns;
+    uint32_t               *ua_gen;     /* the target's generation when armed */
+    uint8_t                *async_present;  /* mps_kext_async's arrays (mps_mtx) */
+    uint32_t               *async_gens;
     struct callout          hold_callout;   /* debug: SIM queue frozen for a while */
     int                     hold_active;
 };
@@ -177,7 +179,7 @@ static void mps_kext_arm_ua(struct mps_kext *k, target_id_t tid, lun_id_t lun)
 {
     const uint64_t luns = lun == CAM_LUN_WILDCARD ? ~0ull : 1ull << (lun < 63 ? lun : 63);
 
-    for (u_int i = 0; i < MPSK_MAX_TARGETS; i++) {
+    for (u_int i = 0; i < k->ntargets; i++) {
         if (tid != CAM_TARGET_WILDCARD && i != tid)
             continue;
         if (k->ua_luns[i] == 0 || k->ua_gen[i] != mps_xnu_target_gen(&k->sc, i)) {
@@ -199,7 +201,7 @@ static int mps_kext_retry_ua(struct mps_kext *k, struct mps_kext_task *t)
     const uint8_t *sense = (const uint8_t *)&csio->sense_data;
     uint8_t key, asc, ascq;
 
-    if (tid >= MPSK_MAX_TARGETS || (k->ua_luns[tid] & bit) == 0)
+    if (tid >= k->ntargets || (k->ua_luns[tid] & bit) == 0)
         return 0;
     if (k->ua_gen[tid] != mps_xnu_target_gen(&k->sc, tid)) {
         k->ua_luns[tid] = 0;                    /* another disk now */
@@ -276,6 +278,17 @@ static void mps_kext_tm_done(struct cam_periph *periph, union ccb *ccb)
     wakeup(&k->tm_chan);
 }
 
+static void mps_kext_free_targets(struct mps_kext *k)
+{
+    const size_t n = k->ntargets;
+    if (k->ua_luns) mps_os_free(k->ua_luns, sizeof(*k->ua_luns) * n);
+    if (k->ua_gen) mps_os_free(k->ua_gen, sizeof(*k->ua_gen) * n);
+    if (k->async_present) mps_os_free(k->async_present, sizeof(*k->async_present) * n);
+    if (k->async_gens) mps_os_free(k->async_gens, sizeof(*k->async_gens) * n);
+    k->ua_luns = nullptr; k->ua_gen = nullptr; k->async_present = nullptr; k->async_gens = nullptr;
+    k->ntargets = 0;
+}
+
 /*
  * CAM async callback (mps_mtx held): AC_XNU_SCAN, AC_BUS_RESET, AC_SENT_BDR.
  * Removals arrive only as AC_XNU_SCAN (the core's rescan after a topology
@@ -286,38 +299,38 @@ static void mps_kext_async(void *arg, uint32_t code, struct cam_path *path, void
 {
     struct mps_kext *k = (struct mps_kext *)arg;
     const target_id_t tid = path ? path->target_id : CAM_TARGET_WILDCARD;
-    const uint64_t one = (tid < MPSK_MAX_TARGETS) ? (1ull << tid) : 0;
-    uint64_t tids = 0, present = 0;
-    uint32_t gens[MPSK_MAX_TARGETS];
+    uint32_t scope = (tid == CAM_TARGET_WILDCARD || tid >= k->ntargets) ? MPSK_ALL_TARGETS : (uint32_t)tid;
     int event;
 
     switch (code) {
     case AC_XNU_SCAN: {
         union ccb *scan = (union ccb *)a;
         event = MPSK_ASYNC_SCAN;
-        tids = (tid == CAM_TARGET_WILDCARD || (scan && scan->ccb_h.func_code == XPT_SCAN_BUS)) ? ~0ull : one;
+        if (scan && scan->ccb_h.func_code == XPT_SCAN_BUS)
+            scope = MPSK_ALL_TARGETS;
         break;
     }
     case AC_BUS_RESET:
         event = MPSK_ASYNC_BUS_RESET;
+        scope = MPSK_ALL_TARGETS;
         mps_kext_arm_ua(k, CAM_TARGET_WILDCARD, CAM_LUN_WILDCARD);
         break;
     case AC_SENT_BDR:
         event = MPSK_ASYNC_SENT_BDR;
-        tids = one;
-        if (tid < MPSK_MAX_TARGETS)
-            mps_kext_arm_ua(k, tid, path->lun_id);
+        if (tid >= k->ntargets)
+            return;
+        mps_kext_arm_ua(k, tid, path->lun_id);
         break;
     default:
         return;
     }
-    for (u_int i = 0; i < MPSK_MAX_TARGETS; i++) {
-        gens[i] = mps_xnu_target_gen(&k->sc, i);
-        if ((tids & (1ull << i)) && mps_xnu_target_present(&k->sc, i, NULL))
-            present |= 1ull << i;
+    for (u_int i = 0; i < k->ntargets; i++) {
+        k->async_gens[i] = mps_xnu_target_gen(&k->sc, i);
+        k->async_present[i] = (scope == MPSK_ALL_TARGETS || scope == i) &&
+                              mps_xnu_target_present(&k->sc, i, NULL);
     }
     if (k->host->async)
-        k->host->async(k->host->hba, event, tids, present, gens);
+        k->host->async(k->host->hba, event, scope, k->async_present, k->async_gens, k->ntargets);
 }
 
 extern "C" {
@@ -363,6 +376,21 @@ int mps_kext_attach(struct mps_kext *k, uint32_t debug_mask)
         sc->mps_parent_dmat = NULL;
         return error;
     }
+    /* per target id (D7): sized once, as sassc->targets (mps_attach_sas) */
+    k->ntargets = (uint32_t)sc->sassc->maxtargets;
+    k->ua_luns = (uint64_t *)mps_os_malloc(sizeof(*k->ua_luns) * k->ntargets, 1);
+    k->ua_gen = (uint32_t *)mps_os_malloc(sizeof(*k->ua_gen) * k->ntargets, 1);
+    k->async_present = (uint8_t *)mps_os_malloc(sizeof(*k->async_present) * k->ntargets, 1);
+    k->async_gens = (uint32_t *)mps_os_malloc(sizeof(*k->async_gens) * k->ntargets, 1);
+    if (!k->ua_luns || !k->ua_gen || !k->async_present || !k->async_gens) {
+        mps_kext_free_targets(k);
+        (void)mps_free(sc);
+        bus_dma_tag_destroy(sc->mps_parent_dmat);
+        sc->mps_parent_dmat = NULL;
+        return ENOMEM;
+    }
+    memset_zero(k->ua_luns, sizeof(*k->ua_luns) * k->ntargets);
+    memset_zero(k->ua_gen, sizeof(*k->ua_gen) * k->ntargets);
     k->attached = 1;
     callout_init_mtx(&k->hold_callout, &sc->mps_mtx, 0);
     if (xpt_create_path(&path, NULL, cam_sim_path(sc->sassc->sim), CAM_TARGET_WILDCARD,
@@ -420,9 +448,15 @@ void mps_kext_destroy(struct mps_kext *k)
         return;
     if (k->attached || k->leaked || k->done_head != nullptr)
         return;                              /* still in use: leak rather than free */
+    mps_kext_free_targets(k);
     mps_os_lock_free(k->done_lock);
     mps_os_free(k, sizeof(*k));
     __atomic_sub_fetch(&gKexts, 1, __ATOMIC_RELAXED);
+}
+
+uint32_t mps_kext_max_targets(struct mps_kext *k)
+{
+    return k->attached ? k->ntargets : 0;
 }
 
 uint32_t mps_kext_max_segs(struct mps_kext *k)
@@ -630,7 +664,7 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
      * ccb completes here goes to the done thread call.
      */
     mps_lock(sc);
-    if (tid < MPSK_MAX_TARGETS && gen != mps_xnu_target_gen(sc, tid)) {
+    if (tid < k->ntargets && gen != mps_xnu_target_gen(sc, tid)) {
         /*
          * Another disk is behind the id now (review C2, D8): this IO was
          * meant for the old one, whose nub the hotplug thread is about to

@@ -2344,6 +2344,14 @@ static bool Want(const char *id)
     return true;
 }
 
+static bool NoneUnverified(struct mps_softc *sc)
+{
+    for (u_int i = 0; i < sc->xnu.ntids; i++)
+        if (sc->xnu.tids[i].unverified)
+            return false;
+    return true;
+}
+
 static void RequestReinit(Rig &g, const char *why)
 {
     mps_lock(g.sc);
@@ -2648,6 +2656,26 @@ static void DeviationTests()
         CHECK(g.Present(ts, 0x000B));
         CHECK(g.Targ(0x000B)->flags & MPS_TARGET_IS_SATA_SSD);
         Io *r = g.Read(0x000B, 0, 2);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
+    if (Want("D7")) {
+        /* 70 end devices behind an expander, MaxTargets 128: every one gets a target id (FreeBSD: MaxTargets) */
+        std::vector<uint16_t> devs;
+        for (uint16_t i = 0; i < 70; i++)
+            devs.push_back((uint16_t)(0x0100 + i));
+        Rig g(devs, [](Rig &r) { r.ioc.maxTargets = 128; });
+        std::set<target_id_t> ids;
+        for (uint16_t h : devs) {
+            CHECK(g.Targ(h) != nullptr);
+            const target_id_t t = g.Tid(h);
+            CHECK(t < 128 && g.Present(t, h));
+            ids.insert(t);
+        }
+        CHECK(ids.size() == 70 && *ids.rbegin() >= 64);
+        Io *r = g.Read(0x0100 + 69);                    /* IO to the 70th */
         CHECK(g.Go(r) == kPosted);
         g.Pump();
         CHECK(r->done && r->status == CAM_REQ_CMP);
@@ -3255,7 +3283,7 @@ static void DeviationTests()
     struct D8Io { Io *io = nullptr; St st = kDone; int sentBefore = 0; };
     auto d8io = [](Rig &g, D8Io &d, target_id_t t) {
         gHost.onOtherThreads = [&g, &d, t]() {
-            if (d.io || (g.sc->xnu.tid_unverified & (1ull << t)) == 0) return;
+            if (d.io || !g.sc->xnu.tids[t].unverified) return;
             d.sentBefore = g.ioc.ioCount[0x000B];
             d.io = g.Read(0x000B, 0, 3);
             d.st = g.Go(d.io);
@@ -3278,7 +3306,7 @@ static void DeviationTests()
         CHECK(d.io->done && d.io->status == CAM_REQ_CMP);
         CHECK(g.Tid(0x000B) == tb && Gen(g, tb) == gb);        /* the OS kept the nub */
         CHECK(g.Tid(0x0009) == t9 && Gen(g, t9) == g9);
-        CHECK(g.sc->xnu.tid_unverified == 0 && g.HeldCount() == 0);
+        CHECK(NoneUnverified(g.sc) && g.HeldCount() == 0);
         Io *r2 = g.Read(0x000B, 0, 5);
         CHECK(g.Go(r2) == kPosted);
         g.Pump();
@@ -3303,7 +3331,7 @@ static void DeviationTests()
         CHECK(d.io->done && d.io->status == CAM_DEV_NOT_THERE);     /* failed, never sent */
         CHECK(m.ioCount[0x000B] == d.sentBefore);
         CHECK(Gen(g, tb) != gb);                                    /* the OS replaces the nub */
-        CHECK(g.sc->xnu.tid_unverified == 0 && g.HeldCount() == 0);
+        CHECK(NoneUnverified(g.sc) && g.HeldCount() == 0);
     }
 
     if (Want("D8-giveup")) {
@@ -3323,6 +3351,6 @@ static void DeviationTests()
         CHECK(d.io->done && d.io->status == CAM_DEV_NOT_THERE);
         CHECK(m.ioCount[0x000B] == d.sentBefore);
         CHECK(Gen(g, tb) != gb);
-        CHECK(g.sc->xnu.tid_unverified == 0 && g.HeldCount() == 0);
+        CHECK(NoneUnverified(g.sc) && g.HeldCount() == 0);
     }
 }

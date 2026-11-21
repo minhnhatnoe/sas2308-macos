@@ -43,9 +43,10 @@
 //-----------------------------------------------------------------------------
 
 void
-SAS2308HBA::HostAsync(void *hba, int event, uint64_t tids, uint64_t present, const uint32_t *gens)
+SAS2308HBA::HostAsync(void *hba, int event, uint32_t tid, const uint8_t *present, const uint32_t *gens,
+                      uint32_t count)
 {
-    ((SAS2308HBA *)hba)->fGlue.Async(event, tids, present, gens);
+    ((SAS2308HBA *)hba)->fGlue.Async(event, tid, present, gens, count);
 }
 
 #if 0
@@ -128,7 +129,7 @@ SAS2308HBA::CopyTargetProperties(SCSITargetIdentifier targetID)
 bool
 SAS2308HBA::InitializeTargetForID(SCSITargetIdentifier targetID)
 {
-    if (targetID >= kMaxTargets || !Enter())
+    if (targetID >= fGlue.fMaxTargets || !Enter())
         return false;
     bool present = mps_kext_target_present(fGlue.fMps, (uint32_t)targetID) != 0;
     Leave();

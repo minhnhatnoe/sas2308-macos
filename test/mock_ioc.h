@@ -544,6 +544,12 @@ struct MockIocModel {
     }
     void PostTopologyEvent(const std::vector<uint16_t> &handles,
                            uint8_t status = MPI2_EVENT_SAS_TOPO_RC_TARG_ADDED) {
+        if (handles.size() > 16) {          /* one reply frame holds 16 PHY entries: one event per 16 (D7) */
+            for (size_t i = 0; i < handles.size(); i += 16)
+                PostTopologyEvent(std::vector<uint16_t>(handles.begin() + i,
+                                  handles.begin() + std::min(handles.size(), i + 16)), status);
+            return;
+        }
         uint8_t buf[kReplyFrameDwords * 4]{};
         auto *ev = (MPI2_EVENT_NOTIFICATION_REPLY *)buf;
         ev->Function = MPI2_FUNCTION_EVENT_NOTIFICATION;

@@ -40,7 +40,7 @@ extern "C" {
 #define MPSK_DEBUG_ALL		((1u << 11) - 1)
 #define MPSK_LEVEL_INFO		2	/* default */
 #define MPSK_LEVEL_TRACE	4
-#define MPSK_MAX_TARGETS	64	/* MPS_XNU_MAX_TARGETS: target ids 0..63 */
+#define MPSK_ALL_TARGETS	0xFFFFFFFFu	/* async: every target id */
 
 struct mps_kext;			/* softc + device_t + glue state */
 
@@ -62,13 +62,15 @@ struct mps_kext_host {
 	/* completions were queued by a callout or the reinit task (mps_mtx held) */
 	void	(*io_done_kick)(void *hba);
 	/*
-	 * CAM async events (mps_mtx held). MPSK_ASYNC_SCAN: for
-	 * every target id in `tids', bit = 1 if mps_xnu_target_present() at
-	 * the time of the event; gens[id] = the generation of the device
-	 * behind the id (mps_xnu_target_gen: changes with its identity).
+	 * CAM async events (mps_mtx held) for target `tid' or
+	 * MPSK_ALL_TARGETS; `count' = mps_kext_max_targets. MPSK_ASYNC_SCAN:
+	 * present[id] = 1 if mps_xnu_target_present() at the time of the
+	 * event, for the ids in scope; gens[id] = the generation of the device
+	 * behind every id (mps_xnu_target_gen: changes with its identity).
+	 * The arrays are valid during the call only.
 	 */
-	void	(*async)(void *hba, int event, uint64_t tids, uint64_t present,
-		    const uint32_t *gens);
+	void	(*async)(void *hba, int event, uint32_t tid,
+		    const uint8_t *present, const uint32_t *gens, uint32_t count);
 };
 
 enum {
@@ -92,6 +94,8 @@ void	 mps_kext_detach(struct mps_kext *k);
 void	 mps_kext_destroy(struct mps_kext *k);
 uint32_t mps_kext_max_segs(struct mps_kext *k);		/* per IO */
 uint32_t mps_kext_max_tasks(struct mps_kext *k);	/* ReportMaximumTaskCount, from IOCFacts */
+/* target ids 0 .. n-1: IOCFacts MaxTargets + MaxVolumes, as FreeBSD (D7); 0 if not attached */
+uint32_t mps_kext_max_targets(struct mps_kext *k);
 
 /*
  * The IOCFacts limits and what mps_resize_queues made of them (the kext's

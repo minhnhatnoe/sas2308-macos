@@ -553,6 +553,13 @@ mps_attach_sas(struct mps_softc *sc)
 		return (ENOMEM);
 	}
 	sc->sassc = sassc;
+	/* XNU: mps_mapping.c's per-id state, for every id (D7) */
+	if (mps_xnu_alloc_tids(sc) != 0) {
+		free(sassc->targets, M_MPT2);
+		free(sassc, M_MPT2);
+		sc->sassc = NULL;
+		return (ENOMEM);
+	}
 	sassc->sc = sc;
 
 	reqs = sc->num_reqs - sc->num_prireqs - 1;
@@ -673,6 +680,7 @@ mps_detach_sas(struct mps_softc *sc)
 		}
 	}
 	free(sassc->targets, M_MPT2);
+	mps_xnu_free_tids(sc);		/* XNU */
 	free(sassc, M_MPT2);
 	sc->sassc = NULL;
 

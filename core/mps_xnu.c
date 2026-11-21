@@ -449,19 +449,19 @@ mps_xnu_get_tid(struct mps_softc *sc, uint16_t handle, uint64_t ident)
 	struct mpssas_softc *sassc = sc->sassc;
 	u_int i, n, never = MPS_MAP_BAD_ID, freeid = MPS_MAP_BAD_ID;
 
-	n = MIN(sassc->maxtargets, MPS_XNU_MAX_TARGETS);
+	n = MIN(sassc->maxtargets, sc->xnu.ntids);
 	if (ident != 0) {
 		for (i = 0; i < n; i++) {
-			if (sc->xnu.tid_ident[i] == ident &&
+			if (sc->xnu.tids[i].ident == ident &&
 			    sassc->targets[i].handle == 0) {
-				sc->xnu.tid_handle[i] = handle;
+				sc->xnu.tids[i].handle = handle;
 				return (i);
 			}
 		}
 	} else {
 		/* unknown identity: the id of this handle, as a new disk */
 		for (i = 0; i < n; i++) {
-			if (sc->xnu.tid_handle[i] == handle &&
+			if (sc->xnu.tids[i].handle == handle &&
 			    sassc->targets[i].handle == 0) {
 				freeid = i;
 				break;
@@ -471,7 +471,7 @@ mps_xnu_get_tid(struct mps_softc *sc, uint16_t handle, uint64_t ident)
 	for (i = 0; i < n && freeid == MPS_MAP_BAD_ID; i++) {
 		if (sassc->targets[i].handle != 0)
 			continue;
-		if (sc->xnu.tid_handle[i] == 0 && sc->xnu.tid_ident[i] == 0) {
+		if (sc->xnu.tids[i].handle == 0 && sc->xnu.tids[i].ident == 0) {
 			never = i;
 			break;
 		}
@@ -484,26 +484,47 @@ mps_xnu_get_tid(struct mps_softc *sc, uint16_t handle, uint64_t ident)
 	i = (freeid != MPS_MAP_BAD_ID) ? freeid : never;
 	if (i == MPS_MAP_BAD_ID)
 		return (i);
-	if (sc->xnu.tid_handle[i] != 0 || sc->xnu.tid_ident[i] != 0) {
+	if (sc->xnu.tids[i].handle != 0 || sc->xnu.tids[i].ident != 0) {
 		sc->xnu.stats.identity_changes++;
 		mps_dprint(sc, MPS_MAPPING|MPS_INFO, "target id %u: a "
 		    "different device (handle 0x%04x, id 0x%016jx, was 0x%016jx)"
 		    "\n", i, handle, (uintmax_t)ident,
-		    (uintmax_t)sc->xnu.tid_ident[i]);
+		    (uintmax_t)sc->xnu.tids[i].ident);
 		/* D8: IO held for the old device must not reach this one */
 		(void)cam_xnu_flush_held_target(sassc->sim, i,
 		    CAM_DEV_NOT_THERE);
 	}
-	sc->xnu.tid_gen[i]++;
-	sc->xnu.tid_handle[i] = handle;
-	sc->xnu.tid_ident[i] = ident;
+	sc->xnu.tids[i].gen++;
+	sc->xnu.tids[i].handle = handle;
+	sc->xnu.tids[i].ident = ident;
 	return (i);
+}
+
+int
+mps_xnu_alloc_tids(struct mps_softc *sc)
+{
+	u_int n = sc->sassc->maxtargets;
+
+	sc->xnu.tids = malloc(sizeof(*sc->xnu.tids) * n, M_MPT2,
+	    M_WAITOK|M_ZERO);
+	if (sc->xnu.tids == NULL)
+		return (ENOMEM);
+	sc->xnu.ntids = n;
+	return (0);
+}
+
+void
+mps_xnu_free_tids(struct mps_softc *sc)
+{
+	free(sc->xnu.tids, M_MPT2);
+	sc->xnu.tids = NULL;
+	sc->xnu.ntids = 0;
 }
 
 uint32_t
 mps_xnu_target_gen(struct mps_softc *sc, u_int tid)
 {
-	return (tid < MPS_XNU_MAX_TARGETS ? sc->xnu.tid_gen[tid] : 0);
+	return (tid < sc->xnu.ntids ? sc->xnu.tids[tid].gen : 0);
 }
 
 int
@@ -1207,10 +1228,9 @@ mps_xnu_ident_freeze(struct mps_softc *sc, u_int tid, int freeze)
 static void
 mps_xnu_ident_release(struct mps_softc *sc, u_int tid)
 {
-	if (tid >= MPS_XNU_MAX_TARGETS ||
-	    (sc->xnu.tid_unverified & (1ull << tid)) == 0)
+	if (tid >= sc->xnu.ntids || !sc->xnu.tids[tid].unverified)
 		return;
-	sc->xnu.tid_unverified &= ~(1ull << tid);
+	sc->xnu.tids[tid].unverified = 0;
 	mps_xnu_ident_freeze(sc, tid, 0);
 }
 
@@ -1291,11 +1311,9 @@ mps_xnu_reinit_targets(struct mps_softc *sc)
 	struct mpssas_softc *sassc = sc->sassc;
 	u_int i, n;
 
-	sc->xnu.tid_reset_live = 0;
-	n = MIN(sassc->maxtargets, MPS_XNU_MAX_TARGETS);
+	n = MIN(sassc->maxtargets, sc->xnu.ntids);
 	for (i = 0; i < n; i++)
-		if (sassc->targets[i].handle != 0)
-			sc->xnu.tid_reset_live |= 1ull << i;
+		sc->xnu.tids[i].reset_live = sassc->targets[i].handle != 0;
 }
 
 uint64_t
@@ -1304,17 +1322,17 @@ mps_xnu_ident_keep(struct mps_softc *sc, uint16_t handle)
 	struct mpssas_softc *sassc = sc->sassc;
 	u_int i, n;
 
-	n = MIN(sassc->maxtargets, MPS_XNU_MAX_TARGETS);
+	n = MIN(sassc->maxtargets, sc->xnu.ntids);
 	for (i = 0; i < n; i++) {
-		if ((sc->xnu.tid_reset_live & (1ull << i)) == 0 ||
-		    sc->xnu.tid_handle[i] != handle ||
-		    sc->xnu.tid_ident[i] == 0 ||
+		if (!sc->xnu.tids[i].reset_live ||
+		    sc->xnu.tids[i].handle != handle ||
+		    sc->xnu.tids[i].ident == 0 ||
 		    sassc->targets[i].handle != 0)
 			continue;
 		mps_dprint(sc, MPS_MAPPING|MPS_INFO, "handle 0x%04x: IDENTIFY "
 		    "failed after a reset: target %u keeps its identity, its "
 		    "IO is held until an IDENTIFY answers\n", handle, i);
-		return (sc->xnu.tid_ident[i]);
+		return (sc->xnu.tids[i].ident);
 	}
 	return (0);
 }
@@ -1326,9 +1344,9 @@ mps_xnu_ident_added(struct mps_softc *sc, struct mpssas_target *targ,
 	struct mps_xnu_readd *r;
 	u_int tid = targ->tid;
 
-	if (tid >= MPS_XNU_MAX_TARGETS)
+	if (tid >= sc->xnu.ntids)
 		return;
-	sc->xnu.tid_reset_live &= ~(1ull << tid);
+	sc->xnu.tids[tid].reset_live = 0;
 	mps_xnu_ident_release(sc, tid);		/* a hold left from before */
 	if (!unverified)
 		return;
@@ -1337,8 +1355,8 @@ mps_xnu_ident_added(struct mps_softc *sc, struct mpssas_target *targ,
 		/* no slot to try again: the identity is unknown, a new disk */
 		mps_dprint(sc, MPS_MAPPING|MPS_FAULT, "target %u: no re-add "
 		    "slot for its IDENTIFY: a new disk\n", tid);
-		sc->xnu.tid_ident[tid] = 0;
-		sc->xnu.tid_gen[tid]++;
+		sc->xnu.tids[tid].ident = 0;
+		sc->xnu.tids[tid].gen++;
 		sc->xnu.stats.identity_changes++;
 		return;
 	}
@@ -1348,7 +1366,7 @@ mps_xnu_ident_added(struct mps_softc *sc, struct mpssas_target *targ,
 	r->tid = tid;
 	r->tries = 1;
 	r->due_us = mps_os_uptime_us() + 1000000;
-	sc->xnu.tid_unverified |= 1ull << tid;
+	sc->xnu.tids[tid].unverified = 1;
 	mps_xnu_ident_freeze(sc, tid, 1);
 }
 
@@ -1375,7 +1393,7 @@ mps_xnu_reidentify(struct mps_softc *sc, uint16_t handle)
 	}
 	ret = mpssas_get_sas_address_for_sata_disk(sc, &ident, handle,
 	    targ->devinfo, &is_SATA_SSD);
-	if (ret == 0 && ident == sc->xnu.tid_ident[tid]) {
+	if (ret == 0 && ident == sc->xnu.tids[tid].ident) {
 		mps_dprint(sc, MPS_MAPPING|MPS_INFO, "target %u: IDENTIFY "
 		    "answered, the same disk: IO released\n", tid);
 		if (is_SATA_SSD)
@@ -1406,8 +1424,8 @@ mps_xnu_reidentify(struct mps_softc *sc, uint16_t handle)
 	(void)cam_xnu_flush_held_target(sc->sassc->sim, tid,
 	    CAM_DEV_NOT_THERE);
 	sc->xnu.stats.identity_changes++;
-	sc->xnu.tid_ident[tid] = ret == 0 ? ident : 0;
-	sc->xnu.tid_gen[tid]++;
+	sc->xnu.tids[tid].ident = ret == 0 ? ident : 0;
+	sc->xnu.tids[tid].gen++;
 	mps_xnu_readd_clear(sc, r);
 	mpssas_rescan_target(sc, targ);
 }
