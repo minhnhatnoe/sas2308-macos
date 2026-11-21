@@ -709,7 +709,13 @@ SAS2308HBA::ReportHBAConstraints(OSDictionary *constraints)
     SetNumber(constraints, kIOMaximumSegmentCountWriteKey, maxSegs);
     SetNumber(constraints, kIOMaximumSegmentByteCountReadKey, segBytes);
     SetNumber(constraints, kIOMaximumSegmentByteCountWriteKey, segBytes);
-    SetNumber(constraints, kIOMinimumSegmentAlignmentByteCountKey, 4);
+    /*
+     * Byte alignment, as the DMA specification below (alignment 1) and
+     * FreeBSD's buffer tag (mps.c: alignment 1): an MPI2 64-bit simple SGE
+     * takes any byte address. 4 made the storage stack bounce unaligned
+     * pass-through buffers for nothing (D48).
+     */
+    SetNumber(constraints, kIOMinimumSegmentAlignmentByteCountKey, 1);
     SetNumber(constraints, kIOMaximumSegmentAddressableBitCountKey, 64);
     SetNumber(constraints, kIOMinimumHBADataAlignmentMaskKey, 0xFFFFFFFFFFFFFFF0ull);
 }
