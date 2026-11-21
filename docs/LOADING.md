@@ -15,7 +15,24 @@ Apple-silicon kext flow and were written before the first load.
 Check afterwards: `csrutil status` → disabled. (inferred: on Apple silicon `csrutil disable`
 alone already implies Permissive Security; step 3 is still needed for third-party kexts.)
 
-## Install and load (over ssh, from the Linux host or on the Mac)
+## Install, roll back, uninstall with the scripts
+On the Mac, as the admin user (the scripts call sudo; you type the password). Start with
+a dry run: it prints every action and changes nothing.
+```
+cd ~/sas2308-dext
+mac/install.sh -n               # dry run: security state, bundle, backup path, volumes to unmount
+mac/install.sh                  # make + make check, back up the installed bundle to
+                                # ~/sas2308-rollback-<UUID8>, unmount the volumes on the SAS2308HBA
+                                # disks, copy to /Library/Extensions, chown, kmutil load -p
+mac/install.sh --verify --expect 7   # after approval + restart: loaded UUID, drives, counters
+mac/install.sh --rollback -n    # newest backup that differs from the installed one (or give a path)
+mac/uninstall.sh -n             # backup, unmount, kmutil unload, remove, clear-staging if staged
+```
+`mac/install.sh path/to/SAS2308HBA.kext` installs a given bundle; `--force` reinstalls the
+installed UUID. When kmutil returns 27 the script prints the approval steps (below, 5-6).
+The manual steps below do the same and are the fallback.
+
+## Install and load by hand (over ssh, from the Linux host or on the Mac)
 ```
 cd ~/sas2308-dext/kext && make                      # rebuild
 make check                                           # plist, signature, kmutil symbols, exported symbols
@@ -46,7 +63,7 @@ Level at boot: `sudo nvram boot-args="<existing args> sas2308_log=3"` (0–4) or
 `sas2308_debug=0x7ff` (raw mask), reboot. For a panic investigation add `sas2308_iolog=1`
 (lines go to IOLog: `sudo dmesg | grep SAS2308HBA`, and into the panic report).
 
-## Unload / roll back
+## Unload / roll back (by hand; `mac/uninstall.sh` does this)
 ```
 sudo kmutil unload -b org.sas2308.driver.SAS2308HBA     # with no disks mounted
 sudo rm -rf /Library/Extensions/SAS2308HBA.kext
