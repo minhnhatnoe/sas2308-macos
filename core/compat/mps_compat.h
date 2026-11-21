@@ -448,6 +448,7 @@ int	callout_stop(struct callout *c);
 int	callout_drain(struct callout *c);
 #define callout_pending(c)	(((c)->c_flags & CALLOUT_PENDING) != 0)
 #define callout_active(c)	callout_pending(c)
+#define callout_xnu_due_us(c)	((c)->c_time_us)	/* deadline, mps_os_uptime_us() */
 
 /* ---- taskqueue(9): FIFO, tasks run without any mutex --------------------- */
 

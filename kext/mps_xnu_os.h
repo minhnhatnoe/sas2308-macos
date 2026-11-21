@@ -215,7 +215,7 @@ int	 mps_kext_timeout(struct mps_kext *k, void *td, void *os_task,
 	    uint32_t timeout_ms, uint32_t *rearm_ms);
 
 /* ---- debug triggers for hardware tests (sas2308ctl) --------------------- */
-enum { MPSK_DEBUG_REINIT = 1, MPSK_DEBUG_HOLD, MPSK_DEBUG_LOSE };
+enum { MPSK_DEBUG_REINIT = 1, MPSK_DEBUG_HOLD, MPSK_DEBUG_LOSE, MPSK_DEBUG_HALT };
 int	 mps_kext_debug(struct mps_kext *k, int what, uint32_t arg);
 
 /* ---- OS task management (D10): FreeBSD's paths, waits for the end ------ */
@@ -255,6 +255,11 @@ void	 mps_kext_disable_now(struct mps_kext *k);
 int	 mps_kext_suspend(struct mps_kext *k, uint32_t drain_ms, int shutdown);
 /* reinit on the core's taskqueue; IO held until the rediscovery is done */
 int	 mps_kext_resume(struct mps_kext *k);
+/*
+ * The halt began (restart / power off, before any systemWillShutdown): every
+ * command's time left is capped (mps_xnu_halt_begin). Idempotent.
+ */
+void	 mps_kext_halt_begin(struct mps_kext *k);
 
 /* ---- locks and time for the IOKit-free glue (SAS2308Glue) -------------- */
 

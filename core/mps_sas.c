@@ -1127,8 +1127,8 @@ mpssas_send_reset(struct mps_softc *sc, struct mps_command *tm, uint8_t type)
 	tm->cm_data = NULL;
 	tm->cm_complete_data = (void *)tm;
 
-	callout_reset(&tm->cm_callout, MPS_RESET_TIMEOUT * hz,
-	    mpssas_tm_timeout, tm);
+	callout_reset(&tm->cm_callout, MPS_XNU_HALT_CAP(sc, MPS_RESET_TIMEOUT,
+	    MPS_XNU_HALT_TM_S) * hz, mpssas_tm_timeout, tm);	/* XNU: F */
 
 	err = mps_map_command(sc, tm);
 	if (err)
@@ -1258,7 +1258,8 @@ mpssas_send_abort(struct mps_softc *sc, struct mps_command *tm, struct mps_comma
 	tm->cm_targ = cm->cm_targ;
 	tm->cm_lun = cm->cm_lun;
 
-	callout_reset(&tm->cm_callout, MPS_ABORT_TIMEOUT * hz,
+	callout_reset(&tm->cm_callout, MPS_XNU_HALT_CAP(sc, MPS_ABORT_TIMEOUT,
+	    MPS_XNU_HALT_TM_S) * hz,	/* XNU: F */
 	    mpssas_tm_timeout, tm);
 
 	targ->aborts++;
@@ -1669,6 +1670,8 @@ mpssas_action_scsiio(struct mpssas_softc *sassc, union ccb *ccb)
 
 	csio->ccb_h.qos.sim_data = sbinuptime();
 	/* XNU: timeout 0: FORMAT UNIT / SANITIZE from the OS, untimed (D15) */
+	ccb->ccb_h.timeout = MPS_XNU_HALT_CAP(sc, ccb->ccb_h.timeout,
+	    MPS_XNU_HALT_IO_MS);	/* XNU: the halt began (batch F) */
 	if (ccb->ccb_h.timeout != 0)
 		callout_reset_sbt(&cm->cm_callout, SBT_1MS * ccb->ccb_h.timeout,
 		    0, mpssas_scsiio_timeout, cm, 0);
@@ -2217,8 +2220,8 @@ mpssas_action_resetdev(struct mpssas_softc *sassc, union ccb *ccb)
 	 * TargetResetRequest), so time it like mpssas_send_reset does: the
 	 * reinit then completes it.
 	 */
-	callout_reset(&tm->cm_callout, MPS_RESET_TIMEOUT * hz,
-	    mpssas_tm_timeout, tm);
+	callout_reset(&tm->cm_callout, MPS_XNU_HALT_CAP(sc, MPS_RESET_TIMEOUT,
+	    MPS_XNU_HALT_TM_S) * hz, mpssas_tm_timeout, tm);	/* XNU: F */
 	mpssas_prepare_for_tm(sc, tm, targ, CAM_LUN_WILDCARD);
 	mps_map_command(sc, tm);
 }
@@ -2353,6 +2356,53 @@ mpssas_xnu_fail_all(struct mps_softc *sc)
 	while (sc->sassc->sim->freeze > 0)
 		xpt_release_simq(sc->sassc->sim, 1);
 	cam_xnu_flush_held(sc->sassc->sim, CAM_DEV_NOT_THERE);
+}
+
+/*
+ * XNU: the halt began (batch F, mps_xnu_halt_begin).  A command posted
+ * before it keeps its deadline only if the 30 s halt watchdog can wait for
+ * it: a SCSI IO gets at most MPS_XNU_HALT_IO_MS left (an untimed one too,
+ * D15), a TM at most MPS_XNU_HALT_TM_S.  Commands already in recovery keep
+ * theirs (their TM is capped).  The normal timeout recovery then runs; its
+ * reinit is the shutdown stop (mps_reinit).  Returns the commands capped.
+ */
+u_int
+mpssas_xnu_halt_caps(struct mps_softc *sc)
+{
+	struct mps_command *cm;
+	uint64_t now, cap_us;
+	u_int i, n;
+
+	mtx_assert(&sc->mps_mtx, MA_OWNED);
+	if (sc->commands == NULL)
+		return (0);
+	now = mps_os_uptime_us();
+	for (i = 1, n = 0; i < sc->num_reqs; i++) {
+		cm = &sc->commands[i];
+		if (cm->cm_state != MPS_CM_STATE_INQUEUE)
+			continue;
+		if (callout_pending(&cm->cm_callout) &&
+		    cm->cm_callout.c_func == mpssas_tm_timeout) {
+			cap_us = MPS_XNU_HALT_TM_S * 1000000ull;
+			if (callout_xnu_due_us(&cm->cm_callout) <= now + cap_us)
+				continue;
+			callout_reset(&cm->cm_callout, MPS_XNU_HALT_TM_S * hz,
+			    mpssas_tm_timeout, cm);
+		} else if (cm->cm_complete == mpssas_scsiio_complete &&
+		    cm->cm_ccb != NULL &&
+		    (cm->cm_flags & MPS_CM_FLAGS_ON_RECOVERY) == 0) {
+			cap_us = MPS_XNU_HALT_IO_MS * 1000ull;
+			if (callout_pending(&cm->cm_callout) &&
+			    callout_xnu_due_us(&cm->cm_callout) <= now + cap_us)
+				continue;
+			callout_reset_sbt(&cm->cm_callout,
+			    SBT_1MS * MPS_XNU_HALT_IO_MS, 0,
+			    mpssas_scsiio_timeout, cm, 0);
+		} else
+			continue;
+		n++;
+	}
+	return (n);
 }
 
 /*

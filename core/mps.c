@@ -881,6 +881,8 @@ int
 			mps_xnu_disable(sc, ENXIO);
 		return (ENXIO);
 	}
+	if (sc->xnu.halting)		/* XNU: batch F */
+		return (mps_xnu_halt_stop(sc, "instead of a reinit"));
 	sc->xnu.reinit_running = 1;	/* XNU: mps_xnu_suspend waits for it */
 	sc->xnu.stats.reinits++;
 	sc->xnu.reinit_start_us = mps_os_uptime_us();
@@ -949,6 +951,14 @@ int
 	if (error != 0) {
 		sc->xnu.stats.reinit_failures++;
 		sc->xnu.reinit_running = 0;
+		/* XNU: abandoned for the halt (mps_xnu_halt_begin, batch F) */
+		if (sc->xnu.halting &&
+		    (sc->mps_flags & MPS_FLAGS_XNU_GONE) == 0) {
+			sc->xnu.stop_reinit = 0;
+			sc->mps_flags &= ~MPS_FLAGS_DIAGRESET;
+			wakeup(&sc->xnu.reinit_running);
+			return (mps_xnu_halt_stop(sc, "reinit abandoned"));
+		}
 		/*
 		 * XNU: abandoned because the system goes to sleep: not a
 		 * failure of the controller.  The suspend owns
@@ -1150,8 +1160,8 @@ mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms, int shutdown)
 	sc->xnu.suspended_logged = 0;
 	if (error != 0)
 		mps_dprint(sc, MPS_INIT|MPS_ERROR, "suspended without a clean "
-		    "stop (error %d): the resume reinitializes the IOC\n",
-		    error);
+		    "stop (error %d): the %s\n", error, shutdown ?
+		    "next attach resets the IOC" : "resume reinitializes the IOC");
 	else
 		mps_dprint(sc, MPS_INIT|MPS_INFO, "suspended: IOC stopped\n");
 	return (error);

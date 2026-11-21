@@ -895,9 +895,10 @@ int mps_kext_tm(struct mps_kext *k, uint8_t type, uint32_t tid, uint64_t lun, vo
 }
 
 /*
- * Debug triggers for hardware tests (sas2308ctl reinit | hold MS | lose N):
- * a controller reinit (diag reset), new IO held for MS (SIM queue frozen,
- * as a long recovery would), the next N SCSI IOs lost.
+ * Debug triggers for hardware tests (sas2308ctl reinit | hold MS | lose N |
+ * halt): a controller reinit (diag reset), new IO held for MS (SIM queue
+ * frozen, as a long recovery would), the next N SCSI IOs lost, the halt's
+ * timeout caps as at restart (batch F; until the next boot).
  */
 static void mps_kext_hold_end(void *arg)
 {
@@ -935,6 +936,10 @@ int mps_kext_debug(struct mps_kext *k, int what, uint32_t arg)
     case MPSK_DEBUG_LOSE:
         sc->xnu.debug_lose = arg;
         mps_dprint(sc, MPS_RECOVERY | MPS_INFO, "debug: the next %u SCSI IOs will be lost\n", arg);
+        break;
+    case MPSK_DEBUG_HALT:           /* one way: the controller stops at the next reinit */
+        mps_dprint(sc, MPS_RECOVERY | MPS_INFO, "debug: halt begins (as at restart)\n");
+        mps_xnu_halt_begin(sc);
         break;
     default:
         error = EINVAL;
@@ -1004,6 +1009,17 @@ int mps_kext_suspend(struct mps_kext *k, uint32_t drain_ms, int shutdown)
     error = mps_xnu_suspend(sc, drain_ms, shutdown);
     mps_unlock(sc);
     return error;
+}
+
+void mps_kext_halt_begin(struct mps_kext *k)
+{
+    struct mps_softc *sc = &k->sc;
+
+    if (!k->attached)
+        return;
+    mps_lock(sc);
+    mps_xnu_halt_begin(sc);
+    mps_unlock(sc);
 }
 
 int mps_kext_resume(struct mps_kext *k)

@@ -819,6 +819,10 @@ void mpssas_xnu_fail_all(struct mps_softc *sc);
 int mps_xnu_suspend(struct mps_softc *sc, u_int drain_ms, int shutdown);
 int mps_xnu_resume(struct mps_softc *sc);
 void mpssas_xnu_suspend(struct mps_softc *sc);
+/* XNU: the halt began (batch F): capped timeouts, a reinit is the stop */
+void mps_xnu_halt_begin(struct mps_softc *sc);
+int mps_xnu_halt_stop(struct mps_softc *sc, const char *why);
+u_int mpssas_xnu_halt_caps(struct mps_softc *sc);
 int mpssas_send_reset(struct mps_softc *sc, struct mps_command *tm,
     uint8_t type);
 

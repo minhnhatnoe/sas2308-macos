@@ -34,11 +34,28 @@
  * Shutdown / restart: the dock has its own power supply, so the IOC keeps
  * running across a Mac restart unless it is stopped. systemWillShutdown
  * does the "off" sequence (shorter drain) and leaves the IOC stopped.
+ *
+ * The halt (batch F): PEHaltRestartInternal arms a 30 s watchdog ("Halt/
+ * Restart Timed Out" panic) and then IOPMrootDomain::handlePlatformHaltRestart
+ * messages the priority power interest clients (kIOMessageSystemWillRestart
+ * / WillPowerOff; SAM's block driver marks "Power Off" there) before it
+ * walks the power tree with systemWillShutdown, children (the disks) first.
+ * Our priority interest handler is the earliest point inside that window:
+ * from there every command has at most 10 s left (mps_xnu_halt_begin), so a
+ * lost reply to a command in flight, or to one SAM sends during the halt
+ * (START STOP UNIT, timeout 0), is recovered and failed before the
+ * watchdog fires. Sleep keeps D15's backstop: it has no such watchdog.
  */
 #include "SAS2308HBA.h"
 
 #include <IOKit/IOMessage.h>
 #include <IOKit/pwr_mgt/IOPM.h>
+
+/*
+ * IOKit/pwr_mgt/RootDomain.h declares it but does not compile outside xnu
+ * (IOPMDriverAssertionID is in IOPMPrivate.h): the KPI function, as there.
+ */
+extern "C" IONotifier *registerPrioritySleepWakeInterest(IOServiceInterestHandler handler, void *self, void *ref);
 
 #define super IOSCSIParallelInterfaceController
 
@@ -75,6 +92,9 @@ SAS2308HBA::InitializePowerManagement(IOService *provider)
     }
     fPowerState = kPowerStateOn;
     fPMInitialized = true;
+    fHaltNotifier = registerPrioritySleepWakeInterest(&SAS2308HBA::HaltMessage, this, nullptr);
+    if (!fHaltNotifier)     /* systemWillShutdown still caps, later in the halt */
+        Klog(MPSK_ERROR | MPSK_INIT, "no priority power interest: the halt's timeout caps start late");
     changePowerStateTo(kPowerStateOn);
     Klog(MPSK_INIT | MPSK_INFO, "power management: %u states, joined under %s", (unsigned)kPowerStateCount,
          provider->getName());
@@ -91,6 +111,10 @@ SAS2308HBA::StopPowerManagement(void)
     if (!fPMInitialized)
         return;
     fPMInitialized = false;
+    if (fHaltNotifier) {
+        fHaltNotifier->remove();    /* waits for a handler that runs */
+        fHaltNotifier = nullptr;
+    }
     PMstop();
 }
 
@@ -122,6 +146,37 @@ SAS2308HBA::setPowerState(unsigned long powerStateOrdinal, IOService *whatDevice
 }
 
 //-----------------------------------------------------------------------------
+//	HaltMessage - priority power interest (registerPrioritySleepWakeInterest):
+//	restart / power off begins, the 30 s halt watchdog runs. Sleep messages
+//	need no answer here (SAM's handler is the same kind).			[PRIVATE]
+//-----------------------------------------------------------------------------
+
+IOReturn
+SAS2308HBA::HaltMessage(void *target, void *refCon, UInt32 messageType, IOService *provider,
+                        void *messageArgument, vm_size_t argSize)
+{
+    (void)refCon; (void)provider; (void)messageArgument; (void)argSize;
+    if (messageType == kIOMessageSystemWillRestart || messageType == kIOMessageSystemWillPowerOff)
+        ((SAS2308HBA *)target)->BeginHalt(messageType == kIOMessageSystemWillRestart ? "restart" : "power off");
+    return kIOReturnSuccess;
+}
+
+//-----------------------------------------------------------------------------
+//	BeginHalt - cap every command's time left (mps_kext_halt_begin). Once;
+//	from the priority interest, else from systemWillShutdown.		[PRIVATE]
+//-----------------------------------------------------------------------------
+
+void
+SAS2308HBA::BeginHalt(const char *why)
+{
+    if (!Enter())
+        return;
+    Klog(MPSK_INIT | MPSK_INFO, "%s: halt begins, command timeouts capped at 10 s", why);
+    mps_kext_halt_begin(fGlue.fMps);
+    Leave();
+}
+
+//-----------------------------------------------------------------------------
 //	systemWillShutdown - restart or power off: stop the IOC (message unit
 //	reset) so it does no DMA into memory the next kernel owns. The dock is
 //	separately powered, so nothing else would stop it.				[PUBLIC]
@@ -131,6 +186,8 @@ void
 SAS2308HBA::systemWillShutdown(IOOptionBits specifier)
 {
     if (specifier == kIOMessageSystemWillPowerOff || specifier == kIOMessageSystemWillRestart) {
+        if (!fHaltNotifier)
+            BeginHalt(specifier == kIOMessageSystemWillRestart ? "restart" : "power off");
         fShutdown = true;
         /*
          * Not sleep: nothing resumes, so IO is failed (DeviceNotPresent)

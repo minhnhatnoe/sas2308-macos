@@ -28,7 +28,8 @@
 static void Usage(void)
 {
     fprintf(stderr, "usage: sas2308ctl show | stats | level <0-4|name> | mask <list> | iolog on|off | reset-stats\n"
-                    "       sas2308ctl reinit | hold <ms> | lose <n>     (debug triggers for hardware tests)\n");
+                    "       sas2308ctl reinit | hold <ms> | lose <n> | halt  (debug triggers for hardware tests;\n"
+                    "                  halt: restart's timeout caps, the controller stops at the next reinit)\n");
     exit(2);
 }
 
@@ -120,9 +121,10 @@ int main(int argc, char **argv)
             CFRelease(s);
         } else if (!strcmp(cmd, "iolog") && argc == 3) {
             rc |= Set(svc, "SAS2308LogToIOLog", !strcmp(argv[2], "on") ? kCFBooleanTrue : kCFBooleanFalse);
-        } else if ((!strcmp(cmd, "reinit") && argc == 2) ||
+        } else if (((!strcmp(cmd, "reinit") || !strcmp(cmd, "halt")) && argc == 2) ||
                    ((!strcmp(cmd, "hold") || !strcmp(cmd, "lose")) && argc == 3)) {
             const char *key = !strcmp(cmd, "reinit") ? "SAS2308DebugReinit" :
+                              !strcmp(cmd, "halt") ? "SAS2308DebugHalt" :
                               !strcmp(cmd, "hold") ? "SAS2308DebugHoldMs" : "SAS2308DebugLose";
             int v = argc == 3 ? atoi(argv[2]) : 1;
             CFNumberRef num = CFNumberCreate(NULL, kCFNumberIntType, &v);

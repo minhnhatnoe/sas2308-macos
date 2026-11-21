@@ -171,6 +171,7 @@ SAS2308HBA::setProperties(OSObject *properties)
         { "SAS2308DebugReinit", MPSK_DEBUG_REINIT },
         { "SAS2308DebugHoldMs", MPSK_DEBUG_HOLD },
         { "SAS2308DebugLose", MPSK_DEBUG_LOSE },
+        { "SAS2308DebugHalt", MPSK_DEBUG_HALT },
     };
     for (const auto &e : dbg) {
         OSNumber *n = OSDynamicCast(OSNumber, d->getObject(e.key));
@@ -449,7 +450,7 @@ SAS2308HBA::PublishStats(bool force)
                          st.faults + st.reinits + st.reinit_failures + st.stale_replies + st.bad_replies + st.events +
                          st.chain_alloc_fail + ks.tasks + ks.tasksRejected + ks.familyTimeouts + ks.tmRequests +
                          snap.held + snap.tms_busy + (gone ? 1 : 0) + (resetting ? 2 : 0) + (fSuspended ? 4 : 0) + mask +
-                         st.suspends + st.resumes + st.suspend_stop_failed + st.config_reads + st.config_retries + st.readd_scheduled +
+                         st.suspends + st.resumes + st.suspend_stop_failed + st.halt_capped + st.halt_stops + st.config_reads + st.config_retries + st.readd_scheduled +
                          st.recovered_sense + st.temp_reads + (uint32_t)st.ioc_temp_c;
     fGlue.Lock();
     if (!force && sig == fLastPublishedSig) {
@@ -532,6 +533,8 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Resumes without reset", st.resume_ready);
     SetNumber(d, "Resumes with diag reset", st.resume_diag_reset);
     SetNumber(d, "Suspend drain left", st.suspend_drain_left);
+    SetNumber(d, "Halt timeouts capped", st.halt_capped);
+    SetNumber(d, "Halt recovery stops", st.halt_stops);
     SetNumber(d, "Config page reads", st.config_reads);
     SetNumber(d, "Config page failures", st.config_failures);
     SetNumber(d, "Config page retries", st.config_retries);

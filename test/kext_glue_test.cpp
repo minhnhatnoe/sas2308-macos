@@ -706,6 +706,143 @@ int main()
         f.Detach();
     }
 
+    /*
+     * Batch F: the 30 s halt watchdog (PEHaltRestartInternal) covers the
+     * whole halt, so the 10 min backstop of an untimed task (D15) and the
+     * 30 s + 10 s of a read cannot save a lost reply there. Once the halt
+     * begins (priority interest, before any systemWillShutdown) every
+     * command has at most 10 s left (FreeBSD's SSU timeout), a TM at most
+     * 3 s, and a reinit is the shutdown stop (one MUR, no diag reset).
+     */
+    auto haltRig = [](MockIocModel &m) {
+        m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+    };
+    auto noData = [](Family &f, uint32_t tid, uint8_t op) {
+        FakeTask *t = f.NewRead(tid, 0);
+        memset(t->cdb, 0, sizeof(t->cdb));
+        t->cdb[0] = op; t->cdbLen = 6; t->dir = MPSK_DIR_NONE; t->len = 0;
+        CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+        return t;
+    };
+
+    if (Want("F")) {
+        /* an SSU (timeout 0) and a read posted before the halt lose their replies */
+        MockIocModel m; haltRig(m);
+        Family f; f.Attach(&m);
+        m.dropCompletion = true;
+        FakeTask *ssu = noData(f, f.Tid(0x0009), 0x1B);
+        FakeTask *rd = f.NewRead(f.Tid(0x000A));
+        CHECK(f.Submit(rd) == SAS2308Glue::kInProcess);
+        f.Run(5000);
+        const int diags = m.diagResetCount;
+        mps_kext_halt_begin(f.k);
+        f.Run(9000);
+        CHECK(ssu->completions == 0 && rd->completions == 0);     /* capped, not failed */
+        f.Run(6000);                                /* 15 s after the halt began */
+        HostRunPending();
+        CHECK(ssu->completions == 1 && ssu->done != SAS2308GluePort::kDoneStatus);
+        CHECK(rd->completions == 1 && rd->done != SAS2308GluePort::kDoneStatus);
+        CHECK(m.diagResetCount == diags);           /* the stop, not a reinit */
+        CHECK(gHost.sc->xnu.stats.halt_stops == 1 && gHost.sc->xnu.stats.halt_capped == 2);
+        FakeTask *late = f.NewRead(f.Tid(0x0009));  /* the IOC is stopped: fails at once */
+        f.Submit(late);
+        HostRunPending();
+        CHECK(late->completions == 1 && late->done == SAS2308GluePort::kDoneGone);
+        m.dropCompletion = false;
+        f.Detach();
+    }
+
+    if (Want("F-new")) {
+        /* IO after the halt began gets 10 s; an abort that works keeps the controller */
+        MockIocModel m; haltRig(m);
+        Family f; f.Attach(&m);
+        mps_kext_halt_begin(f.k);
+        m.holdIo = true;
+        FakeTask *rd = f.NewRead(f.Tid(0x0009));
+        CHECK(f.Submit(rd) == SAS2308Glue::kInProcess);
+        FakeTask *fmt = noData(f, f.Tid(0x000A), 0x04);   /* FORMAT UNIT: untimed (D15), capped too */
+        f.Run(9500);
+        CHECK(rd->completions == 0 && fmt->completions == 0);
+        f.Run(1500);
+        HostRunPending();
+        CHECK(rd->completions == 1 && rd->done != SAS2308GluePort::kDoneStatus);
+        CHECK(fmt->completions == 1 && fmt->done != SAS2308GluePort::kDoneStatus);
+        CHECK(gHost.sc->xnu.stats.halt_stops == 0);
+        m.holdIo = false;
+        FakeTask *ok = f.NewRead(f.Tid(0x0009));
+        CHECK(f.Submit(ok) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        CHECK(ok->completions == 1 && ok->done == SAS2308GluePort::kDoneStatus);
+        f.Detach();
+    }
+
+    if (Want("F-tm")) {
+        /* the IOC answers no TM: the abort's timeout (3 s) leads to the stop */
+        MockIocModel m; haltRig(m);
+        Family f; f.Attach(&m);
+        m.dropCompletion = true; m.tmIgnoreMask = ~0u;
+        FakeTask *rd = f.NewRead(f.Tid(0x0009));
+        CHECK(f.Submit(rd) == SAS2308Glue::kInProcess);
+        f.Run(2000);
+        const int diags = m.diagResetCount;
+        mps_kext_halt_begin(f.k);
+        f.Run(16000);                               /* 10 s + 3 s + the stop (<= 2 s) */
+        HostRunPending();
+        CHECK(rd->completions == 1 && rd->done != SAS2308GluePort::kDoneStatus);
+        CHECK(m.diagResetCount == diags && gHost.sc->xnu.stats.halt_stops == 1);
+        m.dropCompletion = false; m.tmIgnoreMask = 0;
+        f.Detach();
+    }
+
+    if (Want("F-pending-tm")) {
+        /* a LUN reset already waiting (30 s) when the halt begins: 3 s left */
+        MockIocModel m; haltRig(m);
+        Family f; f.Attach(&m);
+        m.dropCompletion = true;
+        m.tmNoTermMask = 1u << MPI2_SCSITASKMGMT_TASKTYPE_ABORT_TASK;
+        m.tmIgnoreMask = 1u << MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET;
+        FakeTask *rd = f.NewRead(f.Tid(0x0009));
+        CHECK(f.Submit(rd) == SAS2308Glue::kInProcess);
+        f.Run(31000);                               /* family timer, abort, LUN reset sent */
+        CHECK(!m.tms.empty() && m.tms.back().type == MPI2_SCSITASKMGMT_TASKTYPE_LOGICAL_UNIT_RESET);
+        CHECK(rd->completions == 0);
+        mps_kext_halt_begin(f.k);
+        f.Run(6000);
+        HostRunPending();
+        CHECK(rd->completions == 1 && gHost.sc->xnu.stats.halt_stops == 1);
+        m.dropCompletion = false; m.tmNoTermMask = m.tmIgnoreMask = 0;
+        f.Detach();
+    }
+
+    if (Want("F-reinit")) {
+        /* a reinit whose diag reset never ends is running when the halt begins */
+        MockIocModel m; haltRig(m);
+        Family f; f.Attach(&m);
+        m.holdIo = true;
+        FakeTask *rd = f.NewRead(f.Tid(0x0009));
+        CHECK(f.Submit(rd) == SAS2308Glue::kInProcess);
+        m.diagStuck = true;
+        bool fired = false;
+        uint64_t t0 = 0;
+        gHost.onOtherThreads = [&]() {
+            struct mps_softc *sc = gHost.sc;
+            if (!fired && sc->xnu.reinit_running && (sc->mps_flags & MPS_FLAGS_DIAGRESET)) {
+                fired = true; t0 = m.nowUs;
+                mps_kext_halt_begin(f.k);
+            }
+        };
+        RequestReinit("IOC fault (test)");
+        for (int i = 0; i < 600 && !(fired && rd->completions && !gHost.sc->xnu.reinit_running); i++)
+            f.Run(100);
+        gHost.onOtherThreads = nullptr;
+        CHECK(fired && !gHost.sc->xnu.reinit_running);
+        CHECK(rd->completions == 1 && rd->done != SAS2308GluePort::kDoneStatus);
+        CHECK(m.nowUs - t0 <= 5000000ull && gHost.sc->xnu.stats.halt_stops == 1);
+        m.diagStuck = false; m.holdIo = false;
+        f.Detach();
+    }
+
     if (Want("D10")) {
         /*
          * OS task management goes through FreeBSD's paths: an abort of a

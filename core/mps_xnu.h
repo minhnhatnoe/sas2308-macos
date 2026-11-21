@@ -41,6 +41,18 @@ struct mps_softc;
 #define MPS_XNU_SHUTDOWN_STOP_MS 2000	/* then stop the IOC within (no diag reset) */
 #define MPS_XNU_SLEEP_STOP_MS	10000	/* sleep / detach: stop the IOC within */
 #define MPS_XNU_REINIT_STOP_MS	2000	/* suspend waits for a running reinit */
+/*
+ * The halt (restart / power off) has a 30 s watchdog (PEHaltRestartInternal,
+ * "Halt/Restart Timed Out") over all of it.  Once it begins a SCSI IO has
+ * at most 10 s left, FreeBSD's own shutdown figure (the START STOP UNIT
+ * timeout of mpssas_SSU_to_SATA_devices), a TM at most 3 s, so a lost
+ * reply's timeout, abort, LUN reset, target reset and the stop that takes
+ * the place of the reinit end within 10 + 3 x 3 + 2 = 21 s (batch F).
+ */
+#define MPS_XNU_HALT_IO_MS	10000
+#define MPS_XNU_HALT_TM_S	3
+#define	MPS_XNU_HALT_CAP(sc, t, max)					\
+	((sc)->xnu.halting && ((t) == 0 || (t) > (max)) ? (max) : (t))
 #define MPS_XNU_RESUME_TRIES	20	/* all-ones tolerated 20 x 100 ms after wake */
 #define MPS_XNU_GONE_TRIES	5	/* an all-ones read is confirmed 5 times, */
 #define MPS_XNU_GONE_MS		20	/* 20 ms apart, before "gone" (D11) */
@@ -152,6 +164,7 @@ struct mps_xnu {
 	int			 suspending;
 	int			 suspended_logged;
 	int			 shutdown;		/* system shutdown: fail IO, never hold it */
+	int			 halting;		/* the halt began: timeouts capped, a reinit stops (F) */
 	int			 stop_fast;		/* short MUR ack wait, no diag reset */
 	uint64_t		 stop_deadline_us;	/* mps_transition_ready gives up after */
 	uint64_t		 resume_us;		/* all-ones tolerated briefly after resume */

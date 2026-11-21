@@ -1061,6 +1061,53 @@ mps_xnu_debug_lose(struct mps_softc *sc, struct mps_command *cm)
 	return (1);
 }
 
+/* ---- the halt (batch F) ------------------------------------------------ */
+
+/*
+ * The halt began (restart / power off; batch F).  macOS's 30 s halt
+ * watchdog (PEHaltRestartInternal) covers all of it, from before the first
+ * systemWillShutdown, so neither D15's 10 min backstop of an untimed
+ * command (SAM's START STOP UNIT) nor the 30 s + 10 s of a read, nor a
+ * diag reset and rediscovery, fit: every posted and every new command gets
+ * at most MPS_XNU_HALT_IO_MS left, every TM MPS_XNU_HALT_TM_S, a reinit
+ * that is requested is the shutdown stop instead, one that is running
+ * gives up at its next wait and stops the same way.  FreeBSD needs none of
+ * this: it has no halt watchdog, and its shutdown SSU is timed (10 s).
+ * IO is not failed here: the stop in systemWillShutdown does that.
+ */
+void
+mps_xnu_halt_begin(struct mps_softc *sc)
+{
+	u_int n;
+
+	mtx_assert(&sc->mps_mtx, MA_OWNED);
+	if (sc->xnu.halting)
+		return;
+	sc->xnu.halting = 1;
+	if (sc->xnu.reinit_running)
+		sc->xnu.stop_reinit = 1;
+	n = mpssas_xnu_halt_caps(sc);
+	sc->xnu.stats.halt_capped += n;
+	mps_dprint(sc, MPS_INIT|MPS_INFO, "halt: %d commands outstanding, "
+	    "%u capped at %u s%s\n", sc->io_cmds_active, n,
+	    MPS_XNU_HALT_IO_MS / 1000,
+	    sc->xnu.reinit_running ? ", the running reinit gives up" : "");
+}
+
+/* XNU: the reinit of a halt: H5's bounded stop, everything failed */
+int
+mps_xnu_halt_stop(struct mps_softc *sc, const char *why)
+{
+
+	if (sc->xnu.suspending)
+		return (0);
+	sc->xnu.reinit_pending = 0;
+	sc->xnu.stats.halt_stops++;
+	mps_dprint(sc, MPS_INIT|MPS_RECOVERY|MPS_INFO, "halt: stopping the "
+	    "controller %s\n", why);
+	return (mps_xnu_suspend(sc, 0, 1));
+}
+
 /* D12: log and count which way a wake reinitialized the IOC */
 void
 mps_xnu_resume_done(struct mps_softc *sc, int diag_reset)

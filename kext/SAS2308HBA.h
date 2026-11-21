@@ -165,6 +165,9 @@ private:
     void StopPowerManagement(void);
     bool QuiesceController(uint32_t drainMs, const char *why, bool shutdown);   /* sleep / shutdown */
     void ResumeController(void);                                  /* wake */
+    static IOReturn HaltMessage(void *target, void *refCon, UInt32 messageType, IOService *provider,
+                                void *messageArgument, vm_size_t argSize);   /* priority interest */
+    void BeginHalt(const char *why);                              /* restart / power off began (F) */
 
     /* ---- SAS2308HBA_Hotplug.cpp */
     static void HostAsync(void *hba, int event, uint32_t tid, const uint8_t *present, const uint32_t *gens,
@@ -212,6 +215,7 @@ private:
     bool           fPMInitialized = false;
     bool           fSuspended = false;      /* IOC stopped for sleep / shutdown */
     bool           fShutdown = false;       /* systemWillShutdown ran: stays stopped */
+    IONotifier    *fHaltNotifier = nullptr; /* priority power interest: the halt began (F) */
     unsigned long  fPowerState = kPowerStateOn;
 
     /* the core (fGlue.fMps) */
