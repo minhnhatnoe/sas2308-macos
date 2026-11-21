@@ -505,6 +505,15 @@ SAS2308HBA::StopController(void)
             wl->removeEventSource(fStatsTimer);
         OSSafeReleaseNULL(fStatsTimer);
     }
+    /*
+     * Interrupt off before mps_free, the reverse of FreeBSD's mps_pci_detach
+     * (mps_free, then the interrupt teardown): the family owns the source
+     * and we have no bus_teardown_intr that would wait for a running
+     * mps_intr after the queues are freed. What mps_free waits for
+     * completes without it (config waits: ENXIO short-cut; TMs:
+     * mpssas_complete_all_commands), and it drains the reply queue once,
+     * polled, before the MUR (D51).
+     */
     DisableInterrupt();
     fGlue.StopCore();                               /* no new core calls, mps_free: every ccb completed */
     fGlue.QuiesceHotplug();

@@ -2749,6 +2749,16 @@ static void DeviationTests()
         CHECK(r->done && r->status == CAM_REQ_CMP);
     }
 
+    if (Want("D51")) {
+        /* unload: the IOC completed an IO, its interrupt not yet delivered (ours is off before mps_free) */
+        Rig g;
+        Io *r = g.Read(0x0009, 0, 2);
+        CHECK(g.Go(r) == kPosted);                      /* the reply is on the queue: no interrupt runs */
+        CHECK(!r->done && g.ioc.InterruptPending());
+        g.Detach();                                     /* mps_free */
+        CHECK(r->done == 1 && r->status == CAM_REQ_CMP);   /* its real status, not DEV_NOT_THERE */
+    }
+
     if (Want("D20b")) {
         /* READ/WRITE killed by our own reset: re-sent (CAM requeues it uncounted), bounded */
         Rig g;

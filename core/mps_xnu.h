@@ -124,6 +124,7 @@ struct mps_xnu {
 	struct callout		 gone_callout;		/* confirms an all-ones read (D11) */
 	int			 gone_tries;		/* 0: no confirmation running */
 	int			 resume_ready;		/* next reinit: FreeBSD's attach sequence first (D12) */
+	int			 final_drain;		/* mps_free polls the reply queue (D51) */
 	uint32_t		 gone_offset;		/* the register that read all-ones */
 	uint16_t		 tid_handle[MPS_XNU_MAX_TARGETS]; /* last handle */
 	/*

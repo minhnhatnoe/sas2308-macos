@@ -1865,9 +1865,12 @@ mpssas_scsiio_complete(struct mps_softc *sc, struct mps_command *cm)
 	/* Take the fast path to completion */
 	if (cm->cm_reply == NULL) {
 		if (mpssas_get_ccbstatus(ccb) == CAM_REQ_INPROG) {
-			/* XNU: unplugged, disabled or detaching */
-			if (sc->mps_flags & (MPS_FLAGS_XNU_GONE |
-			    MPS_FLAGS_SHUTDOWN))
+			/*
+			 * XNU: unplugged, disabled or detaching (not a reply
+			 * of mps_free's last drain, D51)
+			 */
+			if ((sc->mps_flags & (MPS_FLAGS_XNU_GONE |
+			    MPS_FLAGS_SHUTDOWN)) && !sc->xnu.final_drain)
 				mpssas_set_ccbstatus(ccb, CAM_DEV_NOT_THERE);
 			else if ((sc->mps_flags & MPS_FLAGS_DIAGRESET) != 0 &&
 			    mpssas_xnu_reset_requeue(sc, ccb))

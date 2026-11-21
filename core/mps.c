@@ -2175,6 +2175,17 @@ mps_free(struct mps_softc *sc)
 	mps_lock(sc);
 	if ((sc->mps_flags & (MPS_FLAGS_XNU_GONE | MPS_FLAGS_XNU_SUSPENDED)) == 0 &&
 	    sc->mps_flags & MPS_FLAGS_ATTACH_DONE) {
+		/*
+		 * XNU: our interrupt is already off (StopController: the
+		 * family owns the source, and nothing like bus_teardown_intr
+		 * would wait for a running handler after the queues are
+		 * freed).  FreeBSD's is still live here, so what the IOC has
+		 * completed is drained once, polled, as FreeBSD's NO_SLEEP
+		 * waits do: it completes with its real status (D51).
+		 */
+		sc->xnu.final_drain = 1;
+		mps_intr_locked(sc);
+		sc->xnu.final_drain = 0;
 		sc->xnu.stop_deadline_us = mps_os_uptime_us() +
 		    (uint64_t)1000 * MPS_XNU_SLEEP_STOP_MS;
 		if (mps_transition_ready(sc) != 0 &&
