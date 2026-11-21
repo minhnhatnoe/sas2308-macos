@@ -1,0 +1,14 @@
+Write cache is:   Enabled
+smartctl 7.5 2025-04-30 r5714 [Darwin 27.0.0 arm64] (local build)
+Copyright (C) 2002-25, Bruce Allen, Christian Franke, www.smartmontools.org
+
+=== START OF ENABLE/DISABLE COMMANDS SECTION ===
+Write cache disable failed: Unsupported ATA feature
+
+smartctl 7.5 2025-04-30 r5714 [Darwin 27.0.0 arm64] (local build)
+Copyright (C) 2002-25, Bruce Allen, Christian Franke, www.smartmontools.org
+
+=== START OF ENABLE/DISABLE COMMANDS SECTION ===
+Write cache enable failed: Unsupported ATA feature
+
+Write cache is:   Enabled

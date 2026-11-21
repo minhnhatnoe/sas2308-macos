@@ -1,0 +1,16 @@
+SAS2308HBA instance 0:
+  SAS2308LogLevel              2
+  SAS2308DebugMask             35
+  PCIe Link:
+  Max Payload Size Supported (bytes) 4096
+  Link Capabilities            4195459
+  Max Read Request Size (bytes) 512
+  BAR1 Posted Writes           true
+  Link Width                   4
+  Max Link Speed               8.0 GT/s (Gen3)
+  Max Payload Size (bytes)     128
+  Max Link Width               8
+  Link Status                  4163
+  Link Speed                   8.0 GT/s (Gen3)
+  Device Control               10527
+  Device Capabilities          268468261

@@ -1,0 +1,2 @@
+2026-11-21 00:15:57.668 Db kernel[0:7733] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 633 target 1 (handle 0x000a) lun 0 READ(10) lba 0 blocks 3 len 1536 segs 1 chains 0
+2026-11-21 00:15:57.668 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 633 cam status 0x1 scsi good xfer 1536/1536 latency 87 us

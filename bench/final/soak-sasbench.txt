@@ -1,0 +1,7 @@
+job 0: /dev/rdisk4 mix zone=full name=drive1 bytes [0, 18000207937536) lba512 [0, 35156656128) blocks=17166336 disk=18000207937536
+job 1: /dev/rdisk5 mix zone=full name=drive2 bytes [0, 18000207937536) lba512 [0, 35156656128) blocks=17166336 disk=18000207937536
+job 2: /dev/rdisk6 mix zone=full name=drive3 bytes [0, 18000207937536) lba512 [0, 35156656128) blocks=17166336 disk=18000207937536
+job 3: /dev/rdisk7 mix zone=full name=drive4 bytes [0, 18000207937536) lba512 [0, 35156656128) blocks=17166336 disk=18000207937536
+job 4: /dev/rdisk8 mix zone=full name=drive5 bytes [0, 18000207937536) lba512 [0, 35156656128) blocks=17166336 disk=18000207937536
+job 5: /dev/rdisk9 mix zone=full name=drive6 bytes [0, 18000207937536) lba512 [0, 35156656128) blocks=17166336 disk=18000207937536
+job 6: /dev/rdisk10 mix zone=full name=drive7 bytes [0, 18000207937536) lba512 [0, 35156656128) blocks=17166336 disk=18000207937536

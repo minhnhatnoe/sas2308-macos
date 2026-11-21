@@ -1,0 +1,15 @@
+job 0: /dev/rdisk4 write zone=0-1.5 name=drive1 bytes [0, 270003077120) lba512 [0, 527349760) blocks=257495 disk=18000207937536
+job 1: /dev/rdisk5 write zone=0-1.5 name=drive2 bytes [0, 270003077120) lba512 [0, 527349760) blocks=257495 disk=18000207937536
+job 2: /dev/rdisk6 write zone=0-1.5 name=drive3 bytes [0, 270003077120) lba512 [0, 527349760) blocks=257495 disk=18000207937536
+job 3: /dev/rdisk7 write zone=0-1.5 name=drive4 bytes [0, 270003077120) lba512 [0, 527349760) blocks=257495 disk=18000207937536
+job 4: /dev/rdisk8 read zone=98-99.5 name=drive5 bytes [17640204533760, 17910206562304) lba512 [34453524480, 34980872192) blocks=257494 disk=18000207937536
+job 5: /dev/rdisk9 read zone=98-99.5 name=drive6 bytes [17640204533760, 17910206562304) lba512 [34453524480, 34980872192) blocks=257494 disk=18000207937536
+job 6: /dev/rdisk10 read zone=98-99.5 name=drive7 bytes [17640204533760, 17910206562304) lba512 [34453524480, 34980872192) blocks=257494 disk=18000207937536
+/dev/rdisk4    write  0-1.5    seq   bs=1048576  qd=2   180.0s  R     0.0 MB/s  W   234.5 MB/s       224 IOPS  p50    7424us p99     9472us max  1350194us err 0 mis 0
+/dev/rdisk5    write  0-1.5    seq   bs=1048576  qd=2   180.0s  R     0.0 MB/s  W   226.4 MB/s       216 IOPS  p50    7552us p99    48128us max  1066817us err 0 mis 0
+/dev/rdisk6    write  0-1.5    seq   bs=1048576  qd=2   180.0s  R     0.0 MB/s  W   237.8 MB/s       227 IOPS  p50    7424us p99     9216us max   758173us err 0 mis 0
+/dev/rdisk7    write  0-1.5    seq   bs=1048576  qd=2   180.1s  R     0.0 MB/s  W   230.7 MB/s       220 IOPS  p50    7296us p99    16896us max   885479us err 0 mis 0
+/dev/rdisk8    read   98-99.5  seq   bs=1048576  qd=2   180.0s  R    98.6 MB/s  W     0.0 MB/s        94 IOPS  p50   15872us p99    44032us max  2546536us err 0 mis 0
+/dev/rdisk9    read   98-99.5  seq   bs=1048576  qd=2   180.0s  R    94.4 MB/s  W     0.0 MB/s        90 IOPS  p50   15872us p99    45056us max  2550230us err 0 mis 0
+/dev/rdisk10   read   98-99.5  seq   bs=1048576  qd=2   180.0s  R   100.7 MB/s  W     0.0 MB/s        96 IOPS  p50   15360us p99    45056us max  2538752us err 0 mis 0
+AGGREGATE 7 jobs 180.1s  R 293.6 MB/s  W 929.1 MB/s  total 1222.7 MB/s  1166 IOPS  p50 7552us p99 35840us max 2550230us errors 0 mismatches 0

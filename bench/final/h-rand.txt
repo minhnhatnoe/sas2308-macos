@@ -1,0 +1,15 @@
+job 0: /dev/rdisk4 mix zone=2-50 name=drive1 bytes [360004190208, 9000103968768) lba512 [703133184, 17578328064) blocks=131837460 disk=18000207937536
+job 1: /dev/rdisk5 mix zone=2-50 name=drive2 bytes [360004190208, 9000103968768) lba512 [703133184, 17578328064) blocks=131837460 disk=18000207937536
+job 2: /dev/rdisk6 mix zone=2-50 name=drive3 bytes [360004190208, 9000103968768) lba512 [703133184, 17578328064) blocks=131837460 disk=18000207937536
+job 3: /dev/rdisk7 mix zone=2-50 name=drive4 bytes [360004190208, 9000103968768) lba512 [703133184, 17578328064) blocks=131837460 disk=18000207937536
+job 4: /dev/rdisk8 mix zone=2-50 name=drive5 bytes [360004190208, 9000103968768) lba512 [703133184, 17578328064) blocks=131837460 disk=18000207937536
+job 5: /dev/rdisk9 mix zone=2-50 name=drive6 bytes [360004190208, 9000103968768) lba512 [703133184, 17578328064) blocks=131837460 disk=18000207937536
+job 6: /dev/rdisk10 mix zone=2-50 name=drive7 bytes [360004190208, 9000103968768) lba512 [703133184, 17578328064) blocks=131837460 disk=18000207937536
+/dev/rdisk4    mix    2-50     rand  bs=65536    qd=8   180.1s  R     1.4 MB/s  W     0.6 MB/s        30 IOPS  p50   28160us p99  2490368us max  2585418us err 0 mis 0
+/dev/rdisk5    mix    2-50     rand  bs=65536    qd=8   180.1s  R     1.5 MB/s  W     0.6 MB/s        32 IOPS  p50   38912us p99  2490368us max  2592286us err 0 mis 0
+/dev/rdisk6    mix    2-50     rand  bs=65536    qd=8   180.1s  R     1.3 MB/s  W     0.5 MB/s        28 IOPS  p50   29696us p99  2490368us max  2590412us err 0 mis 0
+/dev/rdisk7    mix    2-50     rand  bs=65536    qd=8   180.1s  R     1.4 MB/s  W     0.6 MB/s        30 IOPS  p50   32768us p99  2490368us max  2587245us err 0 mis 0
+/dev/rdisk8    mix    2-50     rand  bs=65536    qd=8   180.1s  R     2.5 MB/s  W     1.1 MB/s        54 IOPS  p50   19968us p99  2490368us max  2580160us err 0 mis 0
+/dev/rdisk9    mix    2-50     rand  bs=65536    qd=8   180.2s  R     2.8 MB/s  W     1.2 MB/s        60 IOPS  p50   20992us p99  2490368us max  2585353us err 0 mis 0
+/dev/rdisk10   mix    2-50     rand  bs=65536    qd=8   180.2s  R     2.3 MB/s  W     0.9 MB/s        49 IOPS  p50   21504us p99  2490368us max  2596474us err 0 mis 0
+AGGREGATE 7 jobs 180.2s  R 13.0 MB/s  W 5.5 MB/s  total 18.5 MB/s  282 IOPS  p50 24576us p99 2490368us max 2596474us errors 0 mismatches 0

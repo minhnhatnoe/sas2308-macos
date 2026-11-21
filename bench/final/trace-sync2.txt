@@ -1,0 +1,1108 @@
+2026-11-21 01:01:00.392 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1773 target 0 (handle 0x0009) lun 0 READ(10) lba 0 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.393 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1773 cam status 0x1 scsi good xfer 4096/4096 latency 409 us
+2026-11-21 01:01:00.393 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1807 target 0 (handle 0x0009) lun 0 READ(10) lba 2 blocks 1 len 512 segs 1 chains 0
+2026-11-21 01:01:00.393 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1807 cam status 0x1 scsi good xfer 512/512 latency 137 us
+2026-11-21 01:01:00.393 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 799 target 0 (handle 0x0009) lun 0 READ(10) lba 64 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.393 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 799 cam status 0x1 scsi good xfer 2048/2048 latency 104 us
+2026-11-21 01:01:00.393 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 228 target 0 (handle 0x0009) lun 0 READ(10) lba 68 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.393 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 228 cam status 0x1 scsi good xfer 2048/2048 latency 89 us
+2026-11-21 01:01:00.393 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 260 target 0 (handle 0x0009) lun 0 READ(10) lba 72 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.393 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 260 cam status 0x1 scsi good xfer 2048/2048 latency 85 us
+2026-11-21 01:01:00.393 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2004 target 0 (handle 0x0009) lun 0 READ(10) lba 76 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.393 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2004 cam status 0x1 scsi good xfer 2048/2048 latency 83 us
+2026-11-21 01:01:00.393 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1242 target 0 (handle 0x0009) lun 0 READ(10) lba 80 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.394 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1242 cam status 0x1 scsi good xfer 2048/2048 latency 83 us
+2026-11-21 01:01:00.394 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1225 target 0 (handle 0x0009) lun 0 READ(10) lba 84 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.394 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1225 cam status 0x1 scsi good xfer 2048/2048 latency 86 us
+2026-11-21 01:01:00.394 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 322 target 0 (handle 0x0009) lun 0 READ(10) lba 88 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.394 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 322 cam status 0x1 scsi good xfer 2048/2048 latency 89 us
+2026-11-21 01:01:00.394 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 389 target 0 (handle 0x0009) lun 0 READ(10) lba 92 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.394 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 389 cam status 0x1 scsi good xfer 2048/2048 latency 81 us
+2026-11-21 01:01:00.394 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 181 target 0 (handle 0x0009) lun 0 READ(10) lba 96 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.394 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 181 cam status 0x1 scsi good xfer 2048/2048 latency 82 us
+2026-11-21 01:01:00.417 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1077 target 1 (handle 0x000a) lun 0 READ(10) lba 0 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.417 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1077 cam status 0x1 scsi good xfer 4096/4096 latency 378 us
+2026-11-21 01:01:00.417 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 897 target 1 (handle 0x000a) lun 0 READ(10) lba 2 blocks 1 len 512 segs 1 chains 0
+2026-11-21 01:01:00.417 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 897 cam status 0x1 scsi good xfer 512/512 latency 263 us
+2026-11-21 01:01:00.417 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 305 target 1 (handle 0x000a) lun 0 READ(10) lba 64 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.418 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 305 cam status 0x1 scsi good xfer 2048/2048 latency 243 us
+2026-11-21 01:01:00.418 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2028 target 1 (handle 0x000a) lun 0 READ(10) lba 68 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.418 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2028 cam status 0x1 scsi good xfer 2048/2048 latency 235 us
+2026-11-21 01:01:00.418 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1879 target 1 (handle 0x000a) lun 0 READ(10) lba 72 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.418 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1879 cam status 0x1 scsi good xfer 2048/2048 latency 236 us
+2026-11-21 01:01:00.418 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 578 target 1 (handle 0x000a) lun 0 READ(10) lba 76 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.418 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 578 cam status 0x1 scsi good xfer 2048/2048 latency 235 us
+2026-11-21 01:01:00.419 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1013 target 1 (handle 0x000a) lun 0 READ(10) lba 80 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.419 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1013 cam status 0x1 scsi good xfer 2048/2048 latency 232 us
+2026-11-21 01:01:00.419 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1045 target 1 (handle 0x000a) lun 0 READ(10) lba 84 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.419 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1045 cam status 0x1 scsi good xfer 2048/2048 latency 236 us
+2026-11-21 01:01:00.419 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 298 target 1 (handle 0x000a) lun 0 READ(10) lba 88 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.419 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 298 cam status 0x1 scsi good xfer 2048/2048 latency 233 us
+2026-11-21 01:01:00.419 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 513 target 1 (handle 0x000a) lun 0 READ(10) lba 92 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.420 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 513 cam status 0x1 scsi good xfer 2048/2048 latency 233 us
+2026-11-21 01:01:00.420 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2037 target 1 (handle 0x000a) lun 0 READ(10) lba 96 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.420 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2037 cam status 0x1 scsi good xfer 2048/2048 latency 233 us
+2026-11-21 01:01:00.436 Db kernel[0:cb7f] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1211 target 2 (handle 0x000b) lun 0 READ(10) lba 0 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.436 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1211 cam status 0x1 scsi good xfer 4096/4096 latency 367 us
+2026-11-21 01:01:00.436 Db kernel[0:cb7f] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1651 target 2 (handle 0x000b) lun 0 READ(10) lba 2 blocks 1 len 512 segs 1 chains 0
+2026-11-21 01:01:00.437 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1651 cam status 0x1 scsi good xfer 512/512 latency 264 us
+2026-11-21 01:01:00.437 Db kernel[0:cb7f] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1683 target 2 (handle 0x000b) lun 0 READ(10) lba 64 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.437 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1683 cam status 0x1 scsi good xfer 2048/2048 latency 240 us
+2026-11-21 01:01:00.437 Db kernel[0:cb7f] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2147 target 2 (handle 0x000b) lun 0 READ(10) lba 68 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.437 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2147 cam status 0x1 scsi good xfer 2048/2048 latency 236 us
+2026-11-21 01:01:00.437 Db kernel[0:cb7f] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1089 target 2 (handle 0x000b) lun 0 READ(10) lba 72 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.438 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1089 cam status 0x1 scsi good xfer 2048/2048 latency 229 us
+2026-11-21 01:01:00.438 Db kernel[0:cb7f] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1839 target 2 (handle 0x000b) lun 0 READ(10) lba 76 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.438 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1839 cam status 0x1 scsi good xfer 2048/2048 latency 231 us
+2026-11-21 01:01:00.438 Db kernel[0:cb7f] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 793 target 2 (handle 0x000b) lun 0 READ(10) lba 80 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.438 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 793 cam status 0x1 scsi good xfer 2048/2048 latency 231 us
+2026-11-21 01:01:00.438 Db kernel[0:cb7f] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2066 target 2 (handle 0x000b) lun 0 READ(10) lba 84 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.438 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2066 cam status 0x1 scsi good xfer 2048/2048 latency 233 us
+2026-11-21 01:01:00.438 Db kernel[0:cb7f] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1771 target 2 (handle 0x000b) lun 0 READ(10) lba 88 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.439 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1771 cam status 0x1 scsi good xfer 2048/2048 latency 229 us
+2026-11-21 01:01:00.439 Db kernel[0:cb7f] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1690 target 2 (handle 0x000b) lun 0 READ(10) lba 92 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.439 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1690 cam status 0x1 scsi good xfer 2048/2048 latency 230 us
+2026-11-21 01:01:00.439 Db kernel[0:cb7f] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1710 target 2 (handle 0x000b) lun 0 READ(10) lba 96 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.439 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1710 cam status 0x1 scsi good xfer 2048/2048 latency 226 us
+2026-11-21 01:01:00.452 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 614 target 3 (handle 0x000c) lun 0 READ(10) lba 0 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.452 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 614 cam status 0x1 scsi good xfer 4096/4096 latency 358 us
+2026-11-21 01:01:00.452 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 314 target 3 (handle 0x000c) lun 0 READ(10) lba 2 blocks 1 len 512 segs 1 chains 0
+2026-11-21 01:01:00.453 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 314 cam status 0x1 scsi good xfer 512/512 latency 262 us
+2026-11-21 01:01:00.453 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2038 target 3 (handle 0x000c) lun 0 READ(10) lba 64 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.453 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2038 cam status 0x1 scsi good xfer 2048/2048 latency 244 us
+2026-11-21 01:01:00.453 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1534 target 3 (handle 0x000c) lun 0 READ(10) lba 68 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.453 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1534 cam status 0x1 scsi good xfer 2048/2048 latency 237 us
+2026-11-21 01:01:00.453 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1175 target 3 (handle 0x000c) lun 0 READ(10) lba 72 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.453 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1175 cam status 0x1 scsi good xfer 2048/2048 latency 233 us
+2026-11-21 01:01:00.453 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1632 target 3 (handle 0x000c) lun 0 READ(10) lba 76 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.454 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1632 cam status 0x1 scsi good xfer 2048/2048 latency 229 us
+2026-11-21 01:01:00.454 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1151 target 3 (handle 0x000c) lun 0 READ(10) lba 80 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.454 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1151 cam status 0x1 scsi good xfer 2048/2048 latency 228 us
+2026-11-21 01:01:00.454 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1951 target 3 (handle 0x000c) lun 0 READ(10) lba 84 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.454 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1951 cam status 0x1 scsi good xfer 2048/2048 latency 231 us
+2026-11-21 01:01:00.454 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1476 target 3 (handle 0x000c) lun 0 READ(10) lba 88 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.454 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1476 cam status 0x1 scsi good xfer 2048/2048 latency 228 us
+2026-11-21 01:01:00.454 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1700 target 3 (handle 0x000c) lun 0 READ(10) lba 92 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.455 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1700 cam status 0x1 scsi good xfer 2048/2048 latency 230 us
+2026-11-21 01:01:00.455 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1811 target 3 (handle 0x000c) lun 0 READ(10) lba 96 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.455 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1811 cam status 0x1 scsi good xfer 2048/2048 latency 225 us
+2026-11-21 01:01:00.467 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1911 target 4 (handle 0x000d) lun 0 READ(10) lba 0 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.467 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1911 cam status 0x1 scsi good xfer 4096/4096 latency 400 us
+2026-11-21 01:01:00.467 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2033 target 4 (handle 0x000d) lun 0 READ(10) lba 2 blocks 1 len 512 segs 1 chains 0
+2026-11-21 01:01:00.467 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2033 cam status 0x1 scsi good xfer 512/512 latency 124 us
+2026-11-21 01:01:00.467 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1899 target 4 (handle 0x000d) lun 0 READ(10) lba 64 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.467 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1899 cam status 0x1 scsi good xfer 2048/2048 latency 101 us
+2026-11-21 01:01:00.467 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1296 target 4 (handle 0x000d) lun 0 READ(10) lba 68 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.467 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1296 cam status 0x1 scsi good xfer 2048/2048 latency 82 us
+2026-11-21 01:01:00.467 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 864 target 4 (handle 0x000d) lun 0 READ(10) lba 72 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.468 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 864 cam status 0x1 scsi good xfer 2048/2048 latency 78 us
+2026-11-21 01:01:00.468 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1767 target 4 (handle 0x000d) lun 0 READ(10) lba 76 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.468 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1767 cam status 0x1 scsi good xfer 2048/2048 latency 79 us
+2026-11-21 01:01:00.468 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1907 target 4 (handle 0x000d) lun 0 READ(10) lba 80 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.468 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1907 cam status 0x1 scsi good xfer 2048/2048 latency 82 us
+2026-11-21 01:01:00.468 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 239 target 4 (handle 0x000d) lun 0 READ(10) lba 84 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.468 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 239 cam status 0x1 scsi good xfer 2048/2048 latency 77 us
+2026-11-21 01:01:00.468 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 642 target 4 (handle 0x000d) lun 0 READ(10) lba 88 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.468 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 642 cam status 0x1 scsi good xfer 2048/2048 latency 76 us
+2026-11-21 01:01:00.468 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1841 target 4 (handle 0x000d) lun 0 READ(10) lba 92 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.468 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1841 cam status 0x1 scsi good xfer 2048/2048 latency 78 us
+2026-11-21 01:01:00.468 Db kernel[0:ca77] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1532 target 4 (handle 0x000d) lun 0 READ(10) lba 96 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.468 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1532 cam status 0x1 scsi good xfer 2048/2048 latency 76 us
+2026-11-21 01:01:00.480 Db kernel[0:cb7a] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 391 target 5 (handle 0x000e) lun 0 READ(10) lba 0 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.480 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 391 cam status 0x1 scsi good xfer 4096/4096 latency 388 us
+2026-11-21 01:01:00.480 Db kernel[0:cb7a] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 922 target 5 (handle 0x000e) lun 0 READ(10) lba 2 blocks 1 len 512 segs 1 chains 0
+2026-11-21 01:01:00.480 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 922 cam status 0x1 scsi good xfer 512/512 latency 167 us
+2026-11-21 01:01:00.480 Db kernel[0:cb7a] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 231 target 5 (handle 0x000e) lun 0 READ(10) lba 64 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.480 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 231 cam status 0x1 scsi good xfer 2048/2048 latency 96 us
+2026-11-21 01:01:00.480 Db kernel[0:cb7a] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 331 target 5 (handle 0x000e) lun 0 READ(10) lba 68 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.480 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 331 cam status 0x1 scsi good xfer 2048/2048 latency 83 us
+2026-11-21 01:01:00.480 Db kernel[0:cb7a] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 589 target 5 (handle 0x000e) lun 0 READ(10) lba 72 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.481 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 589 cam status 0x1 scsi good xfer 2048/2048 latency 81 us
+2026-11-21 01:01:00.481 Db kernel[0:cb7a] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1655 target 5 (handle 0x000e) lun 0 READ(10) lba 76 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.481 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1655 cam status 0x1 scsi good xfer 2048/2048 latency 77 us
+2026-11-21 01:01:00.481 Db kernel[0:cb7a] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1136 target 5 (handle 0x000e) lun 0 READ(10) lba 80 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.481 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1136 cam status 0x1 scsi good xfer 2048/2048 latency 77 us
+2026-11-21 01:01:00.481 Db kernel[0:cb7a] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1248 target 5 (handle 0x000e) lun 0 READ(10) lba 84 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.481 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1248 cam status 0x1 scsi good xfer 2048/2048 latency 78 us
+2026-11-21 01:01:00.481 Db kernel[0:cb7a] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2125 target 5 (handle 0x000e) lun 0 READ(10) lba 88 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.481 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2125 cam status 0x1 scsi good xfer 2048/2048 latency 83 us
+2026-11-21 01:01:00.481 Db kernel[0:cb7a] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 867 target 5 (handle 0x000e) lun 0 READ(10) lba 92 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.481 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 867 cam status 0x1 scsi good xfer 2048/2048 latency 81 us
+2026-11-21 01:01:00.481 Db kernel[0:cb7a] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1609 target 5 (handle 0x000e) lun 0 READ(10) lba 96 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.481 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1609 cam status 0x1 scsi good xfer 2048/2048 latency 83 us
+2026-11-21 01:01:00.493 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 462 target 6 (handle 0x000f) lun 0 READ(10) lba 0 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.493 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 462 cam status 0x1 scsi good xfer 4096/4096 latency 298 us
+2026-11-21 01:01:00.493 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 573 target 6 (handle 0x000f) lun 0 READ(10) lba 2 blocks 1 len 512 segs 1 chains 0
+2026-11-21 01:01:00.493 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 573 cam status 0x1 scsi good xfer 512/512 latency 99 us
+2026-11-21 01:01:00.493 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1981 target 6 (handle 0x000f) lun 0 READ(10) lba 64 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.493 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1981 cam status 0x1 scsi good xfer 2048/2048 latency 86 us
+2026-11-21 01:01:00.493 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1249 target 6 (handle 0x000f) lun 0 READ(10) lba 68 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.493 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1249 cam status 0x1 scsi good xfer 2048/2048 latency 81 us
+2026-11-21 01:01:00.493 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 944 target 6 (handle 0x000f) lun 0 READ(10) lba 72 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.493 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 944 cam status 0x1 scsi good xfer 2048/2048 latency 77 us
+2026-11-21 01:01:00.493 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2011 target 6 (handle 0x000f) lun 0 READ(10) lba 76 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.493 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2011 cam status 0x1 scsi good xfer 2048/2048 latency 82 us
+2026-11-21 01:01:00.493 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 640 target 6 (handle 0x000f) lun 0 READ(10) lba 80 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.494 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 640 cam status 0x1 scsi good xfer 2048/2048 latency 74 us
+2026-11-21 01:01:00.494 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 142 target 6 (handle 0x000f) lun 0 READ(10) lba 84 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.494 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 142 cam status 0x1 scsi good xfer 2048/2048 latency 77 us
+2026-11-21 01:01:00.494 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1944 target 6 (handle 0x000f) lun 0 READ(10) lba 88 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.494 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1944 cam status 0x1 scsi good xfer 2048/2048 latency 75 us
+2026-11-21 01:01:00.494 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 407 target 6 (handle 0x000f) lun 0 READ(10) lba 92 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.494 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 407 cam status 0x1 scsi good xfer 2048/2048 latency 74 us
+2026-11-21 01:01:00.494 Db kernel[0:c9f8] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1824 target 6 (handle 0x000f) lun 0 READ(10) lba 96 blocks 4 len 2048 segs 1 chains 0
+2026-11-21 01:01:00.494 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1824 cam status 0x1 scsi good xfer 2048/2048 latency 76 us
+2026-11-21 01:01:00.496 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1785 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699688 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.496 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1785 cam status 0x1 scsi good xfer 4096/4096 latency 240 us
+2026-11-21 01:01:00.496 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1068 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.511 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1068 cam status 0x1 scsi good xfer 0/0 latency 15387 us
+2026-11-21 01:01:00.511 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1141 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699696 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.512 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1141 cam status 0x1 scsi good xfer 4096/4096 latency 219 us
+2026-11-21 01:01:00.512 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1066 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.520 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1066 cam status 0x1 scsi good xfer 0/0 latency 8030 us
+2026-11-21 01:01:00.520 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 351 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699704 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.520 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 351 cam status 0x1 scsi good xfer 4096/4096 latency 217 us
+2026-11-21 01:01:00.520 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 499 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.528 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 499 cam status 0x1 scsi good xfer 0/0 latency 8050 us
+2026-11-21 01:01:00.528 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 811 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699712 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.528 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 811 cam status 0x1 scsi good xfer 4096/4096 latency 204 us
+2026-11-21 01:01:00.528 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 561 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.536 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 561 cam status 0x1 scsi good xfer 0/0 latency 8054 us
+2026-11-21 01:01:00.536 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1439 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699720 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.537 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1439 cam status 0x1 scsi good xfer 4096/4096 latency 214 us
+2026-11-21 01:01:00.537 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 942 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.545 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 942 cam status 0x1 scsi good xfer 0/0 latency 8050 us
+2026-11-21 01:01:00.545 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1551 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699728 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.545 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1551 cam status 0x1 scsi good xfer 4096/4096 latency 205 us
+2026-11-21 01:01:00.545 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 879 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.553 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 879 cam status 0x1 scsi good xfer 0/0 latency 8062 us
+2026-11-21 01:01:00.553 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1061 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699736 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.553 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1061 cam status 0x1 scsi good xfer 4096/4096 latency 212 us
+2026-11-21 01:01:00.553 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1854 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.561 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1854 cam status 0x1 scsi good xfer 0/0 latency 8050 us
+2026-11-21 01:01:00.561 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1629 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699744 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.562 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1629 cam status 0x1 scsi good xfer 4096/4096 latency 204 us
+2026-11-21 01:01:00.562 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1280 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.570 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1280 cam status 0x1 scsi good xfer 0/0 latency 8067 us
+2026-11-21 01:01:00.570 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1516 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699752 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.570 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1516 cam status 0x1 scsi good xfer 4096/4096 latency 219 us
+2026-11-21 01:01:00.570 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 526 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.578 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 526 cam status 0x1 scsi good xfer 0/0 latency 8040 us
+2026-11-21 01:01:00.578 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2006 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699760 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.578 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2006 cam status 0x1 scsi good xfer 4096/4096 latency 203 us
+2026-11-21 01:01:00.578 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1660 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.586 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1660 cam status 0x1 scsi good xfer 0/0 latency 8060 us
+2026-11-21 01:01:00.587 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1115 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699768 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.587 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1115 cam status 0x1 scsi good xfer 4096/4096 latency 209 us
+2026-11-21 01:01:00.587 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1946 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.595 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1946 cam status 0x1 scsi good xfer 0/0 latency 8049 us
+2026-11-21 01:01:00.595 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2085 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699776 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.595 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2085 cam status 0x1 scsi good xfer 4096/4096 latency 209 us
+2026-11-21 01:01:00.595 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 647 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.603 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 647 cam status 0x1 scsi good xfer 0/0 latency 8052 us
+2026-11-21 01:01:00.603 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 755 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699784 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.603 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 755 cam status 0x1 scsi good xfer 4096/4096 latency 210 us
+2026-11-21 01:01:00.603 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2040 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.612 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2040 cam status 0x1 scsi good xfer 0/0 latency 8056 us
+2026-11-21 01:01:00.612 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 134 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699792 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.612 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 134 cam status 0x1 scsi good xfer 4096/4096 latency 214 us
+2026-11-21 01:01:00.612 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 408 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.620 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 408 cam status 0x1 scsi good xfer 0/0 latency 8047 us
+2026-11-21 01:01:00.620 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1489 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699800 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.620 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1489 cam status 0x1 scsi good xfer 4096/4096 latency 212 us
+2026-11-21 01:01:00.620 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1752 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.628 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1752 cam status 0x1 scsi good xfer 0/0 latency 8037 us
+2026-11-21 01:01:00.628 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 678 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699808 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.628 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 678 cam status 0x1 scsi good xfer 4096/4096 latency 205 us
+2026-11-21 01:01:00.629 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1962 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.637 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1962 cam status 0x1 scsi good xfer 0/0 latency 8046 us
+2026-11-21 01:01:00.637 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 436 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699816 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.637 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 436 cam status 0x1 scsi good xfer 4096/4096 latency 215 us
+2026-11-21 01:01:00.637 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1674 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.645 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1674 cam status 0x1 scsi good xfer 0/0 latency 8044 us
+2026-11-21 01:01:00.645 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1991 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699824 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.645 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1991 cam status 0x1 scsi good xfer 4096/4096 latency 207 us
+2026-11-21 01:01:00.645 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1686 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.653 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1686 cam status 0x1 scsi good xfer 0/0 latency 8034 us
+2026-11-21 01:01:00.653 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2007 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699832 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.654 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2007 cam status 0x1 scsi good xfer 4096/4096 latency 216 us
+2026-11-21 01:01:00.654 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 791 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.662 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 791 cam status 0x1 scsi good xfer 0/0 latency 7970 us
+2026-11-21 01:01:00.662 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1530 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699840 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.662 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1530 cam status 0x1 scsi good xfer 4096/4096 latency 202 us
+2026-11-21 01:01:00.662 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 663 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.670 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 663 cam status 0x1 scsi good xfer 0/0 latency 8083 us
+2026-11-21 01:01:00.670 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 514 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699848 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.671 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 514 cam status 0x1 scsi good xfer 4096/4096 latency 823 us
+2026-11-21 01:01:00.671 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2072 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.678 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2072 cam status 0x1 scsi good xfer 0/0 latency 7478 us
+2026-11-21 01:01:00.678 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1549 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699856 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.679 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1549 cam status 0x1 scsi good xfer 4096/4096 latency 665 us
+2026-11-21 01:01:00.679 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1309 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.687 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1309 cam status 0x1 scsi good xfer 0/0 latency 7596 us
+2026-11-21 01:01:00.687 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 714 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699864 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.687 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 714 cam status 0x1 scsi good xfer 4096/4096 latency 649 us
+2026-11-21 01:01:00.687 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1157 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.695 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1157 cam status 0x1 scsi good xfer 0/0 latency 7639 us
+2026-11-21 01:01:00.695 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1051 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699872 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.696 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1051 cam status 0x1 scsi good xfer 4096/4096 latency 651 us
+2026-11-21 01:01:00.696 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1783 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.703 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1783 cam status 0x1 scsi good xfer 0/0 latency 7639 us
+2026-11-21 01:01:00.703 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1214 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699880 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.704 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1214 cam status 0x1 scsi good xfer 4096/4096 latency 652 us
+2026-11-21 01:01:00.704 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1527 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.712 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1527 cam status 0x1 scsi good xfer 0/0 latency 7613 us
+2026-11-21 01:01:00.712 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 729 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699888 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.712 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 729 cam status 0x1 scsi good xfer 4096/4096 latency 636 us
+2026-11-21 01:01:00.712 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2000 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.720 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2000 cam status 0x1 scsi good xfer 0/0 latency 7661 us
+2026-11-21 01:01:00.720 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 764 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699896 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.721 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 764 cam status 0x1 scsi good xfer 4096/4096 latency 656 us
+2026-11-21 01:01:00.721 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1232 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.728 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1232 cam status 0x1 scsi good xfer 0/0 latency 7642 us
+2026-11-21 01:01:00.728 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 611 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699904 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.729 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 611 cam status 0x1 scsi good xfer 4096/4096 latency 651 us
+2026-11-21 01:01:00.729 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1419 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.737 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1419 cam status 0x1 scsi good xfer 0/0 latency 7638 us
+2026-11-21 01:01:00.737 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1197 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699912 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.737 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1197 cam status 0x1 scsi good xfer 4096/4096 latency 632 us
+2026-11-21 01:01:00.737 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1474 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.745 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1474 cam status 0x1 scsi good xfer 0/0 latency 7648 us
+2026-11-21 01:01:00.745 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2118 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699920 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.746 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2118 cam status 0x1 scsi good xfer 4096/4096 latency 640 us
+2026-11-21 01:01:00.746 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1706 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.753 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1706 cam status 0x1 scsi good xfer 0/0 latency 7642 us
+2026-11-21 01:01:00.753 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1777 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699928 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.754 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1777 cam status 0x1 scsi good xfer 4096/4096 latency 637 us
+2026-11-21 01:01:00.754 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1138 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.762 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1138 cam status 0x1 scsi good xfer 0/0 latency 7664 us
+2026-11-21 01:01:00.762 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 183 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699936 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.762 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 183 cam status 0x1 scsi good xfer 4096/4096 latency 651 us
+2026-11-21 01:01:00.762 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1470 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.770 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1470 cam status 0x1 scsi good xfer 0/0 latency 7812 us
+2026-11-21 01:01:00.770 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1792 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699944 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.771 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1792 cam status 0x1 scsi good xfer 4096/4096 latency 664 us
+2026-11-21 01:01:00.771 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1738 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.778 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1738 cam status 0x1 scsi good xfer 0/0 latency 7433 us
+2026-11-21 01:01:00.778 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1520 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699952 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.779 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1520 cam status 0x1 scsi good xfer 4096/4096 latency 636 us
+2026-11-21 01:01:00.779 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 175 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.787 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 175 cam status 0x1 scsi good xfer 0/0 latency 7664 us
+2026-11-21 01:01:00.787 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 902 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699960 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.787 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 902 cam status 0x1 scsi good xfer 4096/4096 latency 652 us
+2026-11-21 01:01:00.787 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 980 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.795 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 980 cam status 0x1 scsi good xfer 0/0 latency 7643 us
+2026-11-21 01:01:00.795 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 506 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699968 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.796 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 506 cam status 0x1 scsi good xfer 4096/4096 latency 651 us
+2026-11-21 01:01:00.796 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1025 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.803 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1025 cam status 0x1 scsi good xfer 0/0 latency 7621 us
+2026-11-21 01:01:00.803 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1473 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699976 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.804 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1473 cam status 0x1 scsi good xfer 4096/4096 latency 654 us
+2026-11-21 01:01:00.804 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 607 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.812 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 607 cam status 0x1 scsi good xfer 0/0 latency 7640 us
+2026-11-21 01:01:00.812 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 728 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699984 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.812 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 728 cam status 0x1 scsi good xfer 4096/4096 latency 645 us
+2026-11-21 01:01:00.812 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1149 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.820 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1149 cam status 0x1 scsi good xfer 0/0 latency 7659 us
+2026-11-21 01:01:00.820 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1817 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054699992 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.821 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1817 cam status 0x1 scsi good xfer 4096/4096 latency 633 us
+2026-11-21 01:01:00.821 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 606 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.829 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 606 cam status 0x1 scsi good xfer 0/0 latency 7663 us
+2026-11-21 01:01:00.829 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1877 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700000 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.829 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1877 cam status 0x1 scsi good xfer 4096/4096 latency 630 us
+2026-11-21 01:01:00.829 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 271 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.837 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 271 cam status 0x1 scsi good xfer 0/0 latency 7643 us
+2026-11-21 01:01:00.837 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 300 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700008 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.837 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 300 cam status 0x1 scsi good xfer 4096/4096 latency 635 us
+2026-11-21 01:01:00.838 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 826 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.845 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 826 cam status 0x1 scsi good xfer 0/0 latency 7663 us
+2026-11-21 01:01:00.845 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 891 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700016 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.846 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 891 cam status 0x1 scsi good xfer 4096/4096 latency 634 us
+2026-11-21 01:01:00.846 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1583 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.854 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1583 cam status 0x1 scsi good xfer 0/0 latency 7665 us
+2026-11-21 01:01:00.854 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 749 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700024 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.854 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 749 cam status 0x1 scsi good xfer 4096/4096 latency 663 us
+2026-11-21 01:01:00.854 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1346 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.862 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1346 cam status 0x1 scsi good xfer 0/0 latency 7617 us
+2026-11-21 01:01:00.862 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1264 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700032 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.863 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1264 cam status 0x1 scsi good xfer 4096/4096 latency 639 us
+2026-11-21 01:01:00.863 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1799 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.870 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1799 cam status 0x1 scsi good xfer 0/0 latency 7662 us
+2026-11-21 01:01:00.870 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1344 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700040 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.871 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1344 cam status 0x1 scsi good xfer 4096/4096 latency 650 us
+2026-11-21 01:01:00.871 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 400 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.879 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 400 cam status 0x1 scsi good xfer 0/0 latency 7648 us
+2026-11-21 01:01:00.879 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1054 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700048 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.879 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1054 cam status 0x1 scsi good xfer 4096/4096 latency 632 us
+2026-11-21 01:01:00.879 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1544 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.887 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1544 cam status 0x1 scsi good xfer 0/0 latency 7660 us
+2026-11-21 01:01:00.887 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 803 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700056 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.888 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 803 cam status 0x1 scsi good xfer 4096/4096 latency 626 us
+2026-11-21 01:01:00.888 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 223 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.895 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 223 cam status 0x1 scsi good xfer 0/0 latency 7643 us
+2026-11-21 01:01:00.895 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1561 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700064 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.896 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1561 cam status 0x1 scsi good xfer 4096/4096 latency 649 us
+2026-11-21 01:01:00.896 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 914 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.904 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 914 cam status 0x1 scsi good xfer 0/0 latency 7640 us
+2026-11-21 01:01:00.904 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1969 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700072 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.904 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1969 cam status 0x1 scsi good xfer 4096/4096 latency 650 us
+2026-11-21 01:01:00.904 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1227 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.912 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1227 cam status 0x1 scsi good xfer 0/0 latency 7642 us
+2026-11-21 01:01:00.912 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1529 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700080 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.913 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1529 cam status 0x1 scsi good xfer 4096/4096 latency 646 us
+2026-11-21 01:01:00.913 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 556 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.920 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 556 cam status 0x1 scsi good xfer 0/0 latency 7619 us
+2026-11-21 01:01:00.920 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1990 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700088 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.921 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1990 cam status 0x1 scsi good xfer 4096/4096 latency 656 us
+2026-11-21 01:01:00.921 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 344 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.929 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 344 cam status 0x1 scsi good xfer 0/0 latency 7649 us
+2026-11-21 01:01:00.929 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1548 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700096 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.929 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1548 cam status 0x1 scsi good xfer 4096/4096 latency 647 us
+2026-11-21 01:01:00.929 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1377 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.937 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1377 cam status 0x1 scsi good xfer 0/0 latency 7643 us
+2026-11-21 01:01:00.937 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 456 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700104 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.938 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 456 cam status 0x1 scsi good xfer 4096/4096 latency 649 us
+2026-11-21 01:01:00.938 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1415 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.945 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1415 cam status 0x1 scsi good xfer 0/0 latency 7645 us
+2026-11-21 01:01:00.945 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2105 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700112 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.946 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2105 cam status 0x1 scsi good xfer 4096/4096 latency 658 us
+2026-11-21 01:01:00.946 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1912 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.954 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1912 cam status 0x1 scsi good xfer 0/0 latency 7602 us
+2026-11-21 01:01:00.954 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 798 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700120 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.954 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 798 cam status 0x1 scsi good xfer 4096/4096 latency 646 us
+2026-11-21 01:01:00.954 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2027 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.962 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2027 cam status 0x1 scsi good xfer 0/0 latency 7665 us
+2026-11-21 01:01:00.962 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1537 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700128 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.963 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1537 cam status 0x1 scsi good xfer 4096/4096 latency 632 us
+2026-11-21 01:01:00.963 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1113 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.970 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1113 cam status 0x1 scsi good xfer 0/0 latency 7668 us
+2026-11-21 01:01:00.970 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 637 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700136 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.971 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 637 cam status 0x1 scsi good xfer 4096/4096 latency 635 us
+2026-11-21 01:01:00.971 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 881 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.979 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 881 cam status 0x1 scsi good xfer 0/0 latency 7644 us
+2026-11-21 01:01:00.979 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1755 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700144 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.979 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1755 cam status 0x1 scsi good xfer 4096/4096 latency 645 us
+2026-11-21 01:01:00.979 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 255 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.987 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 255 cam status 0x1 scsi good xfer 0/0 latency 7647 us
+2026-11-21 01:01:00.987 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 587 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700152 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.988 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 587 cam status 0x1 scsi good xfer 4096/4096 latency 632 us
+2026-11-21 01:01:00.988 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 615 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:00.995 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 615 cam status 0x1 scsi good xfer 0/0 latency 7667 us
+2026-11-21 01:01:00.995 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1047 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700160 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:00.996 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1047 cam status 0x1 scsi good xfer 4096/4096 latency 634 us
+2026-11-21 01:01:00.996 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1198 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.004 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1198 cam status 0x1 scsi good xfer 0/0 latency 7654 us
+2026-11-21 01:01:01.004 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1646 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700168 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.004 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1646 cam status 0x1 scsi good xfer 4096/4096 latency 642 us
+2026-11-21 01:01:01.004 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1856 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.012 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1856 cam status 0x1 scsi good xfer 0/0 latency 7640 us
+2026-11-21 01:01:01.012 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1729 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700176 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.013 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1729 cam status 0x1 scsi good xfer 4096/4096 latency 633 us
+2026-11-21 01:01:01.013 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 644 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.020 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 644 cam status 0x1 scsi good xfer 0/0 latency 7663 us
+2026-11-21 01:01:01.020 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 483 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700184 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.021 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 483 cam status 0x1 scsi good xfer 4096/4096 latency 655 us
+2026-11-21 01:01:01.021 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1717 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.029 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1717 cam status 0x1 scsi good xfer 0/0 latency 7645 us
+2026-11-21 01:01:01.029 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1915 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700192 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.029 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1915 cam status 0x1 scsi good xfer 4096/4096 latency 639 us
+2026-11-21 01:01:01.029 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 447 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.037 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 447 cam status 0x1 scsi good xfer 0/0 latency 7657 us
+2026-11-21 01:01:01.037 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1376 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700200 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.038 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1376 cam status 0x1 scsi good xfer 4096/4096 latency 655 us
+2026-11-21 01:01:01.038 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 476 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.045 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 476 cam status 0x1 scsi good xfer 0/0 latency 7628 us
+2026-11-21 01:01:01.045 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1267 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700208 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.046 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1267 cam status 0x1 scsi good xfer 4096/4096 latency 654 us
+2026-11-21 01:01:01.046 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1973 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.054 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1973 cam status 0x1 scsi good xfer 0/0 latency 7640 us
+2026-11-21 01:01:01.054 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 288 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700216 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.054 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 288 cam status 0x1 scsi good xfer 4096/4096 latency 651 us
+2026-11-21 01:01:01.055 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 938 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.062 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 938 cam status 0x1 scsi good xfer 0/0 latency 7636 us
+2026-11-21 01:01:01.062 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1627 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700224 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.063 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1627 cam status 0x1 scsi good xfer 4096/4096 latency 638 us
+2026-11-21 01:01:01.063 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 954 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.070 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 954 cam status 0x1 scsi good xfer 0/0 latency 7634 us
+2026-11-21 01:01:01.071 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 597 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700232 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.071 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 597 cam status 0x1 scsi good xfer 4096/4096 latency 637 us
+2026-11-21 01:01:01.071 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 145 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.079 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 145 cam status 0x1 scsi good xfer 0/0 latency 7660 us
+2026-11-21 01:01:01.079 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1081 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700240 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.079 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1081 cam status 0x1 scsi good xfer 4096/4096 latency 639 us
+2026-11-21 01:01:01.080 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1834 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.087 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1834 cam status 0x1 scsi good xfer 0/0 latency 7659 us
+2026-11-21 01:01:01.087 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1576 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700248 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.088 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1576 cam status 0x1 scsi good xfer 4096/4096 latency 641 us
+2026-11-21 01:01:01.088 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 196 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.096 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 196 cam status 0x1 scsi good xfer 0/0 latency 7659 us
+2026-11-21 01:01:01.096 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1831 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700256 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.096 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1831 cam status 0x1 scsi good xfer 4096/4096 latency 659 us
+2026-11-21 01:01:01.096 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 195 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.104 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 195 cam status 0x1 scsi good xfer 0/0 latency 7625 us
+2026-11-21 01:01:01.104 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1812 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700264 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.105 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1812 cam status 0x1 scsi good xfer 4096/4096 latency 656 us
+2026-11-21 01:01:01.105 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1334 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.112 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1334 cam status 0x1 scsi good xfer 0/0 latency 7650 us
+2026-11-21 01:01:01.112 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1271 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700272 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.113 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1271 cam status 0x1 scsi good xfer 4096/4096 latency 646 us
+2026-11-21 01:01:01.113 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 710 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.121 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 710 cam status 0x1 scsi good xfer 0/0 latency 7640 us
+2026-11-21 01:01:01.121 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 770 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700280 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.121 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 770 cam status 0x1 scsi good xfer 4096/4096 latency 658 us
+2026-11-21 01:01:01.121 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1581 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.129 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1581 cam status 0x1 scsi good xfer 0/0 latency 7618 us
+2026-11-21 01:01:01.129 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 997 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700288 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.130 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 997 cam status 0x1 scsi good xfer 4096/4096 latency 661 us
+2026-11-21 01:01:01.130 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1187 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.137 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1187 cam status 0x1 scsi good xfer 0/0 latency 7641 us
+2026-11-21 01:01:01.137 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1744 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700296 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.138 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1744 cam status 0x1 scsi good xfer 4096/4096 latency 649 us
+2026-11-21 01:01:01.138 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1586 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.146 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1586 cam status 0x1 scsi good xfer 0/0 latency 7656 us
+2026-11-21 01:01:01.146 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1512 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700304 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.146 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1512 cam status 0x1 scsi good xfer 4096/4096 latency 649 us
+2026-11-21 01:01:01.146 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1756 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.154 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1756 cam status 0x1 scsi good xfer 0/0 latency 7643 us
+2026-11-21 01:01:01.154 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1304 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700312 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.155 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1304 cam status 0x1 scsi good xfer 4096/4096 latency 639 us
+2026-11-21 01:01:01.155 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2127 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.162 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2127 cam status 0x1 scsi good xfer 0/0 latency 7643 us
+2026-11-21 01:01:01.162 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 497 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700320 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.163 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 497 cam status 0x1 scsi good xfer 4096/4096 latency 660 us
+2026-11-21 01:01:01.163 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 519 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.171 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 519 cam status 0x1 scsi good xfer 0/0 latency 7636 us
+2026-11-21 01:01:01.171 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 870 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700328 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.171 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 870 cam status 0x1 scsi good xfer 4096/4096 latency 640 us
+2026-11-21 01:01:01.171 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 485 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.179 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 485 cam status 0x1 scsi good xfer 0/0 latency 7662 us
+2026-11-21 01:01:01.179 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1843 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700336 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.180 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1843 cam status 0x1 scsi good xfer 4096/4096 latency 655 us
+2026-11-21 01:01:01.180 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1677 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.187 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1677 cam status 0x1 scsi good xfer 0/0 latency 7619 us
+2026-11-21 01:01:01.187 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 530 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700344 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.188 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 530 cam status 0x1 scsi good xfer 4096/4096 latency 665 us
+2026-11-21 01:01:01.188 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 796 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.196 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 796 cam status 0x1 scsi good xfer 0/0 latency 7636 us
+2026-11-21 01:01:01.196 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1702 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700352 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.196 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1702 cam status 0x1 scsi good xfer 4096/4096 latency 656 us
+2026-11-21 01:01:01.196 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2091 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.204 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2091 cam status 0x1 scsi good xfer 0/0 latency 7645 us
+2026-11-21 01:01:01.204 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1865 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700360 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.205 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1865 cam status 0x1 scsi good xfer 4096/4096 latency 638 us
+2026-11-21 01:01:01.205 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1169 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.212 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1169 cam status 0x1 scsi good xfer 0/0 latency 7664 us
+2026-11-21 01:01:01.212 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2161 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700368 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.213 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2161 cam status 0x1 scsi good xfer 4096/4096 latency 659 us
+2026-11-21 01:01:01.213 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1513 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.221 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1513 cam status 0x1 scsi good xfer 0/0 latency 7607 us
+2026-11-21 01:01:01.221 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1996 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700376 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.221 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1996 cam status 0x1 scsi good xfer 4096/4096 latency 660 us
+2026-11-21 01:01:01.221 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2130 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.229 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2130 cam status 0x1 scsi good xfer 0/0 latency 7642 us
+2026-11-21 01:01:01.229 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 386 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700384 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.230 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 386 cam status 0x1 scsi good xfer 4096/4096 latency 657 us
+2026-11-21 01:01:01.230 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2087 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.237 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2087 cam status 0x1 scsi good xfer 0/0 latency 7646 us
+2026-11-21 01:01:01.237 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2164 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700392 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.238 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2164 cam status 0x1 scsi good xfer 4096/4096 latency 666 us
+2026-11-21 01:01:01.238 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1987 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.246 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1987 cam status 0x1 scsi good xfer 0/0 latency 7637 us
+2026-11-21 01:01:01.246 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1667 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700400 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.246 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1667 cam status 0x1 scsi good xfer 4096/4096 latency 646 us
+2026-11-21 01:01:01.246 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1800 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.254 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1800 cam status 0x1 scsi good xfer 0/0 latency 7631 us
+2026-11-21 01:01:01.254 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 366 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700408 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.255 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 366 cam status 0x1 scsi good xfer 4096/4096 latency 655 us
+2026-11-21 01:01:01.255 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 707 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.262 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 707 cam status 0x1 scsi good xfer 0/0 latency 7643 us
+2026-11-21 01:01:01.262 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1210 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700416 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.263 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1210 cam status 0x1 scsi good xfer 4096/4096 latency 672 us
+2026-11-21 01:01:01.263 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 388 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.271 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 388 cam status 0x1 scsi good xfer 0/0 latency 7631 us
+2026-11-21 01:01:01.271 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1200 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700424 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.271 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1200 cam status 0x1 scsi good xfer 4096/4096 latency 643 us
+2026-11-21 01:01:01.271 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 754 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.279 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 754 cam status 0x1 scsi good xfer 0/0 latency 7624 us
+2026-11-21 01:01:01.279 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 599 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700432 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.280 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 599 cam status 0x1 scsi good xfer 4096/4096 latency 654 us
+2026-11-21 01:01:01.280 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1308 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.287 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1308 cam status 0x1 scsi good xfer 0/0 latency 7649 us
+2026-11-21 01:01:01.287 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1463 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700440 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.288 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1463 cam status 0x1 scsi good xfer 4096/4096 latency 667 us
+2026-11-21 01:01:01.288 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2107 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.296 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2107 cam status 0x1 scsi good xfer 0/0 latency 7625 us
+2026-11-21 01:01:01.296 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1456 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700448 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.296 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1456 cam status 0x1 scsi good xfer 4096/4096 latency 655 us
+2026-11-21 01:01:01.297 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 878 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.304 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 878 cam status 0x1 scsi good xfer 0/0 latency 7634 us
+2026-11-21 01:01:01.304 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1681 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700456 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.305 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1681 cam status 0x1 scsi good xfer 4096/4096 latency 639 us
+2026-11-21 01:01:01.305 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 517 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.312 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 517 cam status 0x1 scsi good xfer 0/0 latency 7642 us
+2026-11-21 01:01:01.312 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2115 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700464 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.313 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2115 cam status 0x1 scsi good xfer 4096/4096 latency 658 us
+2026-11-21 01:01:01.313 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 806 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.321 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 806 cam status 0x1 scsi good xfer 0/0 latency 7646 us
+2026-11-21 01:01:01.321 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 248 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700472 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.321 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 248 cam status 0x1 scsi good xfer 4096/4096 latency 640 us
+2026-11-21 01:01:01.322 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1814 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.329 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1814 cam status 0x1 scsi good xfer 0/0 latency 7666 us
+2026-11-21 01:01:01.329 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 135 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700480 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.330 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 135 cam status 0x1 scsi good xfer 4096/4096 latency 654 us
+2026-11-21 01:01:01.330 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1444 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.338 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1444 cam status 0x1 scsi good xfer 0/0 latency 7627 us
+2026-11-21 01:01:01.338 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1952 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700488 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.338 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1952 cam status 0x1 scsi good xfer 4096/4096 latency 655 us
+2026-11-21 01:01:01.338 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 964 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.346 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 964 cam status 0x1 scsi good xfer 0/0 latency 7640 us
+2026-11-21 01:01:01.346 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1035 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700496 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.347 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1035 cam status 0x1 scsi good xfer 4096/4096 latency 644 us
+2026-11-21 01:01:01.347 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 419 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.354 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 419 cam status 0x1 scsi good xfer 0/0 latency 7664 us
+2026-11-21 01:01:01.354 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 705 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700504 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.355 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 705 cam status 0x1 scsi good xfer 4096/4096 latency 655 us
+2026-11-21 01:01:01.355 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 374 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.363 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 374 cam status 0x1 scsi good xfer 0/0 latency 7647 us
+2026-11-21 01:01:01.363 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1243 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700512 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.363 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1243 cam status 0x1 scsi good xfer 4096/4096 latency 657 us
+2026-11-21 01:01:01.363 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1176 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.371 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1176 cam status 0x1 scsi good xfer 0/0 latency 7622 us
+2026-11-21 01:01:01.371 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 671 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700520 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.372 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 671 cam status 0x1 scsi good xfer 4096/4096 latency 656 us
+2026-11-21 01:01:01.372 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2172 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.379 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2172 cam status 0x1 scsi good xfer 0/0 latency 7648 us
+2026-11-21 01:01:01.379 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1885 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700528 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.380 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1885 cam status 0x1 scsi good xfer 4096/4096 latency 657 us
+2026-11-21 01:01:01.380 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1684 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.388 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1684 cam status 0x1 scsi good xfer 0/0 latency 7642 us
+2026-11-21 01:01:01.388 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 872 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700536 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.388 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 872 cam status 0x1 scsi good xfer 4096/4096 latency 665 us
+2026-11-21 01:01:01.388 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2148 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.396 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2148 cam status 0x1 scsi good xfer 0/0 latency 7621 us
+2026-11-21 01:01:01.396 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1570 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700544 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.397 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1570 cam status 0x1 scsi good xfer 4096/4096 latency 639 us
+2026-11-21 01:01:01.397 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1451 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.404 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1451 cam status 0x1 scsi good xfer 0/0 latency 7662 us
+2026-11-21 01:01:01.404 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 731 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700552 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.405 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 731 cam status 0x1 scsi good xfer 4096/4096 latency 659 us
+2026-11-21 01:01:01.405 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1558 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.413 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1558 cam status 0x1 scsi good xfer 0/0 latency 7646 us
+2026-11-21 01:01:01.413 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 706 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700560 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.413 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 706 cam status 0x1 scsi good xfer 4096/4096 latency 658 us
+2026-11-21 01:01:01.413 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 511 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.421 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 511 cam status 0x1 scsi good xfer 0/0 latency 7644 us
+2026-11-21 01:01:01.421 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 883 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700568 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.422 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 883 cam status 0x1 scsi good xfer 4096/4096 latency 654 us
+2026-11-21 01:01:01.422 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2094 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.429 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2094 cam status 0x1 scsi good xfer 0/0 latency 7627 us
+2026-11-21 01:01:01.429 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 670 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700576 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.430 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 670 cam status 0x1 scsi good xfer 4096/4096 latency 651 us
+2026-11-21 01:01:01.430 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 479 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.438 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 479 cam status 0x1 scsi good xfer 0/0 latency 7643 us
+2026-11-21 01:01:01.438 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1698 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700584 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.438 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1698 cam status 0x1 scsi good xfer 4096/4096 latency 661 us
+2026-11-21 01:01:01.438 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1960 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.446 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1960 cam status 0x1 scsi good xfer 0/0 latency 7644 us
+2026-11-21 01:01:01.446 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 313 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700592 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.447 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 313 cam status 0x1 scsi good xfer 4096/4096 latency 654 us
+2026-11-21 01:01:01.447 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 719 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.454 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 719 cam status 0x1 scsi good xfer 0/0 latency 7626 us
+2026-11-21 01:01:01.454 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 284 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700600 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.455 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 284 cam status 0x1 scsi good xfer 4096/4096 latency 658 us
+2026-11-21 01:01:01.455 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1357 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.463 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1357 cam status 0x1 scsi good xfer 0/0 latency 7639 us
+2026-11-21 01:01:01.463 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 957 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700608 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.463 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 957 cam status 0x1 scsi good xfer 4096/4096 latency 661 us
+2026-11-21 01:01:01.463 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 890 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.471 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 890 cam status 0x1 scsi good xfer 0/0 latency 7640 us
+2026-11-21 01:01:01.471 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1650 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700616 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.472 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1650 cam status 0x1 scsi good xfer 4096/4096 latency 639 us
+2026-11-21 01:01:01.472 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 290 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.479 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 290 cam status 0x1 scsi good xfer 0/0 latency 7664 us
+2026-11-21 01:01:01.479 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2014 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700624 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.480 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2014 cam status 0x1 scsi good xfer 4096/4096 latency 653 us
+2026-11-21 01:01:01.480 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 773 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.488 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 773 cam status 0x1 scsi good xfer 0/0 latency 7629 us
+2026-11-21 01:01:01.488 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 818 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700632 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.488 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 818 cam status 0x1 scsi good xfer 4096/4096 latency 656 us
+2026-11-21 01:01:01.488 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 761 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.496 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 761 cam status 0x1 scsi good xfer 0/0 latency 7650 us
+2026-11-21 01:01:01.496 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 680 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700640 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.497 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 680 cam status 0x1 scsi good xfer 4096/4096 latency 658 us
+2026-11-21 01:01:01.497 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1822 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.504 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1822 cam status 0x1 scsi good xfer 0/0 latency 7641 us
+2026-11-21 01:01:01.504 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 616 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700648 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.505 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 616 cam status 0x1 scsi good xfer 4096/4096 latency 642 us
+2026-11-21 01:01:01.505 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1743 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.513 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1743 cam status 0x1 scsi good xfer 0/0 latency 7654 us
+2026-11-21 01:01:01.513 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1521 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700656 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.513 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1521 cam status 0x1 scsi good xfer 4096/4096 latency 644 us
+2026-11-21 01:01:01.513 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 469 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.521 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 469 cam status 0x1 scsi good xfer 0/0 latency 7640 us
+2026-11-21 01:01:01.521 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 882 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700664 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.522 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 882 cam status 0x1 scsi good xfer 4096/4096 latency 660 us
+2026-11-21 01:01:01.522 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2013 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.529 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2013 cam status 0x1 scsi good xfer 0/0 latency 7639 us
+2026-11-21 01:01:01.529 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 537 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700672 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.530 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 537 cam status 0x1 scsi good xfer 4096/4096 latency 654 us
+2026-11-21 01:01:01.530 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1305 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.538 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1305 cam status 0x1 scsi good xfer 0/0 latency 7642 us
+2026-11-21 01:01:01.538 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1588 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700680 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.538 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1588 cam status 0x1 scsi good xfer 4096/4096 latency 635 us
+2026-11-21 01:01:01.538 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1829 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.546 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1829 cam status 0x1 scsi good xfer 0/0 latency 7643 us
+2026-11-21 01:01:01.546 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 909 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700688 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.547 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 909 cam status 0x1 scsi good xfer 4096/4096 latency 657 us
+2026-11-21 01:01:01.547 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 951 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.554 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 951 cam status 0x1 scsi good xfer 0/0 latency 7645 us
+2026-11-21 01:01:01.555 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 159 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700696 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.555 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 159 cam status 0x1 scsi good xfer 4096/4096 latency 659 us
+2026-11-21 01:01:01.555 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1731 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.563 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1731 cam status 0x1 scsi good xfer 0/0 latency 7622 us
+2026-11-21 01:01:01.563 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 576 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700704 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.563 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 576 cam status 0x1 scsi good xfer 4096/4096 latency 643 us
+2026-11-21 01:01:01.564 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 981 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.571 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 981 cam status 0x1 scsi good xfer 0/0 latency 7678 us
+2026-11-21 01:01:01.571 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1147 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700712 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.572 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1147 cam status 0x1 scsi good xfer 4096/4096 latency 642 us
+2026-11-21 01:01:01.572 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1741 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.580 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1741 cam status 0x1 scsi good xfer 0/0 latency 7639 us
+2026-11-21 01:01:01.580 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1810 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700720 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.580 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1810 cam status 0x1 scsi good xfer 4096/4096 latency 642 us
+2026-11-21 01:01:01.580 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1930 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.588 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1930 cam status 0x1 scsi good xfer 0/0 latency 7664 us
+2026-11-21 01:01:01.588 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1707 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700728 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.589 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1707 cam status 0x1 scsi good xfer 4096/4096 latency 642 us
+2026-11-21 01:01:01.589 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1130 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.596 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1130 cam status 0x1 scsi good xfer 0/0 latency 7658 us
+2026-11-21 01:01:01.596 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 788 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700736 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.597 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 788 cam status 0x1 scsi good xfer 4096/4096 latency 636 us
+2026-11-21 01:01:01.597 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1860 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.605 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1860 cam status 0x1 scsi good xfer 0/0 latency 7639 us
+2026-11-21 01:01:01.605 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 747 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700744 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.605 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 747 cam status 0x1 scsi good xfer 4096/4096 latency 646 us
+2026-11-21 01:01:01.605 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1861 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.613 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1861 cam status 0x1 scsi good xfer 0/0 latency 7657 us
+2026-11-21 01:01:01.613 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 203 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700752 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.614 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 203 cam status 0x1 scsi good xfer 4096/4096 latency 660 us
+2026-11-21 01:01:01.614 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1942 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.621 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1942 cam status 0x1 scsi good xfer 0/0 latency 7643 us
+2026-11-21 01:01:01.621 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1123 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700760 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.622 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1123 cam status 0x1 scsi good xfer 4096/4096 latency 651 us
+2026-11-21 01:01:01.622 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1788 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.630 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1788 cam status 0x1 scsi good xfer 0/0 latency 7643 us
+2026-11-21 01:01:01.630 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1150 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700768 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.630 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1150 cam status 0x1 scsi good xfer 4096/4096 latency 638 us
+2026-11-21 01:01:01.630 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 906 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.638 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 906 cam status 0x1 scsi good xfer 0/0 latency 7639 us
+2026-11-21 01:01:01.638 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 398 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700776 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.639 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 398 cam status 0x1 scsi good xfer 4096/4096 latency 639 us
+2026-11-21 01:01:01.639 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 353 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.646 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 353 cam status 0x1 scsi good xfer 0/0 latency 7662 us
+2026-11-21 01:01:01.646 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1312 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700784 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.647 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1312 cam status 0x1 scsi good xfer 4096/4096 latency 639 us
+2026-11-21 01:01:01.647 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 360 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.655 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 360 cam status 0x1 scsi good xfer 0/0 latency 7664 us
+2026-11-21 01:01:01.655 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 341 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700792 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.655 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 341 cam status 0x1 scsi good xfer 4096/4096 latency 656 us
+2026-11-21 01:01:01.655 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 253 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.663 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 253 cam status 0x1 scsi good xfer 0/0 latency 7626 us
+2026-11-21 01:01:01.663 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 910 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700800 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.664 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 910 cam status 0x1 scsi good xfer 4096/4096 latency 656 us
+2026-11-21 01:01:01.664 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1623 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.671 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1623 cam status 0x1 scsi good xfer 0/0 latency 7641 us
+2026-11-21 01:01:01.671 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 345 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700808 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.672 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 345 cam status 0x1 scsi good xfer 4096/4096 latency 637 us
+2026-11-21 01:01:01.672 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 364 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.680 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 364 cam status 0x1 scsi good xfer 0/0 latency 7671 us
+2026-11-21 01:01:01.680 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 280 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700816 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.680 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 280 cam status 0x1 scsi good xfer 4096/4096 latency 648 us
+2026-11-21 01:01:01.680 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1171 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.688 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1171 cam status 0x1 scsi good xfer 0/0 latency 7643 us
+2026-11-21 01:01:01.688 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 928 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700824 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.689 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 928 cam status 0x1 scsi good xfer 4096/4096 latency 658 us
+2026-11-21 01:01:01.689 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1442 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.696 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1442 cam status 0x1 scsi good xfer 0/0 latency 7621 us
+2026-11-21 01:01:01.696 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1488 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700832 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.697 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1488 cam status 0x1 scsi good xfer 4096/4096 latency 656 us
+2026-11-21 01:01:01.697 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1611 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.705 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1611 cam status 0x1 scsi good xfer 0/0 latency 7679 us
+2026-11-21 01:01:01.705 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 873 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700840 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.705 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 873 cam status 0x1 scsi good xfer 4096/4096 latency 654 us
+2026-11-21 01:01:01.705 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1163 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.713 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1163 cam status 0x1 scsi good xfer 0/0 latency 8000 us
+2026-11-21 01:01:01.713 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1469 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700848 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.714 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1469 cam status 0x1 scsi good xfer 4096/4096 latency 627 us
+2026-11-21 01:01:01.714 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 234 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.722 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 234 cam status 0x1 scsi good xfer 0/0 latency 7676 us
+2026-11-21 01:01:01.722 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1678 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700856 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.722 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1678 cam status 0x1 scsi good xfer 4096/4096 latency 631 us
+2026-11-21 01:01:01.722 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1002 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.730 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1002 cam status 0x1 scsi good xfer 0/0 latency 7704 us
+2026-11-21 01:01:01.730 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1258 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700864 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.731 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1258 cam status 0x1 scsi good xfer 4096/4096 latency 629 us
+2026-11-21 01:01:01.731 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1161 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.738 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1161 cam status 0x1 scsi good xfer 0/0 latency 7661 us
+2026-11-21 01:01:01.739 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2159 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700872 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.739 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2159 cam status 0x1 scsi good xfer 4096/4096 latency 622 us
+2026-11-21 01:01:01.739 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 605 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.747 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 605 cam status 0x1 scsi good xfer 0/0 latency 7676 us
+2026-11-21 01:01:01.747 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1329 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700880 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.747 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1329 cam status 0x1 scsi good xfer 4096/4096 latency 624 us
+2026-11-21 01:01:01.748 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2076 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.755 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2076 cam status 0x1 scsi good xfer 0/0 latency 7676 us
+2026-11-21 01:01:01.755 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 370 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700888 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.756 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 370 cam status 0x1 scsi good xfer 4096/4096 latency 630 us
+2026-11-21 01:01:01.756 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1373 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.764 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1373 cam status 0x1 scsi good xfer 0/0 latency 7670 us
+2026-11-21 01:01:01.764 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1968 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700896 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.764 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1968 cam status 0x1 scsi good xfer 4096/4096 latency 629 us
+2026-11-21 01:01:01.764 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1230 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.772 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1230 cam status 0x1 scsi good xfer 0/0 latency 7654 us
+2026-11-21 01:01:01.772 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 677 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700904 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.773 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 677 cam status 0x1 scsi good xfer 4096/4096 latency 639 us
+2026-11-21 01:01:01.773 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 336 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.780 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 336 cam status 0x1 scsi good xfer 0/0 latency 7661 us
+2026-11-21 01:01:01.780 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1694 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700912 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.781 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1694 cam status 0x1 scsi good xfer 4096/4096 latency 623 us
+2026-11-21 01:01:01.781 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1992 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.789 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1992 cam status 0x1 scsi good xfer 0/0 latency 7681 us
+2026-11-21 01:01:01.789 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1390 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700920 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.789 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1390 cam status 0x1 scsi good xfer 4096/4096 latency 640 us
+2026-11-21 01:01:01.789 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1148 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.797 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1148 cam status 0x1 scsi good xfer 0/0 latency 7625 us
+2026-11-21 01:01:01.797 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1166 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700928 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.798 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1166 cam status 0x1 scsi good xfer 4096/4096 latency 633 us
+2026-11-21 01:01:01.798 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 136 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.805 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 136 cam status 0x1 scsi good xfer 0/0 latency 7679 us
+2026-11-21 01:01:01.805 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 532 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700936 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.806 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 532 cam status 0x1 scsi good xfer 4096/4096 latency 641 us
+2026-11-21 01:01:01.806 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 908 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.814 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 908 cam status 0x1 scsi good xfer 0/0 latency 7656 us
+2026-11-21 01:01:01.814 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1266 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700944 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.814 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1266 cam status 0x1 scsi good xfer 4096/4096 latency 619 us
+2026-11-21 01:01:01.814 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1139 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.822 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1139 cam status 0x1 scsi good xfer 0/0 latency 7678 us
+2026-11-21 01:01:01.822 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 591 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700952 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.823 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 591 cam status 0x1 scsi good xfer 4096/4096 latency 627 us
+2026-11-21 01:01:01.823 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1575 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.830 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1575 cam status 0x1 scsi good xfer 0/0 latency 7656 us
+2026-11-21 01:01:01.830 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1836 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700960 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.831 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1836 cam status 0x1 scsi good xfer 4096/4096 latency 623 us
+2026-11-21 01:01:01.831 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 812 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.839 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 812 cam status 0x1 scsi good xfer 0/0 latency 7683 us
+2026-11-21 01:01:01.839 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 639 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700968 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.839 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 639 cam status 0x1 scsi good xfer 4096/4096 latency 641 us
+2026-11-21 01:01:01.839 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 646 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.847 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 646 cam status 0x1 scsi good xfer 0/0 latency 7656 us
+2026-11-21 01:01:01.847 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1174 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700976 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.848 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1174 cam status 0x1 scsi good xfer 4096/4096 latency 641 us
+2026-11-21 01:01:01.848 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2039 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.855 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2039 cam status 0x1 scsi good xfer 0/0 latency 7642 us
+2026-11-21 01:01:01.855 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 279 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700984 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.856 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 279 cam status 0x1 scsi good xfer 4096/4096 latency 637 us
+2026-11-21 01:01:01.856 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1596 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.864 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1596 cam status 0x1 scsi good xfer 0/0 latency 7657 us
+2026-11-21 01:01:01.864 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1324 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054700992 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.864 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1324 cam status 0x1 scsi good xfer 4096/4096 latency 629 us
+2026-11-21 01:01:01.864 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 775 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.872 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 775 cam status 0x1 scsi good xfer 0/0 latency 7673 us
+2026-11-21 01:01:01.872 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 968 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701000 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.873 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 968 cam status 0x1 scsi good xfer 4096/4096 latency 625 us
+2026-11-21 01:01:01.873 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 236 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.880 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 236 cam status 0x1 scsi good xfer 0/0 latency 7678 us
+2026-11-21 01:01:01.880 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 624 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701008 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.881 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 624 cam status 0x1 scsi good xfer 4096/4096 latency 640 us
+2026-11-21 01:01:01.881 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1921 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.889 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1921 cam status 0x1 scsi good xfer 0/0 latency 7642 us
+2026-11-21 01:01:01.889 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 480 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701016 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.889 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 480 cam status 0x1 scsi good xfer 4096/4096 latency 640 us
+2026-11-21 01:01:01.889 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1118 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.897 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1118 cam status 0x1 scsi good xfer 0/0 latency 7657 us
+2026-11-21 01:01:01.897 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 299 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701024 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.898 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 299 cam status 0x1 scsi good xfer 4096/4096 latency 636 us
+2026-11-21 01:01:01.898 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1173 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.905 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1173 cam status 0x1 scsi good xfer 0/0 latency 7662 us
+2026-11-21 01:01:01.905 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1986 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701032 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.906 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1986 cam status 0x1 scsi good xfer 4096/4096 latency 643 us
+2026-11-21 01:01:01.906 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 987 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.914 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 987 cam status 0x1 scsi good xfer 0/0 latency 7659 us
+2026-11-21 01:01:01.914 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2155 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701040 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.914 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2155 cam status 0x1 scsi good xfer 4096/4096 latency 639 us
+2026-11-21 01:01:01.914 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1433 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.922 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1433 cam status 0x1 scsi good xfer 0/0 latency 7640 us
+2026-11-21 01:01:01.922 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1926 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701048 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.923 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1926 cam status 0x1 scsi good xfer 4096/4096 latency 627 us
+2026-11-21 01:01:01.923 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 963 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.930 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 963 cam status 0x1 scsi good xfer 0/0 latency 7656 us
+2026-11-21 01:01:01.930 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1882 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701056 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.931 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1882 cam status 0x1 scsi good xfer 4096/4096 latency 644 us
+2026-11-21 01:01:01.931 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1725 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.939 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1725 cam status 0x1 scsi good xfer 0/0 latency 7650 us
+2026-11-21 01:01:01.939 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1254 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701064 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.939 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1254 cam status 0x1 scsi good xfer 4096/4096 latency 636 us
+2026-11-21 01:01:01.939 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 949 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.947 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 949 cam status 0x1 scsi good xfer 0/0 latency 7668 us
+2026-11-21 01:01:01.947 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1615 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701072 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.948 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1615 cam status 0x1 scsi good xfer 4096/4096 latency 637 us
+2026-11-21 01:01:01.948 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1170 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.955 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1170 cam status 0x1 scsi good xfer 0/0 latency 7671 us
+2026-11-21 01:01:01.955 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1082 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701080 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.956 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1082 cam status 0x1 scsi good xfer 4096/4096 latency 639 us
+2026-11-21 01:01:01.956 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1645 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.964 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1645 cam status 0x1 scsi good xfer 0/0 latency 7666 us
+2026-11-21 01:01:01.964 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1764 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701088 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.964 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1764 cam status 0x1 scsi good xfer 4096/4096 latency 643 us
+2026-11-21 01:01:01.965 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 435 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.972 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 435 cam status 0x1 scsi good xfer 0/0 latency 7653 us
+2026-11-21 01:01:01.972 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1592 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701096 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.973 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1592 cam status 0x1 scsi good xfer 4096/4096 latency 625 us
+2026-11-21 01:01:01.973 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 421 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.980 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 421 cam status 0x1 scsi good xfer 0/0 latency 7655 us
+2026-11-21 01:01:01.981 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1410 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701104 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.981 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1410 cam status 0x1 scsi good xfer 4096/4096 latency 624 us
+2026-11-21 01:01:01.981 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2034 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.989 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2034 cam status 0x1 scsi good xfer 0/0 latency 7678 us
+2026-11-21 01:01:01.989 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 378 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701112 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.989 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 378 cam status 0x1 scsi good xfer 4096/4096 latency 628 us
+2026-11-21 01:01:01.990 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 936 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:01.997 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 936 cam status 0x1 scsi good xfer 0/0 latency 7677 us
+2026-11-21 01:01:01.997 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 941 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701120 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:01.998 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 941 cam status 0x1 scsi good xfer 4096/4096 latency 645 us
+2026-11-21 01:01:01.998 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1769 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.006 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1769 cam status 0x1 scsi good xfer 0/0 latency 7641 us
+2026-11-21 01:01:02.006 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 534 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701128 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.006 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 534 cam status 0x1 scsi good xfer 4096/4096 latency 637 us
+2026-11-21 01:01:02.006 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 355 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.014 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 355 cam status 0x1 scsi good xfer 0/0 latency 7661 us
+2026-11-21 01:01:02.014 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2056 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701136 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.015 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2056 cam status 0x1 scsi good xfer 4096/4096 latency 646 us
+2026-11-21 01:01:02.015 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 505 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.022 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 505 cam status 0x1 scsi good xfer 0/0 latency 7656 us
+2026-11-21 01:01:02.022 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1364 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701144 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.023 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1364 cam status 0x1 scsi good xfer 4096/4096 latency 644 us
+2026-11-21 01:01:02.023 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1682 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.031 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1682 cam status 0x1 scsi good xfer 0/0 latency 7661 us
+2026-11-21 01:01:02.031 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 559 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701152 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.031 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 559 cam status 0x1 scsi good xfer 4096/4096 latency 640 us
+2026-11-21 01:01:02.031 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 602 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.039 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 602 cam status 0x1 scsi good xfer 0/0 latency 7642 us
+2026-11-21 01:01:02.039 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 840 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701160 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.040 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 840 cam status 0x1 scsi good xfer 4096/4096 latency 639 us
+2026-11-21 01:01:02.040 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 992 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.047 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 992 cam status 0x1 scsi good xfer 0/0 latency 7656 us
+2026-11-21 01:01:02.047 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 553 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701168 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.048 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 553 cam status 0x1 scsi good xfer 4096/4096 latency 633 us
+2026-11-21 01:01:02.048 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1852 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.056 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1852 cam status 0x1 scsi good xfer 0/0 latency 7677 us
+2026-11-21 01:01:02.056 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1866 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701176 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.056 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1866 cam status 0x1 scsi good xfer 4096/4096 latency 642 us
+2026-11-21 01:01:02.056 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1076 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.064 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1076 cam status 0x1 scsi good xfer 0/0 latency 7649 us
+2026-11-21 01:01:02.064 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1614 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701184 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.065 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1614 cam status 0x1 scsi good xfer 4096/4096 latency 641 us
+2026-11-21 01:01:02.065 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1168 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.072 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1168 cam status 0x1 scsi good xfer 0/0 latency 7657 us
+2026-11-21 01:01:02.072 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 736 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701192 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.073 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 736 cam status 0x1 scsi good xfer 4096/4096 latency 642 us
+2026-11-21 01:01:02.073 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1604 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.081 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1604 cam status 0x1 scsi good xfer 0/0 latency 7658 us
+2026-11-21 01:01:02.081 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 285 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701200 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.081 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 285 cam status 0x1 scsi good xfer 4096/4096 latency 627 us
+2026-11-21 01:01:02.081 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1802 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.089 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1802 cam status 0x1 scsi good xfer 0/0 latency 7680 us
+2026-11-21 01:01:02.089 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 629 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701208 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.090 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 629 cam status 0x1 scsi good xfer 4096/4096 latency 638 us
+2026-11-21 01:01:02.090 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1833 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.097 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1833 cam status 0x1 scsi good xfer 0/0 latency 7640 us
+2026-11-21 01:01:02.097 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 952 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701216 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.098 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 952 cam status 0x1 scsi good xfer 4096/4096 latency 643 us
+2026-11-21 01:01:02.098 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 786 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.106 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 786 cam status 0x1 scsi good xfer 0/0 latency 7652 us
+2026-11-21 01:01:02.106 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 163 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701224 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.106 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 163 cam status 0x1 scsi good xfer 4096/4096 latency 629 us
+2026-11-21 01:01:02.106 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1496 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.114 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1496 cam status 0x1 scsi good xfer 0/0 latency 7691 us
+2026-11-21 01:01:02.114 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1207 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701232 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.115 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1207 cam status 0x1 scsi good xfer 4096/4096 latency 633 us
+2026-11-21 01:01:02.115 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1770 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.122 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1770 cam status 0x1 scsi good xfer 0/0 latency 7638 us
+2026-11-21 01:01:02.122 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1208 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701240 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.123 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1208 cam status 0x1 scsi good xfer 4096/4096 latency 627 us
+2026-11-21 01:01:02.123 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1945 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.131 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1945 cam status 0x1 scsi good xfer 0/0 latency 7677 us
+2026-11-21 01:01:02.131 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1395 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701248 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.131 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1395 cam status 0x1 scsi good xfer 4096/4096 latency 640 us
+2026-11-21 01:01:02.131 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1633 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.139 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1633 cam status 0x1 scsi good xfer 0/0 latency 7668 us
+2026-11-21 01:01:02.139 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1890 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701256 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.140 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1890 cam status 0x1 scsi good xfer 4096/4096 latency 645 us
+2026-11-21 01:01:02.140 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 789 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.147 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 789 cam status 0x1 scsi good xfer 0/0 latency 7646 us
+2026-11-21 01:01:02.147 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2017 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701264 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.148 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2017 cam status 0x1 scsi good xfer 4096/4096 latency 628 us
+2026-11-21 01:01:02.148 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1806 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.156 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1806 cam status 0x1 scsi good xfer 0/0 latency 7662 us
+2026-11-21 01:01:02.156 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1881 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701272 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.156 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1881 cam status 0x1 scsi good xfer 4096/4096 latency 623 us
+2026-11-21 01:01:02.156 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1705 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.164 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1705 cam status 0x1 scsi good xfer 0/0 latency 7683 us
+2026-11-21 01:01:02.164 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1275 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701280 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.165 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1275 cam status 0x1 scsi good xfer 4096/4096 latency 642 us
+2026-11-21 01:01:02.165 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1282 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.172 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1282 cam status 0x1 scsi good xfer 0/0 latency 7659 us
+2026-11-21 01:01:02.172 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1371 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701288 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.173 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1371 cam status 0x1 scsi good xfer 4096/4096 latency 645 us
+2026-11-21 01:01:02.173 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 742 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.181 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 742 cam status 0x1 scsi good xfer 0/0 latency 7660 us
+2026-11-21 01:01:02.181 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 449 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701296 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.181 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 449 cam status 0x1 scsi good xfer 4096/4096 latency 641 us
+2026-11-21 01:01:02.181 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1299 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.189 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1299 cam status 0x1 scsi good xfer 0/0 latency 7646 us
+2026-11-21 01:01:02.189 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1392 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701304 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.190 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1392 cam status 0x1 scsi good xfer 4096/4096 latency 648 us
+2026-11-21 01:01:02.190 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 326 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.197 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 326 cam status 0x1 scsi good xfer 0/0 latency 7659 us
+2026-11-21 01:01:02.197 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 202 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701312 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.198 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 202 cam status 0x1 scsi good xfer 4096/4096 latency 642 us
+2026-11-21 01:01:02.198 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1268 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.206 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1268 cam status 0x1 scsi good xfer 0/0 latency 7659 us
+2026-11-21 01:01:02.206 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2167 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701320 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.206 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2167 cam status 0x1 scsi good xfer 4096/4096 latency 620 us
+2026-11-21 01:01:02.206 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1458 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.214 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1458 cam status 0x1 scsi good xfer 0/0 latency 7656 us
+2026-11-21 01:01:02.214 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 241 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701328 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.215 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 241 cam status 0x1 scsi good xfer 4096/4096 latency 646 us
+2026-11-21 01:01:02.215 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2059 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.223 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2059 cam status 0x1 scsi good xfer 0/0 latency 7664 us
+2026-11-21 01:01:02.223 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1739 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701336 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.223 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1739 cam status 0x1 scsi good xfer 4096/4096 latency 635 us
+2026-11-21 01:01:02.223 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1078 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.231 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1078 cam status 0x1 scsi good xfer 0/0 latency 7665 us
+2026-11-21 01:01:02.231 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 649 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701344 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.232 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 649 cam status 0x1 scsi good xfer 4096/4096 latency 640 us
+2026-11-21 01:01:02.232 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2143 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.239 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2143 cam status 0x1 scsi good xfer 0/0 latency 7662 us
+2026-11-21 01:01:02.239 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1043 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701352 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.240 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1043 cam status 0x1 scsi good xfer 4096/4096 latency 642 us
+2026-11-21 01:01:02.240 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1247 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.248 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1247 cam status 0x1 scsi good xfer 0/0 latency 7642 us
+2026-11-21 01:01:02.248 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1323 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701360 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.248 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1323 cam status 0x1 scsi good xfer 4096/4096 latency 625 us
+2026-11-21 01:01:02.248 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1718 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.256 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1718 cam status 0x1 scsi good xfer 0/0 latency 7681 us
+2026-11-21 01:01:02.256 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 381 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701368 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.257 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 381 cam status 0x1 scsi good xfer 4096/4096 latency 642 us
+2026-11-21 01:01:02.257 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2124 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.264 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2124 cam status 0x1 scsi good xfer 0/0 latency 7660 us
+2026-11-21 01:01:02.264 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1429 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701376 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.265 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1429 cam status 0x1 scsi good xfer 4096/4096 latency 629 us
+2026-11-21 01:01:02.265 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 507 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.273 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 507 cam status 0x1 scsi good xfer 0/0 latency 7655 us
+2026-11-21 01:01:02.273 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 699 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701384 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.273 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 699 cam status 0x1 scsi good xfer 4096/4096 latency 645 us
+2026-11-21 01:01:02.273 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 524 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.281 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 524 cam status 0x1 scsi good xfer 0/0 latency 7653 us
+2026-11-21 01:01:02.281 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 164 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701392 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.282 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 164 cam status 0x1 scsi good xfer 4096/4096 latency 634 us
+2026-11-21 01:01:02.282 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2080 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.289 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2080 cam status 0x1 scsi good xfer 0/0 latency 7674 us
+2026-11-21 01:01:02.289 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1540 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701400 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.290 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1540 cam status 0x1 scsi good xfer 4096/4096 latency 638 us
+2026-11-21 01:01:02.290 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2133 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.298 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2133 cam status 0x1 scsi good xfer 0/0 latency 7670 us
+2026-11-21 01:01:02.298 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1726 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701408 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.298 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1726 cam status 0x1 scsi good xfer 4096/4096 latency 630 us
+2026-11-21 01:01:02.298 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1617 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.306 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1617 cam status 0x1 scsi good xfer 0/0 latency 7651 us
+2026-11-21 01:01:02.306 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1649 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701416 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.307 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1649 cam status 0x1 scsi good xfer 4096/4096 latency 623 us
+2026-11-21 01:01:02.307 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1790 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.314 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1790 cam status 0x1 scsi good xfer 0/0 latency 7678 us
+2026-11-21 01:01:02.314 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1711 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701424 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.315 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1711 cam status 0x1 scsi good xfer 4096/4096 latency 632 us
+2026-11-21 01:01:02.315 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1867 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.323 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1867 cam status 0x1 scsi good xfer 0/0 latency 7676 us
+2026-11-21 01:01:02.323 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1408 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701432 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.323 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1408 cam status 0x1 scsi good xfer 4096/4096 latency 642 us
+2026-11-21 01:01:02.323 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2046 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.331 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2046 cam status 0x1 scsi good xfer 0/0 latency 7639 us
+2026-11-21 01:01:02.331 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1838 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701440 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.332 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1838 cam status 0x1 scsi good xfer 4096/4096 latency 648 us
+2026-11-21 01:01:02.332 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 716 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.339 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 716 cam status 0x1 scsi good xfer 0/0 latency 7661 us
+2026-11-21 01:01:02.339 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1644 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701448 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.340 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1644 cam status 0x1 scsi good xfer 4096/4096 latency 643 us
+2026-11-21 01:01:02.340 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1730 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.348 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1730 cam status 0x1 scsi good xfer 0/0 latency 7659 us
+2026-11-21 01:01:02.348 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 976 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701456 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.348 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 976 cam status 0x1 scsi good xfer 4096/4096 latency 625 us
+2026-11-21 01:01:02.348 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1409 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.356 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1409 cam status 0x1 scsi good xfer 0/0 latency 7680 us
+2026-11-21 01:01:02.356 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 757 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701464 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.357 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 757 cam status 0x1 scsi good xfer 4096/4096 latency 647 us
+2026-11-21 01:01:02.357 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1315 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.364 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1315 cam status 0x1 scsi good xfer 0/0 latency 7636 us
+2026-11-21 01:01:02.364 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 174 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701472 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.365 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 174 cam status 0x1 scsi good xfer 4096/4096 latency 634 us
+2026-11-21 01:01:02.365 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 467 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.373 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 467 cam status 0x1 scsi good xfer 0/0 latency 7670 us
+2026-11-21 01:01:02.373 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 566 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701480 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.373 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 566 cam status 0x1 scsi good xfer 4096/4096 latency 628 us
+2026-11-21 01:01:02.373 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 697 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.381 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 697 cam status 0x1 scsi good xfer 0/0 latency 7675 us
+2026-11-21 01:01:02.381 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 243 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701488 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.382 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 243 cam status 0x1 scsi good xfer 4096/4096 latency 625 us
+2026-11-21 01:01:02.382 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1186 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.389 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1186 cam status 0x1 scsi good xfer 0/0 latency 7679 us
+2026-11-21 01:01:02.389 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1342 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701496 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.390 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1342 cam status 0x1 scsi good xfer 4096/4096 latency 623 us
+2026-11-21 01:01:02.390 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1205 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.430 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1205 cam status 0x1 scsi good xfer 0/0 latency 39909 us
+2026-11-21 01:01:02.430 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1022 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701504 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.431 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1022 cam status 0x1 scsi good xfer 4096/4096 latency 673 us
+2026-11-21 01:01:02.431 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1587 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.439 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1587 cam status 0x1 scsi good xfer 0/0 latency 8704 us
+2026-11-21 01:01:02.439 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1038 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701512 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.440 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1038 cam status 0x1 scsi good xfer 4096/4096 latency 648 us
+2026-11-21 01:01:02.440 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 315 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.448 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 315 cam status 0x1 scsi good xfer 0/0 latency 7652 us
+2026-11-21 01:01:02.448 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1950 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701520 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.448 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1950 cam status 0x1 scsi good xfer 4096/4096 latency 627 us
+2026-11-21 01:01:02.448 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 516 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.456 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 516 cam status 0x1 scsi good xfer 0/0 latency 7659 us
+2026-11-21 01:01:02.456 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1029 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701528 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.457 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1029 cam status 0x1 scsi good xfer 4096/4096 latency 650 us
+2026-11-21 01:01:02.457 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 748 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.464 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 748 cam status 0x1 scsi good xfer 0/0 latency 7655 us
+2026-11-21 01:01:02.464 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1447 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701536 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.465 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1447 cam status 0x1 scsi good xfer 4096/4096 latency 627 us
+2026-11-21 01:01:02.465 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1779 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.473 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1779 cam status 0x1 scsi good xfer 0/0 latency 7681 us
+2026-11-21 01:01:02.473 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1356 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701544 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.473 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1356 cam status 0x1 scsi good xfer 4096/4096 latency 629 us
+2026-11-21 01:01:02.473 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1278 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.481 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1278 cam status 0x1 scsi good xfer 0/0 latency 7668 us
+2026-11-21 01:01:02.481 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1668 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701552 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.482 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1668 cam status 0x1 scsi good xfer 4096/4096 latency 626 us
+2026-11-21 01:01:02.482 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1638 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.489 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1638 cam status 0x1 scsi good xfer 0/0 latency 7662 us
+2026-11-21 01:01:02.489 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 1272 target 1 (handle 0x000a) lun 0 WRITE(10) lba 1054701560 blocks 8 len 4096 segs 1 chains 0
+2026-11-21 01:01:02.490 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 1272 cam status 0x1 scsi good xfer 4096/4096 latency 648 us
+2026-11-21 01:01:02.490 Db kernel[0:cb96] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 2035 target 1 (handle 0x000a) lun 0 SYNCHRONIZE CACHE(10) lba 0 blocks 0 len 0 segs 0 chains 0
+2026-11-21 01:01:02.498 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 2035 cam status 0x1 scsi good xfer 0/0 latency 7657 us
+2026-11-21 01:01:02.499 Db kernel[0:cb97] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 652 target 1 (handle 0x000a) lun 0 READ(10) lba 0 blocks 1 len 512 segs 1 chains 0
+2026-11-21 01:01:02.499 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 652 cam status 0x1 scsi good xfer 512/512 latency 148 us
+2026-11-21 01:01:02.499 Db kernel[0:cb97] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 494 target 1 (handle 0x000a) lun 0 READ(10) lba 0 blocks 1 len 512 segs 1 chains 0
+2026-11-21 01:01:02.500 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 494 cam status 0x1 scsi good xfer 512/512 latency 96 us
+2026-11-21 01:01:02.500 Db kernel[0:cb97] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 857 target 1 (handle 0x000a) lun 0 READ(10) lba 0 blocks 1 len 512 segs 1 chains 0
+2026-11-21 01:01:02.500 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 857 cam status 0x1 scsi good xfer 512/512 latency 80 us
+2026-11-21 01:01:02.500 Db kernel[0:cb97] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 609 target 1 (handle 0x000a) lun 0 READ(10) lba 0 blocks 1 len 512 segs 1 chains 0
+2026-11-21 01:01:02.500 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 609 cam status 0x1 scsi good xfer 512/512 latency 75 us
+2026-11-21 01:01:02.500 Db kernel[0:cb97] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 224 target 1 (handle 0x000a) lun 0 READ(10) lba 0 blocks 1 len 512 segs 1 chains 0
+2026-11-21 01:01:02.500 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 224 cam status 0x1 scsi good xfer 512/512 latency 72 us
+2026-11-21 01:01:02.500 Db kernel[0:cb97] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 261 target 1 (handle 0x000a) lun 0 READ(10) lba 1 blocks 1 len 512 segs 1 chains 0
+2026-11-21 01:01:02.500 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 261 cam status 0x1 scsi good xfer 512/512 latency 72 us
+2026-11-21 01:01:02.500 Db kernel[0:cb97] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO start SMID 205 target 1 (handle 0x000a) lun 0 READ(10) lba 0 blocks 3 len 1536 segs 1 chains 0
+2026-11-21 01:01:02.500 Db kernel[0:e6e] [org.sas2308.driver.SAS2308HBA:trace] hba0: IO done SMID 205 cam status 0x1 scsi good xfer 1536/1536 latency 82 us
