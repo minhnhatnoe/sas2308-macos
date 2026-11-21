@@ -903,7 +903,7 @@ int main()
         CHECK(g2.Go(r) == kPosted);
         g2.ioc.diagStuck = true;
         CHECK(g2.ForceReinit() != 0 && g2.Gone());
-        CHECK(g2.Stats().reinit_failures == MPS_XNU_REINIT_TRIES && g2.ioc.diagResetCount == 3 + 1);
+        CHECK(g2.Stats().reinit_failures == 1 && g2.ioc.diagResetCount == 1 + 1);   /* one attempt (D55b) */
         /* requeued once RESET_ADAPTER was written (D20b), failed with the dead controller */
         CHECK(r->ccb->ccb_h.xnu_resets == 1 && r->status == CAM_DEV_NOT_THERE);
         Io *r2 = g2.NewIo(0, 0, CAM_DIR_IN, rd10, 10, {{d2.iova, 4096}});
@@ -1253,7 +1253,7 @@ static void AsyncTests()
         m.holdIo = false;
     }
 
-    printf("async: IOC fault during the reinit (nested fault) -> retried\n");
+    printf("async: IOC fault during the reinit (nested fault) -> one attempt (D55b), disabled\n");
     {
         Rig g;
         MockIocModel &m = g.ioc;
@@ -1269,16 +1269,12 @@ static void AsyncTests()
         CHECK(HasLog(mark, "controller reinit requested: mps_periodic"));
         m.faultOnIocInitOnce = true; m.holdIo = false;
         const int diag = m.diagResetCount;
-        CHECK(g.RunReinit() == 0);
-        CHECK(m.diagResetCount == diag + 2 && g.Stats().reinit_failures == 1 && g.Stats().reinits == 1);
-        CHECK(HasLog(mark, "reinit attempt 1 of 3 failed, retrying"));
-        CHECK(HasLog(mark, "reinit done in"));
+        CHECK(g.RunReinit() != 0);
+        CHECK(m.diagResetCount == diag + 1 && g.Stats().reinit_failures == 1 && g.Stats().reinits == 1);
+        CHECK(!HasLog(mark, "retrying") && HasLog(mark, "controller disabled"));
         g.Pump();
-        CHECK(f->status == CAM_REQ_CMP && f->done == 1 && f->ccb->ccb_h.xnu_resets == 1);   /* re-sent (D20b) */
-        Io *again = g.Read(0x0009, 0, 7);
-        CHECK(g.Go(again) == kPosted);
-        g.Pump();
-        CHECK(again->status == CAM_REQ_CMP);
+        CHECK(f->status == CAM_DEV_NOT_THERE && f->done == 1);      /* completed once */
+        CHECK(g.Gone() && g.sc->xnu.disabled && g.HeldCount() == 0);
     }
 
     printf("async: surprise removal in the middle of a recovery\n");
@@ -2844,15 +2840,14 @@ static void DeviationTests()
     }
 
     if (Want("D19")) {
-        /* a reinit whose first attempt fails: PCI state restored after each diag reset */
+        /* PCI state restored after the reinit's diag reset (one attempt since D55b) */
         Rig g;
         MockIocModel &m = g.ioc;
         const int restores = gHost.pciRestores, resets = m.diagResetCount;
-        m.faultOnIocInitOnce = true;
         RequestReinit(g, "test");
         HostAdvance(5000);
-        CHECK(!g.Gone() && m.diagResetCount == resets + 2);
-        CHECK(gHost.pciRestores == restores + 2);
+        CHECK(!g.Gone() && m.diagResetCount == resets + 1);
+        CHECK(gHost.pciRestores == restores + 1);
     }
 
     if (Want("D12")) {
@@ -3422,7 +3417,7 @@ static void DeviationTests()
             g.ioc.diagStuck = true;
             mark = LogMark();
             CHECK(g.ForceReinit() != 0 && g.Gone());
-            CHECK(mps_xnu_log_type(LogClass(mark, "attempts: controller disabled")) == MPS_XNU_LOG_FAULT);
+            CHECK(mps_xnu_log_type(LogClass(mark, "reinit failed (error")) == MPS_XNU_LOG_FAULT);
         }
         /* a surprise removal (an unplugged dock): ERROR, no FAULT line */
         {

@@ -899,54 +899,65 @@ int
 	mps_mask_intr(sc);
 
 	/*
-	 * XNU: no panic.  Every wait below drops mps_mtx (mps_intr_locked and
-	 * new IO see MPS_FLAGS_DIAGRESET meanwhile).  A failure, e.g. a fault
-	 * during the sequence, restarts it with a new diag reset, up to
-	 * MPS_XNU_REINIT_TRIES attempts; then the controller is disabled.
+	 * XNU: on resume, FreeBSD's attach sequence first (D12):
+	 * mps_transition_ready leaves a READY IOC alone (our suspend stopped
+	 * it with a MUR, and the dock kept it powered), MURs an OPERATIONAL
+	 * one and diag-resets only a FAULT or unknown state; then IOCFacts,
+	 * IOCInit, port enable.  No PHY reset of every disk on every wake.
+	 * Every wait below drops mps_mtx (mps_intr_locked and new IO see
+	 * MPS_FLAGS_DIAGRESET meanwhile).
 	 */
 	diag_resets = sc->xnu.stats.diag_resets;
-	for (attempt = 1; ; attempt++) {
+	if (resume)
+		error = mps_transition_ready(sc);
+	else
+		error = mps_diag_reset(sc, CAN_SLEEP);
+	if (error != 0) {
+		/* XXXSL No need to panic here */
 		/*
-		 * XNU: on resume, FreeBSD's attach sequence first (D12):
-		 * mps_transition_ready leaves a READY IOC alone (our suspend
-		 * stopped it with a MUR, and the dock kept it powered), MURs an
-		 * OPERATIONAL one and diag-resets only a FAULT or unknown state;
-		 * then IOCFacts, IOCInit, port enable.  No PHY reset of every
-		 * disk on every wake.  The diag reset stays the fallback.
+		 * XNU: no panic; one attempt, as FreeBSD and Linux mpt3sas,
+		 * then the controller is disabled below (D55).
 		 */
-		if (attempt == 1 && resume)
-			error = mps_transition_ready(sc);
-		else
-			error = mps_diag_reset(sc, CAN_SLEEP);
+		mps_dprint(sc, MPS_INIT|MPS_FAULT, "%s hard reset failed "
+		    "with error %d\n", __func__, error);
+	}
+
+	/* Restore the PCI state, including the MSI-X registers */
+	mps_pci_restore(sc);
+
+	/* Give the I/O subsystem special priority to get itself prepared */
+	mpssas_handle_reinit(sc);
+
+	/*
+	 * Get IOC Facts and allocate all structures based on this information.
+	 * The attach function will also call mps_iocfacts_allocate at startup.
+	 * If relevant values have changed in IOC Facts, this function will free
+	 * all of the memory based on IOC Facts and reallocate that memory.
+	 */
+	if (error == 0 && (error = mps_iocfacts_allocate(sc, FALSE)) != 0) {
+		/* XNU: no panic, as above */
+		mps_dprint(sc, MPS_INIT|MPS_FAULT, "%s IOC Facts based "
+		    "allocation failed with error %d\n", __func__, error);
+	}
+
+	/*
+	 * XNU: a wake whose attach sequence failed gets FreeBSD's reinit:
+	 * one diag reset (D12; the wake sequence is the port's own, FreeBSD
+	 * mps has no resume).
+	 */
+	if (error != 0 && resume && !MPS_XNU_ABANDON(sc)) {
+		mps_dprint(sc, MPS_INIT|MPS_INFO, "wake sequence failed "
+		    "(error %d): diag reset\n", error);
+		error = mps_diag_reset(sc, CAN_SLEEP);
 		if (error != 0)
 			mps_dprint(sc, MPS_INIT|MPS_FAULT, "%s hard reset "
 			    "failed with error %d\n", __func__, error);
-
-		/* Restore the PCI state, including the MSI-X registers */
-		mps_pci_restore(sc);	/* XNU: after every diag reset (D19) */
-
-		if (attempt == 1) {	/* XNU */
-			/* Give the I/O subsystem special priority to get itself prepared */
-			mpssas_handle_reinit(sc);
-		}
-
-		/*
-		 * Get IOC Facts and allocate all structures based on this information.
-		 * The attach function will also call mps_iocfacts_allocate at startup.
-		 * If relevant values have changed in IOC Facts, this function will free
-		 * all of the memory based on IOC Facts and reallocate that memory.
-		 */
+		mps_pci_restore(sc);
 		if (error == 0 &&
 		    (error = mps_iocfacts_allocate(sc, FALSE)) != 0)
 			mps_dprint(sc, MPS_INIT|MPS_FAULT, "%s IOC Facts based "
 			    "allocation failed with error %d\n", __func__,
 			    error);
-		if (error == 0 || attempt >= MPS_XNU_REINIT_TRIES ||
-		    MPS_XNU_ABANDON(sc))
-			break;
-		sc->xnu.stats.reinit_failures++;
-		mps_dprint(sc, MPS_INIT|MPS_FAULT, "reinit attempt %d of %d "
-		    "failed, retrying\n", attempt, MPS_XNU_REINIT_TRIES);
 	}
 	if (error != 0) {
 		sc->xnu.stats.reinit_failures++;

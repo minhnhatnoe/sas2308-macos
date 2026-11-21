@@ -446,29 +446,6 @@ static void TestFaultReinit(struct mps_softc *sc)
     T(callout_pending(&sc->periodic));
 }
 
-static void TestReinitRetry(struct mps_softc *sc)
-{
-    printf("reinit: first diag reset times out, second attempt succeeds\n");
-    gAsync.clear();
-    uint32_t reinits = sc->xnu.stats.reinits, fails = sc->xnu.stats.reinit_failures;
-    uint64_t t0 = gIoc.nowUs;
-    gIoc.diagStuck = true;                  /* RESET_ADAPTER never clears ... */
-    gHost.onOtherThreads = [&] {            /* ... until 400 s later */
-        if (gIoc.diagStuck && gIoc.nowUs > t0 + 400000000ull) {
-            gIoc.diagStuck = false;
-            gIoc.state = MPI2_IOC_STATE_READY;
-        }
-    };
-    gIoc.Fault(0x2623);
-    HostAdvance(1100);
-    gHost.onOtherThreads = nullptr;
-    T(sc->xnu.stats.reinits == reinits + 1 && sc->xnu.stats.reinit_failures == fails + 1);
-    T(!(sc->mps_flags & (MPS_FLAGS_DIAGRESET | MPS_FLAGS_XNU_GONE)) && gHost.dead == 0);
-    T(gIoc.state == MPI2_IOC_STATE_OPERATIONAL);
-    T(Present(sc, 0, 0x0009) && Present(sc, 1, 0x000A));
-    T(sc->sassc->sim->freeze == 0 && gHost.pciRestores == 3);   /* 1 + both attempts here (D19) */
-}
-
 static void TestRemoval(struct mps_softc *sc)
 {
     printf("removal: TARG_NOT_RESPONDING -> target reset -> REMOVE_DEVICE\n");
@@ -577,6 +554,47 @@ static void TestGone()
     gIoc.dead = false;
 }
 
+static void TestReinitFailure()
+{
+    printf("reinit: the diag reset times out -> one attempt, as FreeBSD (D55b): controller disabled\n");
+    struct mps_softc *sc = Attach({0x0011});
+    gAsync.clear();
+    struct cam_path *path;
+    T(xpt_create_path(&path, NULL, cam_sim_path(sc->sassc->sim), CAM_TARGET_WILDCARD,
+                      CAM_LUN_WILDCARD) == CAM_REQ_CMP);
+    T(xpt_register_async(AC_XNU_SCAN | AC_BUS_RESET, AsyncCb, NULL, path) == CAM_REQ_CMP);
+    xpt_free_path(path);
+    mps_compat_intrhook_run(sc);
+    HostRunPending();
+    T(Present(sc, 0, 0x0011));
+    size_t mark = gHost.Mark();
+    int diag0 = gIoc.diagResetCount;
+    uint64_t t0 = gIoc.nowUs;
+    gIoc.diagStuck = true;                  /* RESET_ADAPTER never clears ... */
+    gHost.onOtherThreads = [&] {            /* ... until 400 s later: a second attempt would succeed */
+        if (gIoc.diagStuck && gIoc.nowUs > t0 + 400000000ull) {
+            gIoc.diagStuck = false;
+            gIoc.state = MPI2_IOC_STATE_READY;
+        }
+    };
+    gIoc.Fault(0x2623);
+    HostAdvance(1100);
+    gHost.onOtherThreads = nullptr;
+    T(sc->xnu.stats.reinits == 1 && sc->xnu.stats.reinit_failures == 1);
+    T(gIoc.diagResetCount == diag0 + 1);    /* no second diag reset */
+    T(sc->xnu.disabled && !(sc->mps_flags & MPS_FLAGS_DIAGRESET));
+    T(!mps_xnu_target_present(sc, 0, NULL));
+    T(gHost.Has(mark, "controller disabled") && !gHost.Has(mark, "retrying"));
+    gIoc.diagStuck = false;
+    gIoc.state = MPI2_IOC_STATE_READY;
+    T(mps_free(sc) == 0);
+    T(bus_dma_tag_destroy(sc->mps_parent_dmat) == 0);
+    T(mps_compat_dmamem_count() == 0 && gIoc.liveAllocs == 0 && mps_compat_malloc_count() == 0);
+    T(gHost.armed.empty() && gHost.queues.empty() && gHost.locksHeld == 0);
+    free(sc);
+    gHost.sc = nullptr;
+}
+
 int main()
 {
     struct mps_softc *sc = Attach({0x0009, 0x000A});
@@ -586,10 +604,10 @@ int main()
     TestThinCam();
     TestXnuHelpers(sc);
     TestFaultReinit(sc);
-    TestReinitRetry(sc);
     TestRemoval(sc);
     TestDetach(sc);
     TestGone();
+    TestReinitFailure();
     printf("PASS (%d checks, %zu log lines)\n", gChecks, gHost.log.size());
     return 0;
 }

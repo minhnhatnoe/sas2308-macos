@@ -661,9 +661,8 @@ mps_xnu_disable(struct mps_softc *sc, int error)
 		mps_dprint(sc, MPS_INFO|MPS_ERROR, "surprise removal: controller "
 		    "disabled\n");
 	else
-		mps_dprint(sc, MPS_FAULT, "reinit failed (error %d) after %d "
-		    "attempts: controller disabled\n", error,
-		    MPS_XNU_REINIT_TRIES);
+		mps_dprint(sc, MPS_FAULT, "reinit failed (error %d): "
+		    "controller disabled\n", error);
 	sc->mps_flags |= MPS_FLAGS_XNU_GONE;
 	mps_os_controller_dead(sc->mps_dev);
 	if (sc->sassc != NULL && sc->sassc->sim != NULL) {

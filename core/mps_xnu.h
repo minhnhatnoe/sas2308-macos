@@ -29,7 +29,6 @@ struct mps_softc;
  * IOCFacts in mps_resize_queues.  The OS's share of the normal frames is
  * the kext's (mps_kext_max_tasks).
  */
-#define MPS_XNU_REINIT_TRIES	3	/* mps_reinit attempts on nested faults */
 #define MPS_XNU_CFG_TRIES	3	/* page 0 attempts in a row (10, 20 ms apart) */
 #define MPS_XNU_READD_SLOTS	16	/* devices waiting for a later add */
 #define MPS_XNU_READD_TRIES	8	/* later attempts, 1 s .. 5 s apart */
