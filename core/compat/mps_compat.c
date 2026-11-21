@@ -105,6 +105,217 @@ mps_compat_strlcpy(char *dst, const char *src, size_t size)
 	return (n);
 }
 
+/* ---- kernel printf formats ------------------------------------------------ */
+
+/* One conversion of the platform's vsnprintf (va_list: one value at most). */
+static int
+mps_compat_piece(char *buf, size_t len, const char *spec, ...)
+{
+	va_list ap;
+	int n;
+
+	va_start(ap, spec);
+	n = vsnprintf(buf, len, spec, ap);
+	va_end(ap);
+	return (n);
+}
+
+/*
+ * FreeBSD subr_prf.c %b: the int in the base the first byte gives (no
+ * prefix), then <name,...> of each set bit; a bit byte (1-32) precedes
+ * each name.
+ */
+static int
+mps_compat_bits(char *buf, size_t len, u_int v, const char *p)
+{
+	int n, any = 0, bit;
+	size_t used;
+
+	n = mps_compat_piece(buf, len, (*p == 8) ? "%o" : (*p == 10) ? "%u" :
+	    "%x", v);
+	if (n < 0)
+		return (n);
+	used = (size_t)n;
+	if (v == 0)
+		return (n);
+	for (p++; (bit = (unsigned char)*p++) != 0; ) {
+		if (bit <= 32 && (v & (1u << (bit - 1)))) {
+			if (used + 1 < len)
+				buf[used] = any ? ',' : '<';
+			used++;
+			for (; *p > ' '; p++, used++)
+				if (used + 1 < len)
+					buf[used] = *p;
+			any = 1;
+		} else
+			for (; *p > ' '; p++)
+				continue;
+	}
+	if (any) {
+		if (used + 1 < len)
+			buf[used] = '>';
+		used++;
+	}
+	if (len != 0)
+		buf[used < len ? used : len - 1] = '\0';
+	return ((int)used);
+}
+
+/*
+ * vsnprintf(9) with FreeBSD's %b.  A format without %b goes to the
+ * platform's vsnprintf as it is.  Otherwise each conversion is formatted on
+ * its own (`*' width/precision resolved first), with the argument type its
+ * length modifier names; no floating point (the kernel has none).
+ */
+int
+mps_compat_vsnprintf(char *buf, size_t len, const char *fmt, va_list ap)
+{
+	char spec[32], tmp[2];
+	const char *f, *start;
+	size_t used = 0, room;
+	char *out;
+	int n, sl, lmod;
+
+	for (f = fmt; (f = strchr(f, '%')) != NULL; f++) {
+		for (f++; *f != '\0' && strchr("-+ #0123456789.*hljztq", *f);
+		    f++)
+			continue;
+		if (*f == 'b')
+			break;
+		if (*f == '\0')
+			break;
+	}
+	if (f == NULL || *f != 'b') {
+		start = fmt;	/* no %b: a printf(3) format (unchecked copy) */
+		return (vsnprintf(buf, len, start, ap));
+	}
+
+	for (f = fmt; *f != '\0'; ) {
+		room = used < len ? len - used : 0;
+		out = room ? buf + used : tmp;
+		if (room == 0)
+			room = sizeof(tmp);	/* measure only */
+		if (*f != '%') {
+			start = f;
+			while (*f != '\0' && *f != '%')
+				f++;
+			if (used < len)
+				memcpy(buf + used, start, (size_t)(f - start) <
+				    len - used ? (size_t)(f - start) : len - used);
+			used += (size_t)(f - start);
+			continue;
+		}
+		/* the conversion spec, `*' replaced by the argument */
+		start = f++;
+		sl = 0;
+		spec[sl++] = '%';
+		lmod = 0;
+		for (; *f != '\0' && strchr("-+ #0123456789.*", *f) != NULL;
+		    f++) {
+			if (*f == '*')
+				sl += mps_compat_piece(spec + sl,
+				    sizeof(spec) - (size_t)sl - 8, "%d",
+				    va_arg(ap, int));
+			else if (sl < (int)sizeof(spec) - 8)
+				spec[sl++] = *f;
+		}
+		for (; *f != '\0' && strchr("hljztq", *f) != NULL; f++) {
+			if (sl < (int)sizeof(spec) - 2)
+				spec[sl++] = (*f == 'q') ? 'l' : *f;
+			lmod = (*f == 'q') ? 'L' :
+			    (lmod == 'l' && *f == 'l') ? 'L' :
+			    (lmod == 'h' && *f == 'h') ? 'H' : *f;
+			if (*f == 'q' && sl < (int)sizeof(spec) - 2)
+				spec[sl++] = 'l';
+		}
+		if (*f == '\0')
+			break;
+		spec[sl++] = *f;
+		spec[sl] = '\0';
+		switch (*f++) {
+		case 'b': {
+			u_int v = va_arg(ap, u_int);
+			const char *bits = va_arg(ap, const char *);
+
+			n = mps_compat_bits(out, room, v, bits);
+			break;
+		}
+		case 'd': case 'i':
+			if (lmod == 'l')
+				n = mps_compat_piece(out, room, spec,
+				    va_arg(ap, long));
+			else if (lmod == 'L')
+				n = mps_compat_piece(out, room, spec,
+				    va_arg(ap, long long));
+			else if (lmod == 'j')
+				n = mps_compat_piece(out, room, spec,
+				    va_arg(ap, intmax_t));
+			else if (lmod == 'z' || lmod == 't')
+				n = mps_compat_piece(out, room, spec,
+				    va_arg(ap, ptrdiff_t));
+			else
+				n = mps_compat_piece(out, room, spec,
+				    va_arg(ap, int));
+			break;
+		case 'o': case 'u': case 'x': case 'X':
+			if (lmod == 'l')
+				n = mps_compat_piece(out, room, spec,
+				    va_arg(ap, unsigned long));
+			else if (lmod == 'L')
+				n = mps_compat_piece(out, room, spec,
+				    va_arg(ap, unsigned long long));
+			else if (lmod == 'j')
+				n = mps_compat_piece(out, room, spec,
+				    va_arg(ap, uintmax_t));
+			else if (lmod == 'z' || lmod == 't')
+				n = mps_compat_piece(out, room, spec,
+				    va_arg(ap, size_t));
+			else
+				n = mps_compat_piece(out, room, spec,
+				    va_arg(ap, u_int));
+			break;
+		case 'c':
+			n = mps_compat_piece(out, room, spec, va_arg(ap, int));
+			break;
+		case 's':
+			n = mps_compat_piece(out, room, spec,
+			    va_arg(ap, const char *));
+			break;
+		case 'p':
+			n = mps_compat_piece(out, room, spec,
+			    va_arg(ap, void *));
+			break;
+		case '%':
+			n = mps_compat_piece(out, room, "%%");
+			break;
+		default:		/* not a kernel format: printed as is */
+			n = (int)(f - start);
+			if (out != tmp)
+				memcpy(out, start, (size_t)n < room ?
+				    (size_t)n : room - 1);
+			break;
+		}
+		if (n < 0)
+			return (n);
+		used += (size_t)n;
+	}
+	if (len != 0)
+		buf[used < len ? used : len - 1] = '\0';
+	return ((int)used);
+}
+
+int
+mps_compat_snprintf(char *buf, size_t len, const char *fmt, ...)
+{
+	va_list ap;
+	int n;
+
+	va_start(ap, fmt);
+	n = mps_compat_vsnprintf(buf, len, fmt, ap);
+	va_end(ap);
+	return (n);
+}
+
 /* ---- logging ----------------------------------------------------------- */
 
 #define MPS_COMPAT_LINE	320
@@ -114,7 +325,7 @@ mps_compat_vlog(device_t dev, uint32_t cls, const char *fmt, va_list ap)
 {
 	char buf[MPS_COMPAT_LINE], *line, *nl;
 
-	vsnprintf(buf, sizeof(buf), fmt, ap);
+	mps_compat_vsnprintf(buf, sizeof(buf), fmt, ap);
 	/* One mps_os_log() call per line; empty lines are dropped. */
 	for (line = buf; *line != '\0'; line = nl + 1) {
 		nl = strchr(line, '\n');

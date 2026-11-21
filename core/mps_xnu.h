@@ -69,12 +69,6 @@ const char	*mps_xnu_category(uint32_t cls);
 int		 mps_xnu_log_type(uint32_t cls);
 void		 mps_xnu_describe_debug(uint32_t mask, char *buf, size_t len);
 
-/* ---- the kernel printf %b conversion -------------------------------------- */
-
-const char	*mps_xnu_bits(char *buf, size_t len, uint32_t v, const char *bits);
-/* printf("%b", v, bits) -> printf("%s", MPS_XNU_BITS(v, bits)); C only */
-#define MPS_XNU_BITS(v, bits)	mps_xnu_bits((char[160]){ 0 }, 160, (v), (bits))
-
 /* ---- decoders (FreeBSD: CAM scsi_all.c) ------------------------------------- */
 
 const char	*mps_xnu_ioc_state_str(uint32_t doorbell);

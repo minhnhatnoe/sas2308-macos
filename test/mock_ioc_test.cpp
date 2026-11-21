@@ -1421,11 +1421,8 @@ static void LoggingTests()
         CHECK(strcmp(mps_xnu_ioc_state_str(0x40002622), "FAULT") == 0 && strcmp(mps_xnu_ioc_state_str(0x70000000), "UNKNOWN") == 0);
         CHECK(strcmp(mps_describe_table(mps_scsi_status_string, 0x18), "reservation conflict") == 0);
         char b[200];
-        CHECK(strcmp(mps_xnu_bits(b, sizeof(b), 0x5, "\20\1A\3C"), "0x5<A,C>") == 0);
-        CHECK(strcmp(mps_xnu_bits(b, sizeof(b), 0, "\20\1A"), "0x0") == 0);
-        CHECK(strcmp(mps_xnu_bits(b, sizeof(b), 0x80000000u, "\20\40Top"), "0x80000000<Top>") == 0);
-        mps_describe_devinfo(0x401, b, sizeof(b));
-        CHECK(strcmp(b, "0x401<SspTarg>,End Device") == 0);
+        mps_describe_devinfo(0x401, b, sizeof(b));          /* FreeBSD's %b: no 0x */
+        CHECK(strcmp(b, "401<SspTarg>,End Device") == 0);
         mps_xnu_loginfo_str(0x31120303, b, sizeof(b));
         CHECK(strcmp(b, "0x31120303 (SAS PL code 0x12 sub 0x0303)") == 0);
         const uint8_t fixed[18] = {0x70, 0, 0x03, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0x11, 0x00};
@@ -2735,6 +2732,31 @@ static void DeviationTests()
         mps_unlock(g.sc);
         g.Pump();
         CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
+    if (Want("D27")) {
+        /* the kernel printf's %b in compat: FreeBSD's call sites stay verbatim */
+        char b[200];
+        mps_compat_snprintf(b, sizeof(b), "%b", 0x5, "\20\1A\3C");
+        CHECK(strcmp(b, "5<A,C>") == 0);
+        mps_compat_snprintf(b, sizeof(b), "%b", 0, "\20\1A");
+        CHECK(strcmp(b, "0") == 0);
+        mps_compat_snprintf(b, sizeof(b), "%b", 0x80000000u, "\20\40Top");
+        CHECK(strcmp(b, "80000000<Top>") == 0);
+        mps_compat_snprintf(b, sizeof(b), "%b", 9, "\10\1A\4D");
+        CHECK(strcmp(b, "11<A,D>") == 0);
+        /* other conversions around it keep their arguments */
+        mps_compat_snprintf(b, sizeof(b), "%s %04x %b %ju %-3d|%.*s %zu %lld%%", "a", 0x2b, 3,
+                            "\20\1X\2Y", (uintmax_t)1 << 40, 7, 2, "xyz", (size_t)9, -5ll);
+        CHECK(strcmp(b, "a 002b 3<X,Y> 1099511627776 7  |xy 9 -5%") == 0);
+        CHECK(mps_compat_snprintf(b, 6, "%b!", 0x3, "\20\1Long\2Names") == 14 && strcmp(b, "3<Lon") == 0);
+        /* a FreeBSD site: mps_print_iocfacts' IOCCapabilities, through mps_compat_log */
+        Rig g({0x0009}, [](Rig &r) { r.ioc.iocCaps = 0x1C; });
+        const size_t mark = LogMark();
+        mps_lock(g.sc);
+        mps_print_iocfacts(g.sc, g.sc->facts);
+        mps_unlock(g.sc);
+        CHECK(HasLog(mark, "IOCCapabilities: 1c<ScsiTaskFull,DiagTrace,SnapBuf>"));
     }
 
     if (Want("D18")) {

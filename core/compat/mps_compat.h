@@ -48,6 +48,16 @@ extern "C" {
 #ifndef __printflike
 #define __printflike(f, a)	__attribute__((__format__(__printf__, f, a)))
 #endif
+/*
+ * FreeBSD's kernel printf: printf(9) formats plus %b (bit names).  Clang
+ * checks them (format kind freebsd_kprintf); GCC knows no such kind, so the
+ * host build does not check these formats.
+ */
+#if defined(__clang__)
+#define __kprintflike(f, a)	__attribute__((__format__(__freebsd_kprintf__, f, a)))
+#else
+#define __kprintflike(f, a)
+#endif
 #ifndef __predict_false
 #define __predict_false(x)	__builtin_expect(!!(x), 0)
 #define __predict_true(x)	__builtin_expect(!!(x), 1)
@@ -250,16 +260,25 @@ void	 mps_compat_device_init(device_t dev, const char *name, int unit,
 #define pci_get_device(dev)		((dev)->dv_devid)
 #define bus_get_dma_tag(dev)		(&(dev)->dv_dmat)
 
-/* Every line ends up in mps_os_log(dev, cls, line), one call per line. */
+/*
+ * Every line ends up in mps_os_log(dev, cls, line), one call per line.  The
+ * formats are the kernel printf's: mps_compat_vsnprintf() adds %b to the
+ * platform's vsnprintf, so FreeBSD's %b call sites stay verbatim.
+ */
+int	mps_compat_vsnprintf(char *buf, size_t len, const char *fmt,
+	    va_list ap) __kprintflike(3, 0);
+int	mps_compat_snprintf(char *buf, size_t len, const char *fmt, ...)
+	    __kprintflike(3, 4);
 void	mps_compat_log(device_t dev, uint32_t cls, const char *fmt, ...)
-	    __printflike(3, 4);
+	    __kprintflike(3, 4);
 void	mps_compat_vlog(device_t dev, uint32_t cls, const char *fmt,
-	    va_list ap) __printflike(3, 0);
-int	device_printf(device_t dev, const char *fmt, ...) __printflike(2, 3);
-int	mps_compat_printf(const char *fmt, ...) __printflike(1, 2);
+	    va_list ap) __kprintflike(3, 0);
+int	device_printf(device_t dev, const char *fmt, ...) __kprintflike(2, 3);
+int	mps_compat_printf(const char *fmt, ...) __kprintflike(1, 2);
 void	hexdump(const void *ptr, int length, const char *hdr, int flags);
 #ifndef MPS_COMPAT_NO_LIBC_REMAP
 #define printf		mps_compat_printf
+#define snprintf	mps_compat_snprintf
 #endif
 
 /* Never used by the port; keep struct mps_softc verbatim. */

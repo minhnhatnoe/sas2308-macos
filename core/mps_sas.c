@@ -1731,10 +1731,9 @@ mps_sc_failed_io_info(struct mps_softc *sc, struct ccb_scsiio *csio,
 	 * TO-DO
 	 */
 	mps_dprint(sc, MPS_XINFO, "\tscsi_status(%s)(0x%02x), "
-	    "scsi_state %s\n", desc_scsi_status, scsi_status,	/* XNU: no %b */
-	    MPS_XNU_BITS(scsi_state, "\20" "\1AutosenseValid"
-	    "\2AutosenseFailed" "\3NoScsiStatus" "\4Terminated"
-	    "\5Response InfoValid"));
+	    "scsi_state %b\n", desc_scsi_status, scsi_status,
+	    scsi_state, "\20" "\1AutosenseValid" "\2AutosenseFailed"
+	    "\3NoScsiStatus" "\4Terminated" "\5Response InfoValid");
 
 	/* XNU: the sense data is decoded in the failed-IO line (mps_xnu.c) */
 

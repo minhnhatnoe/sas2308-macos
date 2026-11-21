@@ -507,8 +507,8 @@ static void TestXnuHelpers(struct mps_softc *sc)
     T(sc->mps_debug == (MPS_INFO | MPS_FAULT));
     sc->mps_debug = saved;
     char b[160];
-    T(strcmp(mps_xnu_bits(b, sizeof(b), 0x5, "\20\1InProgress\2DeviceChange\3Third"),
-             "0x5<InProgress,Third>") == 0);
+    mps_compat_snprintf(b, sizeof(b), "%b", 0x5, "\20\1InProgress\2DeviceChange\3Third");
+    T(strcmp(b, "5<InProgress,Third>") == 0);
     T(strcmp(mps_xnu_cdb_str(0x28), "READ(10)") == 0 && strcmp(mps_xnu_cdb_str(0xEE), "CDB") == 0);
     uint8_t sense[18] = {0x70, 0, 0x03, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0x11, 0x00};
     uint8_t key, asc, ascq;

@@ -531,11 +531,11 @@ mps_iocfacts_allocate(struct mps_softc *sc, uint8_t attaching)
 
 	mps_dprint(sc, MPS_INFO, "Firmware: %s, Driver: %s\n", sc->fw_version,
 	    MPS_DRIVER_VERSION);
-	mps_dprint(sc, MPS_INFO, "IOCCapabilities: %s\n",	/* XNU: no %b */
-	     MPS_XNU_BITS(sc->facts->IOCCapabilities,
+	mps_dprint(sc, MPS_INFO, "IOCCapabilities: %b\n",
+	     sc->facts->IOCCapabilities,
 	    "\20" "\3ScsiTaskFull" "\4DiagTrace" "\5SnapBuf" "\6ExtBuf"
 	    "\7EEDP" "\10BiDirTarg" "\11Multicast" "\14TransRetry" "\15IR"
-	    "\16EventReplay" "\17RaidAccel" "\20MSIXIndex" "\21HostDisc"));
+	    "\16EventReplay" "\17RaidAccel" "\20MSIXIndex" "\21HostDisc");
 
 	/*
 	 * If the chip doesn't support event replay then a hard reset will be

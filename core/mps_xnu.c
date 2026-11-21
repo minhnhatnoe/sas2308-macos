@@ -136,43 +136,6 @@ mps_xnu_describe_debug(uint32_t mask, char *buf, size_t len)
 		snprintf(buf, len, "none");
 }
 
-/* ---- %b ------------------------------------------------------------------- */
-
-const char *
-mps_xnu_bits(char *buf, size_t len, uint32_t v, const char *bits)
-{
-	const char *name;
-	size_t used;
-	int w, bit, any = 0;
-
-	w = snprintf(buf, len, (bits != NULL && *bits == 8) ? "0%o" : "0x%x",
-	    v);
-	if (w < 0 || (size_t)w >= len)
-		return (buf);
-	used = (size_t)w;
-	if (bits == NULL || v == 0)
-		return (buf);
-	bits++;				/* the base */
-	while ((bit = (unsigned char)*bits++) != 0) {
-		name = bits;
-		while (*bits > 32)	/* names are printable, bits 1..32 */
-			bits++;
-		if (bit <= 32 && (v & (1u << (bit - 1)))) {
-			w = snprintf(buf + used, len - used, "%c%.*s",
-			    any ? ',' : '<', (int)(bits - name), name);
-			if (w < 0 || used + (size_t)w >= len)
-				return (buf);
-			used += (size_t)w;
-			any = 1;
-		}
-	}
-	if (any && used + 1 < len) {
-		buf[used++] = '>';
-		buf[used] = '\0';
-	}
-	return (buf);
-}
-
 /* ---- decoders --------------------------------------------------------------- */
 
 static struct mps_table_lookup mps_xnu_ioc_state_names[] = {
