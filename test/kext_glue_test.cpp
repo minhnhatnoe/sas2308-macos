@@ -161,7 +161,9 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         if (f->loseKicks) return;
         f->glue.Lock(); f->glue.ScheduleDone(); f->glue.Unlock();
     }
+    int asyncCalls = 0;
     static void HostAsync(void *hba, int event, uint64_t tids, uint64_t present, const uint32_t *gens) {
+        ((Family *)hba)->asyncCalls++;
         ((Family *)hba)->glue.Async(event, tids, present, gens);
     }
 
@@ -809,6 +811,23 @@ int main()
         for (size_t i = mark; i < gHost.log.size(); i++)
             lines += gHost.log[i].line.find("not kicked") != std::string::npos;
         CHECK(lines == 1);
+        f.Detach();
+    }
+
+    if (Want("D36")) {
+        /* nothing posts AC_LOST_DEVICE (only CAM's probe does): the kext does not listen for it */
+        MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        struct mps_softc *sc = gHost.sc;
+        struct cam_path *path;
+        mps_lock(sc);
+        CHECK(xpt_create_path(&path, NULL, cam_sim_path(sc->sassc->sim), 0, 0) == CAM_REQ_CMP);
+        const int calls = f.asyncCalls;
+        xpt_async(AC_LOST_DEVICE, path, NULL);
+        CHECK(f.asyncCalls == calls);
+        xpt_free_path(path);
+        mps_unlock(sc);
         f.Detach();
     }
 

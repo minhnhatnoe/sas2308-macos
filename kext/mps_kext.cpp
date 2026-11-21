@@ -264,7 +264,12 @@ static void mps_kext_tm_done(struct cam_periph *periph, union ccb *ccb)
     wakeup(&k->tm_chan);
 }
 
-/* CAM async callback (mps_mtx held): AC_XNU_SCAN, AC_BUS_RESET, AC_SENT_BDR, AC_LOST_DEVICE. */
+/*
+ * CAM async callback (mps_mtx held): AC_XNU_SCAN, AC_BUS_RESET, AC_SENT_BDR.
+ * Removals arrive only as AC_XNU_SCAN (the core's rescan after a topology
+ * change, and after a firmware DEVICE_NOT_THERE, D20c): AC_LOST_DEVICE comes
+ * from CAM's probe and invalidations, which the thin CAM does not have.
+ */
 static void mps_kext_async(void *arg, uint32_t code, struct cam_path *path, void *a)
 {
     struct mps_kext *k = (struct mps_kext *)arg;
@@ -281,10 +286,6 @@ static void mps_kext_async(void *arg, uint32_t code, struct cam_path *path, void
         tids = (tid == CAM_TARGET_WILDCARD || (scan && scan->ccb_h.func_code == XPT_SCAN_BUS)) ? ~0ull : one;
         break;
     }
-    case AC_LOST_DEVICE:
-        event = MPSK_ASYNC_LOST_DEVICE;
-        tids = tid == CAM_TARGET_WILDCARD ? ~0ull : one;
-        break;
     case AC_BUS_RESET:
         event = MPSK_ASYNC_BUS_RESET;
         mps_kext_arm_ua(k, CAM_TARGET_WILDCARD, CAM_LUN_WILDCARD);
@@ -354,7 +355,7 @@ int mps_kext_attach(struct mps_kext *k, uint32_t debug_mask)
     callout_init_mtx(&k->hold_callout, &sc->mps_mtx, 0);
     if (xpt_create_path(&path, NULL, cam_sim_path(sc->sassc->sim), CAM_TARGET_WILDCARD,
                         CAM_LUN_WILDCARD) == CAM_REQ_CMP) {
-        if (xpt_register_async(AC_XNU_SCAN | AC_BUS_RESET | AC_SENT_BDR | AC_LOST_DEVICE,
+        if (xpt_register_async(AC_XNU_SCAN | AC_BUS_RESET | AC_SENT_BDR,
                                mps_kext_async, k, path) != CAM_REQ_CMP)
             mps_dprint(sc, MPS_FAULT | MPS_INIT, "cannot register the async callback: no hotplug\n");
         xpt_free_path(path);

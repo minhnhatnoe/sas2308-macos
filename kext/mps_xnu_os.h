@@ -60,7 +60,7 @@ struct mps_kext_host {
 	/* completions were queued by a callout or the reinit task (mps_mtx held) */
 	void	(*io_done_kick)(void *hba);
 	/*
-	 * CAM async events (mps_mtx held). MPSK_ASYNC_SCAN / LOST_DEVICE: for
+	 * CAM async events (mps_mtx held). MPSK_ASYNC_SCAN: for
 	 * every target id in `tids', bit = 1 if mps_xnu_target_present() at
 	 * the time of the event; gens[id] = the generation of the device
 	 * behind the id (mps_xnu_target_gen: changes with its identity).
@@ -72,8 +72,7 @@ struct mps_kext_host {
 enum {
 	MPSK_ASYNC_SCAN = 1,		/* AC_XNU_SCAN (xpt_rescan) */
 	MPSK_ASYNC_BUS_RESET,		/* AC_BUS_RESET (IOC reinit) */
-	MPSK_ASYNC_SENT_BDR,		/* AC_SENT_BDR (target reset) */
-	MPSK_ASYNC_LOST_DEVICE		/* AC_LOST_DEVICE */
+	MPSK_ASYNC_SENT_BDR		/* AC_SENT_BDR (target reset) */
 };
 
 /* ---- life cycle (mock_ioc_test.cpp Rig order) -------------------------- */

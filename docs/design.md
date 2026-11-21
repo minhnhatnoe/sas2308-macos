@@ -249,7 +249,7 @@ to `core/mps_xnu_stats.h` (only `<stdint.h>`) so the class can read a snapshot.
 - Attach (`InitializeController`, the `Rig` order): `mps_kext_create` (`mps_compat_device_init`,
   `mps_bhandle` = BAR1) → `mps_kext_attach`: `mps_get_tunables`, debug mask, parent DMA tag,
   `mps_attach` (never `mps_free` after a failure: it frees itself), `xpt_register_async(AC_XNU_SCAN |
-  AC_BUS_RESET | AC_SENT_BDR | AC_LOST_DEVICE)`. `StartController`: `EnableInterrupt()`, then
+  AC_BUS_RESET | AC_SENT_BDR)` (AC_LOST_DEVICE until batch C, D36)`. `StartController`: `EnableInterrupt()`, then
   `mps_compat_intrhook_run()` (mps_startup: unmask, port enable).
 - IO: `ProcessParallelTask` maps the buffer (`gen64IOVMSegments`, ≤ `buffer_dmat` nsegments,
   ≤ 16 MiB − 1 per segment) into the `bus_dma_segment_t` list of an `XPT_SCSI_IO` ccb that lives in
