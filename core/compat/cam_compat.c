@@ -33,6 +33,8 @@ cam_simq_free(struct cam_devq *devq)
 	mps_compat_free(devq, NULL);
 }
 
+static void cam_xnu_run_deferred(void *arg);
+
 struct cam_sim *
 cam_sim_alloc(sim_action_func sim_action, sim_poll_func sim_poll,
     const char *sim_name, void *softc, uint32_t unit, struct mtx *mtx,
@@ -49,6 +51,8 @@ cam_sim_alloc(sim_action_func sim_action, sim_poll_func sim_poll,
 	sim->sim_name = sim_name;
 	sim->softc = softc;
 	sim->mtx = mtx;
+	mtx->mtx_release_fn = cam_xnu_run_deferred;
+	mtx->mtx_release_arg = sim;
 	sim->path_id = CAM_XPT_PATH_ID;
 	sim->unit_number = unit;
 	sim->max_dev_openings = max_dev_transactions;
@@ -78,6 +82,11 @@ cam_sim_free(struct cam_sim *sim, int free_devq)
 	}
 	if (free_devq && sim->devq != NULL)
 		cam_simq_free(sim->devq);
+	if (sim->mtx->mtx_release_arg == sim) {
+		sim->mtx->mtx_release_pending = 0;
+		sim->mtx->mtx_release_fn = NULL;
+		sim->mtx->mtx_release_arg = NULL;
+	}
 	mps_compat_free(sim, NULL);
 }
 
@@ -237,7 +246,41 @@ cam_xnu_hold(struct cam_sim *sim, union ccb *ccb)
 		TAILQ_INSERT_HEAD(&sim->held, &ccb->ccb_h, sim_links);
 }
 
-/* Hand every held ccb that is no longer blocked to the SIM, in order. */
+/*
+ * Put the rest of a run's batch back: both lists are in arrival order, so
+ * a merge keeps the held queue in order.
+ */
+static void
+cam_xnu_unbatch(struct cam_sim *sim, struct cam_xnu_ccbq *batch)
+{
+	struct cam_xnu_ccbq merged;
+	struct ccb_hdr *a, *b;
+
+	TAILQ_INIT(&merged);
+	for (;;) {
+		a = TAILQ_FIRST(&sim->held);
+		b = TAILQ_FIRST(batch);
+		if (a == NULL && b == NULL)
+			break;
+		if (b == NULL || (a != NULL && a->xnu_seq < b->xnu_seq)) {
+			TAILQ_REMOVE(&sim->held, a, sim_links);
+			TAILQ_INSERT_TAIL(&merged, a, sim_links);
+		} else {
+			TAILQ_REMOVE(batch, b, sim_links);
+			((union ccb *)b)->ccb_h.xnu_held = 1;
+			TAILQ_INSERT_TAIL(&merged, b, sim_links);
+		}
+	}
+	TAILQ_CONCAT(&sim->held, &merged, sim_links);
+}
+
+/*
+ * Hand every held ccb that is no longer blocked to the SIM, in order.  As
+ * CAM's xpt_run_devq, a frozen SIM queue stops the run at once (the rest
+ * stays held, untouched): a ccb the SIM requeues with the SIM queue frozen
+ * (reset in progress, no free command) does not make every other held ccb
+ * go round again.
+ */
 static void
 cam_xnu_run_held(struct cam_sim *sim)
 {
@@ -252,12 +295,19 @@ cam_xnu_run_held(struct cam_sim *sim)
 	sim->running = 1;
 	do {
 		sim->rerun = 0;
+		if (sim->freeze > 0)
+			break;
 		TAILQ_INIT(&batch);
 		TAILQ_CONCAT(&batch, &sim->held, sim_links);
 		while ((h = TAILQ_FIRST(&batch)) != NULL) {
+			if (sim->freeze > 0) {
+				cam_xnu_unbatch(sim, &batch);
+				break;
+			}
 			TAILQ_REMOVE(&batch, h, sim_links);
 			ccb = (union ccb *)h;
 			ccb->ccb_h.xnu_held = 0;
+			sim->held_checks++;
 			if (cam_xnu_blocked(sim, ccb)) {
 				cam_xnu_hold(sim, ccb);
 				continue;
@@ -267,6 +317,13 @@ cam_xnu_run_held(struct cam_sim *sim)
 		}
 	} while (sim->rerun);
 	sim->running = 0;
+}
+
+/* mtx_unlock / msleep of the SIM's mutex: the run xpt_done deferred. */
+static void
+cam_xnu_run_deferred(void *arg)
+{
+	cam_xnu_run_held((struct cam_sim *)arg);
 }
 
 void
@@ -412,12 +469,33 @@ xpt_done(union ccb *ccb)
 			sim->freeze--;
 		run = 1;
 	}
-	if ((ccb->ccb_h.status & CAM_STATUS_MASK) == CAM_REQUEUE_REQ)
+	if ((ccb->ccb_h.status & CAM_STATUS_MASK) == CAM_REQUEUE_REQ) {
+		/*
+		 * A requeue must be backed by a SIM or device queue freeze the
+		 * SIM releases later, or release one itself (then it is re-sent
+		 * after this pass, as the periph does: the reset-killed IO of
+		 * D20b).  Otherwise it strands until the next xpt_action, or,
+		 * from inside a run, is re-sent at once and can loop (D67).
+		 */
+		KASSERT(cam_xnu_blocked(sim, ccb) || (run && !sim->running),
+		    ("xpt_done: CAM_REQUEUE_REQ without a frozen queue "
+		    "(target %u lun %ju)", ccb->ccb_h.target_id,
+		    (uintmax_t)ccb->ccb_h.target_lun));
 		cam_xnu_hold(sim, ccb);
-	else if (ccb->ccb_h.cbfcnp != NULL)
+	} else if (ccb->ccb_h.cbfcnp != NULL)
 		ccb->ccb_h.cbfcnp(NULL, ccb);
-	if (run)
-		cam_xnu_run_held(sim);
+	/*
+	 * The held queue runs once per completion pass, when the SIM's mutex
+	 * is let go (CAM: xpt_release_simq(run_queue=FALSE) in the done
+	 * thread, then xpt_run_devq), not from inside the SIM's completion
+	 * path for each ccb.
+	 */
+	if (run) {
+		if (sim->running)
+			sim->rerun = 1;
+		else
+			sim->mtx->mtx_release_pending = 1;
+	}
 }
 
 int

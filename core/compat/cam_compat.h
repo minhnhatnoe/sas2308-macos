@@ -17,7 +17,8 @@
  *   arrival order); any other status calls ccb_h.cbfcnp(NULL, ccb), with
  *   mps_mtx held.  CAM_DEV_QFRZN on a completed ccb releases that freeze
  *   (the periph's job in FreeBSD) and is cleared; CAM_RELEASE_SIMQ releases
- *   the SIM queue.
+ *   the SIM queue.  The held queue then runs once, when the SIM's mutex is
+ *   let go (end of the completion pass), and stops at a frozen SIM queue.
  * - xpt_async() and xpt_rescan() call the callbacks registered with
  *   xpt_register_async() for the bus (rescans as AC_XNU_SCAN with the scan
  *   ccb as `arg'), with mps_mtx held.
@@ -271,6 +272,11 @@ struct cam_sim {
 	path_id_t		 path_id;
 	u_int			 unit_number;
 	u_int			 bus_id;
+	/*
+	 * XNU: openings (here and the devq's max_openings) are stored, not
+	 * enforced: the family's ReportMaximumTaskCount (mps_kext_max_tasks)
+	 * is the throttle, and a SIM out of commands requeues (D65).
+	 */
 	int			 max_tagged_dev_openings;
 	int			 max_dev_openings;
 	struct cam_devq		*devq;
@@ -279,6 +285,7 @@ struct cam_sim {
 	uint64_t		 seq;			/* last arrival number */
 	int			 running;		/* in cam_xnu_run_held() */
 	int			 rerun;
+	uint64_t		 held_checks;		/* held ccbs examined by runs */
 	uint32_t		 held_total;		/* ccbs ever held */
 	TAILQ_HEAD(cam_xnu_ccbq, ccb_hdr) held;			/* by arrival order */
 	TAILQ_HEAD(, cam_xnu_frozen) frozen;
@@ -328,6 +335,7 @@ void		 xpt_release_simq(struct cam_sim *sim, int run_queue);
 uint32_t	 xpt_freeze_devq(struct cam_path *path, u_int count);
 void		 xpt_release_devq(struct cam_path *path, u_int count,
 		    int run_queue);
+/* XNU: no-ops: the kext loads after boot, the HBA is not a boot device (D69) */
 #define xpt_hold_boot()		do { } while (0)
 #define xpt_release_boot()	do { } while (0)
 void		 xpt_rescan(union ccb *ccb);

@@ -686,10 +686,20 @@ mtx_lock(struct mtx *m)
 	m->mtx_owner = mps_os_curthread();
 }
 
+static void
+mtx_release_work(struct mtx *m)
+{
+	while (m->mtx_release_pending) {
+		m->mtx_release_pending = 0;
+		m->mtx_release_fn(m->mtx_release_arg);
+	}
+}
+
 void
 mtx_unlock(struct mtx *m)
 {
 	mtx_assert(m, MA_OWNED);
+	mtx_release_work(m);
 	m->mtx_owner = NULL;
 	mps_os_unlock(m->mtx_os);
 }
@@ -703,6 +713,7 @@ msleep(void *chan, struct mtx *mtx, int pri, const char *wmesg, int timo)
 	(void)pri;
 	(void)wmesg;
 	mtx_assert(mtx, MA_OWNED);
+	mtx_release_work(mtx);
 	self = mtx->mtx_owner;
 	mtx->mtx_owner = NULL;
 	error = mps_os_sleep(mtx->mtx_os, chan,

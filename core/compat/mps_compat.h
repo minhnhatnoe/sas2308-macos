@@ -369,6 +369,14 @@ struct mtx {
 	const char		*mtx_name;
 	TAILQ_HEAD(, callout)	 mtx_callouts;	/* armed callouts, by deadline */
 	uint64_t		 mtx_armed_us;	/* deadline passed to mps_os_callout_arm */
+	/*
+	 * Work deferred to the end of the current hold of the mutex: run by
+	 * mtx_unlock() and msleep() before the mutex is let go (the thin
+	 * CAM's held-queue run after a completion pass, CAM's done thread).
+	 */
+	void			(*mtx_release_fn)(void *);
+	void			*mtx_release_arg;
+	int			 mtx_release_pending;
 };
 
 #define MTX_DEF		0x0000

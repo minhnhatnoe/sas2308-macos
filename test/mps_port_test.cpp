@@ -292,6 +292,7 @@ static void TestInterrupts(struct mps_softc *sc)
 struct TestSim {
     std::vector<uintptr_t> actions;         /* tags, in dispatch order */
     std::vector<uintptr_t> requeueOnce;     /* tags to requeue (with a device freeze) once */
+    std::vector<uintptr_t> requeueFrozen;   /* tags to requeue once, SIM queue frozen (no command) */
 };
 
 static void TestSimAction(struct cam_sim *sim, union ccb *ccb)
@@ -304,6 +305,15 @@ static void TestSimAction(struct cam_sim *sim, union ccb *ccb)
             ts->requeueOnce.erase(ts->requeueOnce.begin() + i);
             xpt_freeze_devq(ccb->ccb_h.path, 1);
             ccb->ccb_h.status = CAM_REQUEUE_REQ | CAM_DEV_QFRZN;
+            xpt_done(ccb);
+            return;
+        }
+    }
+    for (size_t i = 0; i < ts->requeueFrozen.size(); i++) {
+        if (ts->requeueFrozen[i] == tag) {
+            ts->requeueFrozen.erase(ts->requeueFrozen.begin() + i);
+            xpt_freeze_simq(sim, 1);                /* mpssas_action_scsiio without a free command */
+            ccb->ccb_h.status = CAM_REQUEUE_REQ;
             xpt_done(ccb);
             return;
         }
@@ -345,10 +355,13 @@ static void TestThinCam()
     xpt_release_simq(sim, 1);
     T((ts.actions == std::vector<uintptr_t>{1, 2, 3}) && gDone.size() == 3);
 
-    /* requeue with CAM_DEV_QFRZN: held again, freeze released, retried */
+    /* requeue with CAM_DEV_QFRZN: held again, freeze released, retried when the pass ends (D35) */
     ts.actions.clear();
     ts.requeueOnce = {4};
     io(2, 4);
+    T((ts.actions == std::vector<uintptr_t>{4}) && cam_xnu_held_count(sim) == 1);
+    mtx_unlock(&m);                         /* the SIM lets its lock go: the held queue runs once */
+    mtx_lock(&m);
     T((ts.actions == std::vector<uintptr_t>{4, 4}));
     T(DoneIndex(4) != (size_t)-1 && (gDone[DoneIndex(4)].second & CAM_STATUS_MASK) == CAM_REQ_CMP);
     T(TAILQ_EMPTY(&sim->frozen) && cam_xnu_held_count(sim) == 0);
@@ -364,14 +377,16 @@ static void TestThinCam()
     T((ts.actions == std::vector<uintptr_t>{6, 5, 7}) && cam_xnu_held_count(sim) == 0);
     xpt_free_path(p3);
 
-    /* a requeued ccb keeps its place ahead of later arrivals */
+    /* a requeued ccb keeps its place ahead of later arrivals; a frozen SIM stops the run at once */
     ts.actions.clear();
-    ts.requeueOnce = {8};
+    ts.requeueFrozen = {8};
     xpt_freeze_simq(sim, 1);
     io(5, 8); io(6, 9);
     xpt_release_simq(sim, 1);
+    T((ts.actions == std::vector<uintptr_t>{8}) && cam_xnu_held_count(sim) == 2 && sim->freeze == 1);
+    xpt_release_simq(sim, 1);
     T(DoneIndex(8) != (size_t)-1 && DoneIndex(9) != (size_t)-1);
-    T(ts.actions.front() == 8 && cam_xnu_held_count(sim) == 0 && sim->freeze == 0);
+    T((ts.actions == std::vector<uintptr_t>{8, 8, 9}) && cam_xnu_held_count(sim) == 0 && sim->freeze == 0);
 
     /* async callbacks and deregistration */
     gAsync.clear();

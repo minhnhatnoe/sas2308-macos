@@ -2784,6 +2784,51 @@ static void DeviationTests()
         CHECK(r->done && r->status == CAM_REQ_CMP);
     }
 
+    if (Want("D35")) {
+        /* a reinit with 2000 IOs in the IOC and 500 held: the held queue's work stays bounded */
+        Rig g({0x0009, 0x000A}, [](Rig &r) { r.ioc.requestCredit = 2100; r.ioc.replyPostDepth = 4096; });
+        struct cam_sim *sim = g.sc->sassc->sim;
+        std::vector<Io *> posted = HoldIo(g, {0x0009, 0x000A}, 1000);
+        RequestReinit(g, "test");
+        std::vector<Io *> held;
+        for (int i = 0; i < 500; i++) {
+            Io *r = g.Read(i & 1 ? 0x0009 : 0x000A, 0, (uint8_t)i);
+            CHECK(g.Go(r) == kHeld);                /* a reinit is pending: requeued, SIM frozen */
+            held.push_back(r);
+        }
+        CHECK(g.HeldCount() == 500);
+        const uint64_t checks = sim->held_checks;
+        g.ioc.holdIo = false;
+        HostAdvance(5000);                          /* the reinit: 2000 completions, requeued */
+        g.Pump();
+        HostAdvance(5000);
+        g.Pump();
+        int ok = 0;
+        for (Io *r : posted) ok += r->done && r->status == CAM_REQ_CMP;
+        for (Io *r : held) ok += r->done && r->status == CAM_REQ_CMP;
+        CHECK(ok == 2500 && g.HeldCount() == 0);
+        CHECK(sim->held_checks - checks <= 4 * 2500);   /* was ~ 2000 x 2500 (each completion rescanned) */
+    }
+
+    if (Want("D67")) {
+        /* a requeue no freeze backs (nothing would ever re-send it): the assert catches it */
+        Rig g;
+        Io *r = g.Read(0x0009, 0, 2);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+        r->done = 0;
+        r->ccb->ccb_h.status = CAM_REQUEUE_REQ;
+        gHost.panicsAllowed = 1;
+        const int panics = gHost.panics;
+        mps_lock(g.sc);
+        xpt_done(r->ccb);
+        CHECK(gHost.panics == panics + 1);
+        gHost.panicsAllowed = 0;
+        cam_xnu_flush_held(g.sc->sassc->sim, CAM_DEV_NOT_THERE);
+        mps_unlock(g.sc);
+    }
+
     if (Want("D18")) {
         /*
          * An "impossible" SGL state (no room left for a chain element):
