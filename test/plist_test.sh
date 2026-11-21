@@ -13,3 +13,13 @@ if [ "$got" != "$exp" ]; then
 	exit 1
 fi
 echo "plist D52: IOPCIMatch $match"
+
+# D15a: Read/Write Time Out Duration are FreeBSD da's DA_DEFAULT_TIMEOUT (60 s)
+for k in "Read Time Out Duration" "Write Time Out Duration"; do
+	v=$(sed -n "/<key>$k<\/key>/{n;s/.*<integer>\(.*\)<\/integer>.*/\1/p;}" "$plist")
+	if [ "$v" != "60000" ]; then
+		echo "FAIL plist $k: '$v', want 60000 (FreeBSD da 60 s)"
+		exit 1
+	fi
+done
+echo "plist D15a: Read/Write Time Out Duration 60000"

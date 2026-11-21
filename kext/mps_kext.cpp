@@ -667,7 +667,7 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
      * ORDERED); mpssas_action_scsiio turns it into the request's queue type.
      * No periodic ORDERED tag (scsi_da.c's da_send_ordered): SATL has no
      * ordered NCQ, and the worst latency measured under random load was
-     * 1.22 s against the 30 s timeout (D46).
+     * 1.22 s against the 60 s timeout (D46, D15a).
      */
     ccb->csio.tag_action = attr == MPSK_ATTR_ORDERED ? MSG_ORDERED_Q_TAG :
                            attr == MPSK_ATTR_HEAD    ? MSG_HEAD_OF_Q_TAG :

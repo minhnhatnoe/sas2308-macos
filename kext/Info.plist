@@ -62,18 +62,17 @@
 			<integer>1</integer>
 			<!-- as Apple's AppleLSIFusionMPT (AppleLSIFusionSAS personality): the family copies
 			     Physical Interconnect / Location into the HBA's Protocol Characteristics; the
-			     kext copies them and the timeouts (ms) into every target nub's. 30 s: the Linux sd
-			     default (SD_TIMEOUT) and the value macOS SAS HBAs publish; FreeBSD da uses 60 s.
-			     It covers drive error recovery (enterprise SATA ERC is a few seconds); it counts
-			     from the post to the IOC (D15, D4) -->
+			     kext copies them and the timeouts (ms) into every target nub's. 60 s: FreeBSD da's
+			     DA_DEFAULT_TIMEOUT (scsi_da.c), counted from the post to the IOC as FreeBSD's
+			     (D4); no Apple value or drive ERC measurement says otherwise (D15a) -->
 			<key>Physical Interconnect</key>
 			<string>SAS</string>
 			<key>Physical Interconnect Location</key>
 			<string>External</string>
 			<key>Read Time Out Duration</key>
-			<integer>30000</integer>
+			<integer>60000</integer>
 			<key>Write Time Out Duration</key>
-			<integer>30000</integer>
+			<integer>60000</integer>
 		</dict>
 	</dict>
 	<key>OSBundleLibraries</key>
