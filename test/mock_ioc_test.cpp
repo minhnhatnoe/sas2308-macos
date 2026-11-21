@@ -217,7 +217,7 @@ struct Rig {
         for (Io *io : ios) delete io;
     }
     void Start() {                          /* config_intrhook: mps_startup, port enable */
-        mps_compat_intrhook_run();
+        mps_compat_intrhook_run(sc);
         HostRunPending();
     }
     static void AsyncCb(void *arg, uint32_t code, struct cam_path *path, void *a) {
@@ -2850,6 +2850,25 @@ static void DeviationTests()
         mps_unlock(sc);
         g.Pump();
         CHECK(r0->done && r0->status == CAM_REQ_CMP && ro->done && ro->status == CAM_REQ_CMP);
+    }
+
+    if (Want("D40")) {
+        /* config_intrhook: a driver instance runs its own hooks only */
+        static int ranA, ranB;
+        ranA = ranB = 0;
+        struct intr_config_hook ha{}, hb{};
+        int a = 0, b = 0;
+        ha.ich_func = [](void *) { ranA++; };
+        ha.ich_arg = &a;
+        hb.ich_func = [](void *) { ranB++; };
+        hb.ich_arg = &b;
+        CHECK(config_intrhook_establish(&hb) == 0 && config_intrhook_establish(&ha) == 0);
+        mps_compat_intrhook_run(&a);
+        CHECK(ranA == 1 && ranB == 0);                 /* b's HBA has no interrupt yet */
+        mps_compat_intrhook_run(&a);
+        CHECK(ranA == 1 && ranB == 0);
+        mps_compat_intrhook_run(&b);
+        CHECK(ranA == 1 && ranB == 1);
     }
 
     if (Want("D18")) {

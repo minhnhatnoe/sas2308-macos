@@ -371,8 +371,7 @@ int mps_kext_attach(struct mps_kext *k, uint32_t debug_mask)
 
 void mps_kext_start(struct mps_kext *k)
 {
-    (void)k;
-    mps_compat_intrhook_run();               /* mps_startup: unmask, port enable */
+    mps_compat_intrhook_run(&k->sc);         /* mps_startup: unmask, port enable */
 }
 
 void mps_kext_stop_waiters(struct mps_kext *k)

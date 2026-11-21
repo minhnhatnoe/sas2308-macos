@@ -1028,13 +1028,15 @@ config_intrhook_disestablish(struct intr_config_hook *hook)
 }
 
 void
-mps_compat_intrhook_run(void)
+mps_compat_intrhook_run(void *arg)
 {
 	struct intr_config_hook *h;
 
 	for (;;) {
 		mps_compat_global_lock();
-		h = TAILQ_FIRST(&mps_compat_intrhooks);
+		TAILQ_FOREACH(h, &mps_compat_intrhooks, ich_links)
+			if (h->ich_arg == arg)
+				break;
 		if (h != NULL)
 			TAILQ_REMOVE(&mps_compat_intrhooks, h, ich_links);
 		mps_compat_global_unlock();

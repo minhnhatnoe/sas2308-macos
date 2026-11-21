@@ -587,8 +587,12 @@ bus_dmamap_sync(bus_dma_tag_t dmat, bus_dmamap_t map, int op)
 void	mps_compat_callout_run(struct mtx *m);
 /* Run every queued task of `tq', in order, without any mutex. */
 void	mps_compat_taskqueue_run(struct taskqueue *tq);
-/* Run (and remove) the established config_intrhooks. */
-void	mps_compat_intrhook_run(void);
+/*
+ * Run (and remove) the config_intrhooks a driver instance established
+ * (ich_arg == arg, mps: the softc), once its interrupt works: per hook as
+ * FreeBSD, so a second HBA cannot start the first one's mps_startup.
+ */
+void	mps_compat_intrhook_run(void *arg);
 /* Live mps_compat_malloc() allocations (leak check). */
 long	mps_compat_malloc_count(void);
 /* Live DMA allocations made through bus_dmamem_alloc(). */

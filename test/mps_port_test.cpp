@@ -208,7 +208,7 @@ static void TestDiscovery(struct mps_softc *sc)
     xpt_free_path(path);
 
     size_t mark = gHost.Mark();
-    mps_compat_intrhook_run();              /* mps_startup: unmask, port enable */
+    mps_compat_intrhook_run(sc);            /* mps_startup: unmask, port enable */
     T(gIoc.portEnables == 1);
     HostRunPending();                       /* interrupt, event task */
     T(gHost.interruptsDelivered > 0);
@@ -554,7 +554,7 @@ static void TestGone()
                       CAM_LUN_WILDCARD) == CAM_REQ_CMP);
     T(xpt_register_async(AC_XNU_SCAN | AC_BUS_RESET, AsyncCb, NULL, path) == CAM_REQ_CMP);
     xpt_free_path(path);
-    mps_compat_intrhook_run();
+    mps_compat_intrhook_run(sc);
     HostRunPending();
     T(Present(sc, 0, 0x0011) && Scans(0) == 1);
     size_t mark = gHost.Mark();
