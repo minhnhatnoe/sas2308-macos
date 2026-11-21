@@ -192,7 +192,10 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         gHost.sc = (struct mps_softc *)mps_kext_softc(k);
         CHECK(glue.Attached());
         CHECK(glue.fCoreAttached && glue.fMaxSegs == mps_kext_max_segs(k));
-        CHECK(glue.fMaxTasks == mps_kext_max_tasks(k) && glue.fMaxTasks == (uint32_t)(gHost.sc->num_reqs - gHost.sc->num_prireqs - 8));   /* D21: the kext keeps 8 */
+        /* D21/D58: 8 frames fewer than the SIM's openings (FreeBSD's reqs = num_reqs - num_prireqs - 1) */
+        CHECK(glue.fMaxTasks == mps_kext_max_tasks(k) &&
+              glue.fMaxTasks == (uint32_t)gHost.sc->sassc->sim->max_tagged_dev_openings - 8 &&
+              glue.fMaxTasks == (uint32_t)(gHost.sc->num_reqs - gHost.sc->num_prireqs - 1 - 8));
         glue.Start();
         CHECK(glue.Enter());
         mps_kext_start(k);
@@ -310,11 +313,11 @@ int main()
         m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         m.requestCredit = 10240; m.replyPostDepth = 65520;
         Family f; f.Attach(&m);
-        CHECK(f.glue.fMaxTasks == MPS_REQ_FRAMES - 8 && f.glue.fMaxTasks == 2040);
+        CHECK(f.glue.fMaxTasks == MPS_REQ_FRAMES - 1 - 8 && f.glue.fMaxTasks == 2039);   /* SMID 0 + 8 (D58) */
         struct mps_kext_limits l;
         CHECK(mps_kext_limits(f.k, &l) == 0);
         CHECK(l.request_credit == 10240 && l.high_priority_credit == MockIocModel::kHighPriorityCredit &&
-              l.max_reply_post_depth == 65520 && l.req_frames == MPS_REQ_FRAMES && l.os_commands == 2040 &&
+              l.max_reply_post_depth == 65520 && l.req_frames == MPS_REQ_FRAMES && l.os_commands == 2039 &&
               l.pri_req_frames == MockIocModel::kHighPriorityCredit && l.reply_frames >= l.req_frames + l.pri_req_frames &&
               l.chain_frames == MPS_CHAIN_FRAMES && l.req_frame_bytes == 128 && l.max_segs == kMaxIoPages + 1);
         printf("  limits: %u request + %u high-priority frames, %u replies (post queue %u), %u chains, %u OS tasks; "

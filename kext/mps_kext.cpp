@@ -483,22 +483,22 @@ uint32_t mps_kext_max_segs(struct mps_kext *k)
 }
 
 /*
- * XNU: the family's ReportMaximumTaskCount: the normal request frames
- * (num_reqs - num_prireqs, FreeBSD's sizing) less MPSK_INTERNAL_CMDS. FreeBSD
- * gives CAM every normal frame (mps_sas.c: reqs = num_reqs - num_prireqs - 1)
- * and its config and IDENTIFY requests then compete with IO for a command:
- * under a full IO load a hot-add's page 0 read finds none (EBUSY) and the add
- * is dropped, while an IO that misses a frame is only requeued. The 8 cover
- * a config page read or SATA IDENTIFY (one at a time, on the event queue),
- * the port enable (1), REMOVE_DEVICE (one per pending removal) and pending
- * event ACKs (D29). 8 of 2048 frames: no throughput change (D21).
+ * XNU: the family's ReportMaximumTaskCount: FreeBSD's CAM openings (mps_sas.c:
+ * reqs = num_reqs - num_prireqs - 1, every normal frame; SMID 0 is never
+ * used) less MPSK_INTERNAL_CMDS. In FreeBSD config and IDENTIFY requests
+ * compete with IO for a command: under a full IO load a hot-add's page 0 read
+ * finds none (EBUSY), while an IO that misses a frame is only requeued. The 8
+ * cover a config page read or SATA IDENTIFY (one at a time, on the event
+ * queue), the port enable (1) and REMOVE_DEVICE (one per pending removal).
+ * 8 of 2047 frames: no throughput change (D21). Until D58 the expression
+ * lacked FreeBSD's "- 1", which kept 7.
  */
 uint32_t mps_kext_max_tasks(struct mps_kext *k)
 {
     struct mps_softc *sc = &k->sc;
     if (!k->attached || sc->num_reqs - sc->num_prireqs <= 0)
         return 0;
-    return (uint32_t)MAX(1, sc->num_reqs - sc->num_prireqs - MPSK_INTERNAL_CMDS);
+    return (uint32_t)MAX(1, sc->num_reqs - sc->num_prireqs - 1 - MPSK_INTERNAL_CMDS);
 }
 
 static uint64_t DmaTagBytes(bus_dma_tag_t t)
@@ -533,7 +533,7 @@ int mps_kext_limits(struct mps_kext *k, struct mps_kext_limits *l)
     l->reply_frames = (uint32_t)sc->num_replies;
     l->post_queue_depth = (uint32_t)sc->pqdepth;
     l->chain_frames = (uint32_t)sc->num_chains;
-    l->os_commands = (uint32_t)MAX(0, sc->num_reqs - sc->num_prireqs - MPSK_INTERNAL_CMDS);
+    l->os_commands = (uint32_t)MAX(0, sc->num_reqs - sc->num_prireqs - 1 - MPSK_INTERNAL_CMDS);
     l->max_segs = sc->buffer_dmat != NULL && sc->buffer_dmat->dt_nsegments > 0 ?
         (uint32_t)sc->buffer_dmat->dt_nsegments : 0;
     l->maxio = (uint64_t)sc->maxio;
