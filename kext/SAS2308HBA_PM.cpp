@@ -32,8 +32,9 @@
  *        Targets that are found again keep their IDs and nubs.
  *
  * Shutdown / restart: the dock has its own power supply, so the IOC keeps
- * running across a Mac restart unless it is stopped. systemWillShutdown
- * does the "off" sequence (shorter drain) and leaves the IOC stopped.
+ * running across a Mac restart: as FreeBSD, systemWillShutdown does not
+ * stop it and the next attach takes it over with a MUR (D50);
+ * sas2308_shutdown_stop 1 does the "off" sequence (shorter drain) instead.
  *
  * The halt (batch F): PEHaltRestartInternal arms a 30 s watchdog ("Halt/
  * Restart Timed Out" panic) and then IOPMrootDomain::handlePlatformHaltRestart
@@ -177,25 +178,33 @@ SAS2308HBA::BeginHalt(const char *why)
 }
 
 //-----------------------------------------------------------------------------
-//	systemWillShutdown - restart or power off: stop the IOC (message unit
-//	reset) so it does no DMA into memory the next kernel owns. The dock is
-//	separately powered, so nothing else would stop it.				[PUBLIC]
+//	systemWillShutdown - restart or power off. As FreeBSD (mps registers only
+//	shutdown_final -> mpssas_ir_shutdown: IR volumes, none on IT firmware;
+//	the IOC is stopped only at detach), the IOC keeps running: IO is served
+//	until the power goes, under the halt's caps (batch F). The next attach
+//	takes over an OPERATIONAL IOC with a MUR before any queue is set up
+//	(mps_transition_ready, FreeBSD's attach). D50: see the deviations plan,
+//	batch G2. sas2308_shutdown_stop 1 restores the old stop (MUR).	[PUBLIC]
 //-----------------------------------------------------------------------------
 
 void
 SAS2308HBA::systemWillShutdown(IOOptionBits specifier)
 {
     if (specifier == kIOMessageSystemWillPowerOff || specifier == kIOMessageSystemWillRestart) {
+        const char *why = specifier == kIOMessageSystemWillRestart ? "restart" : "power off";
         if (!fHaltNotifier)
-            BeginHalt(specifier == kIOMessageSystemWillRestart ? "restart" : "power off");
-        fShutdown = true;
-        /*
-         * Not sleep: nothing resumes, so IO is failed (DeviceNotPresent)
-         * from here on instead of held, and the stop is bounded (~3 s)
-         * well inside the 30 s halt watchdog: no diag reset, one MUR.
-         */
-        QuiesceController(kShutdownDrainMs,
-                          specifier == kIOMessageSystemWillRestart ? "restart" : "power off", true);
+            BeginHalt(why);
+        if (fShutdownStop) {
+            fShutdown = true;
+            /*
+             * Not sleep: nothing resumes, so IO is failed (DeviceNotPresent)
+             * from here on instead of held, and the stop is bounded (~3 s)
+             * well inside the 30 s halt watchdog: no diag reset, one MUR.
+             */
+            QuiesceController(kShutdownDrainMs, why, true);
+        } else {
+            Klog(MPSK_INIT | MPSK_INFO, "%s: controller left running (FreeBSD: no stop at shutdown)", why);
+        }
     }
     super::systemWillShutdown(specifier);
 }

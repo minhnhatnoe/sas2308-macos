@@ -126,13 +126,17 @@ SAS2308HBA::ApplyLogSettings(void)
  */
 const SAS2308HBA::Knob SAS2308HBA::kKnobs[] = {
     { "sas2308_send_ordered", MPSK_KNOB_SEND_ORDERED },     /* kern.cam.da.send_ordered (D46) */
+    { "sas2308_shutdown_stop", 0 },     /* MUR at systemWillShutdown, 0 = FreeBSD's none (D50) */
 };
 const size_t SAS2308HBA::kKnobCount = sizeof(kKnobs) / sizeof(kKnobs[0]);
 
 int
 SAS2308HBA::SetClassKnob(const char *key, uint32_t value)
 {
-    (void)key; (void)value;
+    if (!strcmp(key, "sas2308_shutdown_stop") && value <= 1) {
+        fShutdownStop = value != 0;
+        return 0;
+    }
     return EINVAL;
 }
 
@@ -156,8 +160,7 @@ SAS2308HBA::PublishKnobs(void)
 uint32_t
 SAS2308HBA::ClassKnob(const char *key)
 {
-    (void)key;
-    return 0;
+    return !strcmp(key, "sas2308_shutdown_stop") ? (uint32_t)fShutdownStop : 0;
 }
 
 /* sas2308ctl / IORegistryEntrySetCFProperties(): change the level at runtime. Admin only. */

@@ -60,6 +60,13 @@
 			     unchanged, 0 errors); boot-arg sas2308_posted_write=0 maps it non-posted -->
 			<key>sas2308_posted_write</key>
 			<integer>1</integer>
+			<!-- port tunables, boot-arg first, else these keys; sas2308ctl set <key> <n> at runtime:
+			     sas2308_send_ordered = FreeBSD's kern.cam.da.send_ordered (D46);
+			     sas2308_shutdown_stop 1 = MUR the IOC at restart / power off (FreeBSD: no stop, D50) -->
+			<key>sas2308_send_ordered</key>
+			<integer>1</integer>
+			<key>sas2308_shutdown_stop</key>
+			<integer>0</integer>
 			<!-- as Apple's AppleLSIFusionMPT (AppleLSIFusionSAS personality): the family copies
 			     Physical Interconnect / Location into the HBA's Protocol Characteristics; the
 			     kext copies them and the timeouts (ms) into every target nub's. 60 s: FreeBSD da's

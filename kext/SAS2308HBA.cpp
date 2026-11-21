@@ -447,6 +447,27 @@ SAS2308HBA::InitializeController(void)
          fMapper ? "present" : "ABSENT (bus address = physical)",
          fTunnelled ? "Thunderbolt tunnel (IOPCITunnelled)" : "not tunnelled");
 
+    /*
+     * D50: what the IOC was left in (no MUR at shutdown since batch G2, as
+     * FreeBSD): READY, OPERATIONAL (mps_transition_ready's MUR takes it
+     * over before any queue is set up, FreeBSD's attach), RESET or FAULT.
+     * A property, because the first minute of a boot's log is often lost.
+     */
+    {
+        const uint32_t db = *(volatile uint32_t *)(fHost.regs + 0x00);  /* MPI2_DOORBELL_OFFSET */
+        const uint32_t st = db >> 28;   /* MPI2_IOC_STATE_MASK >> MPI2_IOC_STATE_SHIFT */
+        const char *name = db == 0xFFFFFFFFu ? "all-ones" : st == 0 ? "RESET" : st == 1 ? "READY" :
+                           st == 2 ? "OPERATIONAL" : st == 4 ? "FAULT" : "unknown";
+        char buf[48];
+        snprintf(buf, sizeof(buf), "%s (doorbell 0x%08x)", name, db);
+        setProperty(kAttachStateKey, buf);
+        Klog(MPSK_INIT | MPSK_INFO, "IOC state at attach: %s", buf);
+    }
+    {
+        char v[8] = "";
+        fShutdownStop = HostGetenv(this, "sas2308_shutdown_stop", v, sizeof(v)) && v[0] == '1';
+    }
+
     fGlue.fMps = mps_kext_create(&fHost, fPCI->configRead16(kIOPCIConfigDeviceID));
     if (!fGlue.fMps) {
         Klog(MPSK_FAULT | MPSK_INIT, "cannot allocate the softc");

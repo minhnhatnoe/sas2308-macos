@@ -2947,6 +2947,26 @@ static void DeviationTests()
               LogClass(mark, "IOC in unexpected reset state") == (MPS_INIT | MPS_FAULT));
     }
 
+    if (Want("D50")) {
+        /*
+         * No MUR at shutdown (FreeBSD): the next boot finds the IOC still
+         * OPERATIONAL with the old kernel's queues. FreeBSD's attach takes
+         * it over with a MUR in mps_transition_ready before IOCFacts and
+         * before any queue of ours is given to it; no diag reset.
+         */
+        Rig g({0x0009, 0x000A}, [&](Rig &r) {
+            r.ioc.state = MPI2_IOC_STATE_OPERATIONAL;
+            r.ioc.iocCaps = MPI2_IOCFACTS_CAPABILITY_EVENT_REPLAY;     /* else FreeBSD's attach diag-resets anyway */
+        });
+        MockIocModel &m = g.ioc;
+        printf("  attach: rc %d, MURs %d, diag resets %d, IOCInits %d\n", g.attachRc, m.murCount, m.diagResetCount, m.iocInits);
+        CHECK(g.attachRc == 0 && m.murCount == 1 && m.diagResetCount == 0 && m.iocInits == 1);
+        Io *r = g.Read(0x0009, 0, 2);
+        CHECK(g.Go(r) == kPosted);
+        g.Pump();
+        CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
     if (Want("D37")) {
         /* cam_compat.h: CAM's own values (cam_ccb.h, cam.h), as its header claims */
         CHECK(XPT_SCSI_IO == 0x901 && XPT_RESET_DEV == 0x912 && XPT_ABORT == 0x10);

@@ -84,6 +84,7 @@ public:
     static constexpr const char *kResetStatsKey = "SAS2308ResetStats";
     static constexpr const char *kStatsKey      = "SAS2308Statistics";
     static constexpr const char *kIocTemperatureKey = "IOC Temperature (C)";   /* IO Unit Page 7 */
+    static constexpr const char *kAttachStateKey = "IOC state at attach";   /* doorbell before mps_attach (D50) */
     static constexpr const char *kLimitsKey     = "Controller Limits";  /* IOCFacts + queue sizes */
     static constexpr const char *kPcieLinkKey   = "PCIe Link";          /* the card's link, MPS, MRRS */
 
@@ -221,7 +222,8 @@ private:
     /* power management (SAS2308HBA_PM.cpp) */
     bool           fPMInitialized = false;
     bool           fSuspended = false;      /* IOC stopped for sleep / shutdown */
-    bool           fShutdown = false;       /* systemWillShutdown ran: stays stopped */
+    bool           fShutdown = false;       /* systemWillShutdown stopped the IOC: stays stopped */
+    bool           fShutdownStop = false;   /* MUR at systemWillShutdown (sas2308_shutdown_stop, D50) */
     IONotifier    *fHaltNotifier = nullptr; /* priority power interest: the halt began (F) */
     unsigned long  fPowerState = kPowerStateOn;
 
