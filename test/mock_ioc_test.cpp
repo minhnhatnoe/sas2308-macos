@@ -822,14 +822,15 @@ int main()
         CHECK(again->status == CAM_REQ_CMP);
     }
 
-    printf("IOC FAULT mid-IO -> detected on interrupt, reinit, IO resumes\n");
+    printf("IOC FAULT mid-IO -> detected by mps_periodic, reinit, IO resumes\n");
     {
         ioc.holdIo = true;
         Io *a = ioAt(0), *b = ioAt(3);
         CHECK(g.Go(a) == kPosted && g.Go(b) == kPosted);
         ioc.Fault(0x5854);
         const uint32_t faults = g.Stats().faults;
-        g.Interrupt();                                               /* empty queue -> doorbell check */
+        ioc.nowUs += 1100000;
+        g.Callouts();                                                /* mps_periodic's doorbell check (D30) */
         CHECK(g.Faulted() && g.Stats().faults == faults + 1);
         Io *c = ioAt(0);
         CHECK(g.Go(c) == kHeld);                                     /* held until the reinit is done */
@@ -851,7 +852,8 @@ int main()
         Io *io = ioAt(0);
         CHECK(g.Go(io) == kPosted);
         g.Escalate(io);
-        g.Interrupt();                                               /* nothing answered: doorbell check */
+        ioc.nowUs += 1100000;
+        g.Callouts();                                                /* nothing answered: mps_periodic (D30) */
         CHECK(g.Faulted() && g.ReinitQueued());
         CHECK(g.RunReinit() == 0);
         CheckResent(io);
@@ -2607,6 +2609,23 @@ static void DeviationTests()
         CHECK(g.Go(r) == kPosted);
         g.Pump();
         CHECK(r->done && r->status == CAM_REQ_CMP);
+    }
+
+    if (Want("D30")) {
+        /* an interrupt that finds an empty queue reads no register; a fault is found by mps_periodic (1 s) */
+        Rig g({0x0009});
+        MockIocModel &m = g.ioc;
+        const uint64_t reads = m.doorbellReads;
+        for (int i = 0; i < 100; i++)
+            g.Interrupt();                              /* MSI races, polled callers */
+        CHECK(m.doorbellReads == reads);
+        m.Fault(0x5854);
+        g.Interrupt();
+        CHECK(!g.Faulted() && m.doorbellReads == reads);
+        m.nowUs += 1100000;
+        g.Callouts();                                   /* mps_periodic: FreeBSD's fault check */
+        CHECK(g.Faulted() && g.Stats().faults == 1);
+        CHECK(g.RunReinit() == 0 && !g.Faulted());
     }
 
     if (Want("D2")) {

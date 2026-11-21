@@ -231,7 +231,6 @@ void	mps_xnu_stats_update(struct mps_softc *sc);
 void	mps_xnu_request_reinit(struct mps_softc *sc, const char *why);
 /* doorbell FAULT check when an interrupt finds the queue empty (as the
  * pre-FreeBSD driver did) */
-void	mps_xnu_check_fault(struct mps_softc *sc);
 /* 1 s from mps_periodic: rate-limit summaries, statistics */
 void	mps_xnu_periodic(struct mps_softc *sc);
 /* SCSI IO posted / completed: trace lines, statistics, failed-IO line */

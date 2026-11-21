@@ -167,6 +167,7 @@ struct MockIocModel {
 
     /* ---- time: virtual, advanced by sleeps and by the test ---- */
     uint64_t nowUs = 1000000;
+    uint64_t doorbellReads = 0;         /* reads of the doorbell register (D30) */
     uint64_t sleptMs = 0;                      /* total SleepMs() time */
     int sleeps = 0;
     bool abandon = false;                      /* SleepMs() returns false (owner detaching) */
@@ -186,7 +187,9 @@ struct MockIocModel {
     uint32_t RegRead(uint32_t off) {
         if (dead || nowUs < deadUntilUs) return 0xFFFFFFFF;
         switch (off) {
-        case MPI2_DOORBELL_OFFSET: return state | (used ? MPI2_DOORBELL_USED : 0) | dbData;
+        case MPI2_DOORBELL_OFFSET:
+            doorbellReads++;
+            return state | (used ? MPI2_DOORBELL_USED : 0) | dbData;
         case MPI2_HOST_INTERRUPT_STATUS_OFFSET: return his;
         case MPI2_HOST_INTERRUPT_MASK_OFFSET: return him;
         case MPI2_HOST_DIAGNOSTIC_OFFSET:

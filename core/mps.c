@@ -2650,10 +2650,6 @@ mps_intr_locked(void *data)
 		}
 	}
 
-	/* XNU: doorbell FAULT check when an interrupt finds nothing */
-	if (pq == sc->replypostindex)
-		mps_xnu_check_fault(sc);
-
 	if (pq != sc->replypostindex) {
 		mps_dprint(sc, MPS_TRACE, "%s sc %p writing postindex %d\n",
 		    __func__, sc, sc->replypostindex);

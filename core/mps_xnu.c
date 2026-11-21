@@ -700,24 +700,6 @@ mps_xnu_request_reinit(struct mps_softc *sc, const char *why)
 	taskqueue_enqueue(sc->mps_tq, &sc->mps_reinit_task);
 }
 
-void
-mps_xnu_check_fault(struct mps_softc *sc)
-{
-	uint32_t db;
-
-	if (sc->mps_flags & (MPS_FLAGS_DIAGRESET | MPS_FLAGS_XNU_GONE |
-	    MPS_FLAGS_SHUTDOWN) || sc->xnu.reinit_pending)
-		return;
-	db = mps_regread(sc, MPI2_DOORBELL_OFFSET);
-	if ((db & MPI2_IOC_STATE_MASK) != MPI2_IOC_STATE_FAULT ||
-	    (sc->mps_flags & MPS_FLAGS_XNU_GONE))
-		return;
-	mps_dprint(sc, MPS_FAULT, "IOC Fault 0x%08x, Resetting (found by "
-	    "an interrupt)\n", db);
-	sc->xnu.stats.faults++;
-	mps_xnu_request_reinit(sc, "IOC fault");
-}
-
 static void	mps_xnu_queue_due(struct mps_softc *sc);
 
 void
