@@ -773,6 +773,8 @@ void
 mtx_unlock(struct mtx *m)
 {
 	mtx_assert(m, MA_OWNED);
+	KASSERT(m->mtx_callout_running == NULL,
+	    ("%s: unlocked in a callout handler", m->mtx_name));
 	mtx_release_work(m);
 	m->mtx_owner = NULL;
 	mps_os_unlock(m->mtx_os);
@@ -787,6 +789,8 @@ msleep(void *chan, struct mtx *mtx, int pri, const char *wmesg, int timo)
 	(void)pri;
 	(void)wmesg;
 	mtx_assert(mtx, MA_OWNED);
+	KASSERT(mtx->mtx_callout_running == NULL,
+	    ("%s: msleep in a callout handler", mtx->mtx_name));
 	mtx_release_work(mtx);
 	self = mtx->mtx_owner;
 	mtx->mtx_owner = NULL;
@@ -926,12 +930,17 @@ callout_stop(struct callout *c)
 }
 
 /*
- * Callouts run with their mutex held (mps_compat_callout_run), so once the
- * mutex is ours the callout is not running.
+ * Callouts run with their mutex held (mps_compat_callout_run) and a handler
+ * never lets it go (the KASSERTs in msleep and mtx_unlock), so once the
+ * mutex is ours the callout is not running: drain == stop
+ * (thread_call_cancel_wait is kpi.private, D71).  A handler that drains
+ * itself would wait for itself in FreeBSD.
  */
 int
 callout_drain(struct callout *c)
 {
+	KASSERT(c->c_mtx == NULL || c->c_mtx->mtx_callout_running != c,
+	    ("callout_drain from its own handler"));
 	return (callout_stop(c));
 }
 
@@ -949,7 +958,9 @@ mps_compat_callout_run(struct mtx *m)
 		callout_remove(c);
 		func = c->c_func;
 		arg = c->c_arg;
+		m->mtx_callout_running = c;
 		func(arg);
+		m->mtx_callout_running = NULL;
 	}
 	callout_rearm(m);
 	mtx_unlock(m);

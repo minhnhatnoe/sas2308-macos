@@ -2971,6 +2971,33 @@ static void DeviationTests()
         xpt_free_path(p9);
     }
 
+    if (Want("L11")) {
+        /* a callout handler runs with its mutex held and may not drop it (FreeBSD: THREAD_NO_SLEEPING
+         * around c_func, softclock unlocks after it): an unlock/sleep or a drain of itself from the
+         * handler is a KASSERT, which is what makes callout_drain == callout_stop safe */
+        Rig g({0x0009});
+        static struct callout c;
+        static int ran;
+        ran = 0;
+        callout_init_mtx(&c, &g.sc->mps_mtx, 0);
+        const uint32_t before = g.Stats().kassert_hits;
+        mps_lock(g.sc);
+        callout_reset(&c, 1, [](void *arg) {
+            struct mps_softc *sc = (struct mps_softc *)arg;
+            ran++;
+            mtx_unlock(&sc->mps_mtx);                   /* drops the callout's mutex */
+            mtx_lock(&sc->mps_mtx);
+            callout_drain(&c);                          /* drains itself */
+        }, g.sc);
+        mps_unlock(g.sc);
+        gHost.panicsAllowed = 2;
+        g.ioc.nowUs += 2000;
+        g.Callouts();
+        gHost.panicsAllowed = 0;
+        CHECK(ran == 1 && g.Stats().kassert_hits == before + 2);
+        /* the driver's own handlers never do: an unexpected KASSERT aborts every other test */
+    }
+
     if (Want("D27")) {
         /* the kernel printf's %b in compat: FreeBSD's call sites stay verbatim */
         char b[200];

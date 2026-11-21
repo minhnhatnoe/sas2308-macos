@@ -397,6 +397,12 @@ struct mtx {
 	void			(*mtx_release_fn)(void *);
 	void			*mtx_release_arg;
 	int			 mtx_release_pending;
+	/*
+	 * The callout whose handler runs (mps_compat_callout_run), NULL
+	 * otherwise: a handler may not drop the mutex (msleep, mtx_unlock) or
+	 * drain itself, FreeBSD's THREAD_NO_SLEEPING around c_func (L11).
+	 */
+	struct callout		*mtx_callout_running;
 };
 
 #define MTX_DEF		0x0000
