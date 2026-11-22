@@ -1048,7 +1048,8 @@ first IO after that brings it back to Active with START 1 (10.5 s spin-up, D15b)
 | any stop from kIOMessageSystemWillSleep until kIOMessageSystemWillPowerOn / HasPoweredOn (priority power interest; the root domain tells its priority clients before the power tree goes down) | sent | sent |
 | any stop once the halt began (restart / power off, batch F), the IOC is stopped / suspended / gone, or before the priority interest is registered (system state unknown) | sent | sent |
 
-S2 adds mode 2 (now the default; see "S2" below).
+S2 adds mode 2 (an option; it was the default only on branch spin-in-use) and EJ sends an eject's
+stop in modes 0 and 2: see "S2" and "EJ" below.
 SAM's power state still drops (it believes the disk stopped); its next IO sends START 1, which the
 spinning disk answers at once. D9's shutdown SSU is an internal command of the core and does not pass
 here. The HBA cannot see mounts, so this applies to every disk behind it, mounted or not, and to a
@@ -1069,8 +1070,9 @@ Goal: disks that spin only while in use, plus a command that stops a disk now.
 FreeBSD never stops a disk for idleness (`camcontrol stop` is its manual equivalent), so both are
 port-only code with `XNU:` comments.
 
-`sas2308_idle_spindown` gets mode 2, the new default (Info.plist 2; boot-arg / `sas2308ctl set`
-as before). Modes 0 and 1 and every S1 rule for sleep / halt / unknown system state are unchanged.
+`sas2308_idle_spindown` gets mode 2 (boot-arg / Info.plist / `sas2308ctl set` as before). It was
+the default on branch spin-in-use only (never installed); EJ made 0 the default again before the
+merge. Modes 0 and 1 and every S1 rule for sleep / halt / unknown system state are unchanged.
 
 | SAM's idle stop (START 0, LOEJ 0, POWER CONDITION 0), system awake, mode 2 | |
 |---|---|
@@ -1103,17 +1105,71 @@ that nobody touches after boot keeps spinning (use `sas2308ctl spindown`).
 **`sas2308ctl spindown <diskN|all>`**: the tool finds the whole-disk IOMedia below the HBA (the
 first IOSCSIParallelInterfaceDevice above it, no IOMedia between, gives the target ID), refuses a
 disk with a mounted volume (getmntinfo; each mount's IOMedia walked up to the disk, so APFS volumes
-count), then sets `SAS2308SpinDown` = target ID (setProperties, administrator only). The class
-refuses a disk in use (TargetUse, kIOReturnBusy) and calls `mps_kext_spindown`: START STOP UNIT
-START 0, IMMED 0, SIMPLE tag, 120 s, as camcontrol(8) stop, sent the way mps_sas_lsi.c's shutdown
-SSU sends its own (scsi_start_stop on a driver ccb, xpt_action), waited for with mps_kext_tm's
-waiter (drained by mps_kext_stop_waiters, orphaned at a stop). Refused after the halt began,
-while suspended or going to sleep (ENODEV), for an ID with no disk (ENXIO). SAM is told nothing:
-for these SATA disks the IOC's SAT layer issues STANDBY IMMEDIATE and the disk spins up on the next
-media access. Counter "Spin-downs requested".
+count), then ejects it the way `diskutil eject` does (DiskArbitration DADiskEject: DKIOCEJECT,
+SAM's EjectTheMedium); the kext passes that stop on (EJ, below). Until EJ the tool set
+`SAS2308SpinDown` and the kext sent its own stop (START STOP UNIT START 0, as camcontrol stop;
+then ATA STANDBY IMMEDIATE, as camcontrol standby, on build 57C2CBC0): with either, the IOC's SAT
+layer answered every later READ with NOT READY 04/02 (LOGICAL UNIT NOT READY, INITIALIZING
+COMMAND REQUIRED) until a START, SAM retried for 3 s and failed, and the volume did not mount.
+FreeBSD's CAM sends that START itself (scsi_all.c sense table: 04/02 SS_START); SAM sends START
+only for its own power-state change from a stopped state, which the eject gives it. The kext's
+SAS2308SpinDown, `mps_kext_spindown` and "Spin-downs requested" were removed.
 
-Host tests: glue `S2-in-use`, `S2-grace`, `S2-spindown` (each failed before). Hardware results:
+Host tests: glue `S2-in-use`, `S2-grace` (each failed before; `S2-spindown` went with the kext's
+spindown). Hardware results:
 the deviations plan, "Batch S2 hardware results".
+
+## EJ: never spin down for idleness, Eject spins the drive down (branch eject-spindown, 2026-11-22)
+
+Decision: no spin-down for idleness, and Eject stops the drive (so it can be pulled).
+`sas2308_idle_spindown` defaults to 0 again (S1: SAM's idle stop completed here); mode 1 is
+unchanged; mode 2 (S2) and its grace stay as options. New in modes 0 and 2: SAM's idle-type stop
+(START 0, LOEJ 0, POWER CONDITION 0) is sent when it is an eject's. FreeBSD has no eject of a fixed
+disk (port-only code, `XNU:` comments in `SAS2308HBA_Hotplug.cpp` TargetEjected and
+`mps_kext.cpp` mps_kext_idle_stop).
+
+**What `diskutil eject` sends** (Apple sources, then seen on the Mac): diskarbitrationd unmounts
+the volumes and issues DKIOCEJECT on the whole disk (IOMediaBSDClient.cpp: the BSD client opens
+the IOBlockStorageDriver, calls ejectMedia(), closes it). For a fixed disk ejectMedia() keeps the
+media objects (IOBlockStorageDriver.cpp, `_ejectable` false): SYNCHRONIZE CACHE, then
+doEjectMedia, i.e. SAM's EjectTheMedium, which only calls changePowerStateToPriv(Sleep)
+(IOSCSIBlockCommandsDevice.cpp:181-237); doEjectMedia then clears IOBlockStorageServices'
+`fMediaPresent` (IOBlockStorageServices.cpp:294). PM takes SAM from Active (4) to Sleep (1) in one
+change, and HandlePowerChange sends START STOP UNIT START 0: the same CDB class as the idle
+timer's (on macOS 27 with IMMED 0: `1b 00 00 00 00 00`). Seen on the Mac (95E0D6C9, 2CCCBE79):
+the stop in the same millisecond as the SYNCHRONIZE CACHE, after DKIOCEJECT had closed the
+driver; the IOMedia objects stayed; SAM's PM state read 4 until ~0.5 s after the stop (sampled: 4
+at 0.26 s when the eject returned, 1 at 0.76 s); `diskutil mount` brought the volume back (SAM
+sends START 1).
+
+**Detection** (TargetEjected, asked by the glue before the gate with no lock held, one IORegistry
+snapshot as S2's TargetUse): the stop is an eject's when SAM's block driver is still Active
+(`IOService::getPowerState()` = kSBCPowerStateActive; PM changes it after the driver acknowledges)
+and either IOBlockStorageServices reports no media (`reportMediaState`, doEjectMedia returned) or
+the IOBlockStorageDriver is open by a client other than its whole-disk IOMedia (still inside
+DKIOCEJECT); together these cover the stop arriving before or after doEjectMedia returns. A disk
+with no active whole-disk IOMedia under its driver (removable media, torn down) counts as ejected.
+Why it holds: changePowerStateToPriv is called nowhere else in SAM; the idle timer lowers SAM's
+state one step per period (IOSCSIPrimaryCommandsDevice.cpp:655-665; seen 4, 3, 2, 1) and Idle (3)
+sends nothing, so its stops come at Idle or Standby. `fMediaPresent` alone would not do: only a
+media-online message sets it again, which SAM sends for new removable media, so for a fixed disk it
+stays "no media" after `diskutil mount`; the Active test keeps that disk's later idle stops out.
+Work-loop gate held: not checked, completed here.
+
+**Not used: SAM's "Power Off" property.** With it, EjectTheMedium of the open sources sends the stop
+itself from the ejecting thread (inside DKIOCEJECT's open) and pauses 500 ms. Build 2CCCBE79 set it
+on all 8 disks: the eject still took 0.27 s and its stop still came from PM after the driver was
+closed, so macOS 27's SAM (565.0.1) does not act on it; dropped (515295d).
+
+| SAM's idle-type stop, system awake | mode 0 (default) | 1 | 2 |
+|---|---|---|---|
+| an eject's (above) | sent, "Stops passed (ejected)" + 1, info log | sent | sent, counted (before the grace and in-use rules) |
+| any other | completed here | sent | S2 rules |
+
+Sleep, the halt and an unknown system state send every stop as before (S1). Host test: glue
+`EJ-eject` (failed before: the ejected disk's stop was completed here). `sas2308ctl spindown` is
+macOS's eject (S2 above). Unplugging: docs/LOADING.md "How to unplug a drive". Hardware results:
+the deviations plan, "Batch EJ hardware results".
 
 ## What is implemented (M1 – M4)
 > **Names after M5.** The tables and sections below are the M1–M4 history and use the names of

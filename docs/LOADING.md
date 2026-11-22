@@ -86,12 +86,34 @@ Sleep / wake and restart are handled since M5b (IO held across sleep, IOC stoppe
 restart) but were never exercised on hardware: test them as in docs/design.md "Hardware test
 plan" before relying on them with mounted disks.
 
-## Disk spin-down (S2) and Spotlight on the SAS disks
+## How to unplug a drive: Eject, wait for the stop, pull
+
+The disks never spin down for idleness (`sas2308_idle_spindown` 0, the default); Eject is what
+stops one (EJ, docs/design.md):
+1. Eject it: Finder's eject button, or `diskutil eject diskN` (the whole disk; find N with
+   `diskutil list external physical`). This unmounts its volumes and macOS sends the drive its
+   stop (START STOP UNIT), which the kext passes on: `sas2308ctl stats` shows
+   "Stops passed (ejected)" + 1.
+2. Wait for the stop: about 20 s before moving the drive. The stop is sent with IMMED 1, so the
+   drive answers before its platters have stopped; the spin-down time itself was not measured.
+   That `diskutil list` still shows the drive after the eject is normal: for a fixed disk macOS
+   keeps the disk objects until the drive is gone.
+3. Pull it (or switch off its bay / the enclosure). Plugged back in, it comes back as a new disk
+   (`diskutil mount diskNs2` if its volume does not mount by itself).
+
+To use an ejected drive again without pulling it: `diskutil mount diskNs2` (or any read of
+/dev/diskN): macOS sends START and the drive spins up (7.5-7.7 s measured), then mounts.
+`sas2308ctl spindown diskN|all` does the same eject for drives with nothing mounted (it refuses a
+mounted one). Do not stop a drive any other way (a START STOP UNIT or ATA STANDBY of your own):
+the HBA's SAT layer then answers every read NOT READY until a START, which macOS sends only after
+its own eject or idle stop.
+
+## Disk spin-down (S1, S2, EJ) and Spotlight on the SAS disks
 ```
-~/sas2308-dext/tools/sas2308ctl stats | grep -Ei "idle|spin"   # idle stops completed here / sent / in grace, spin-downs
-sudo ~/sas2308-dext/tools/sas2308ctl set sas2308_idle_spindown 2   # 0 never spin down, 1 always (macOS), 2 only when not in use (default)
-sudo ~/sas2308-dext/tools/sas2308ctl set sas2308_spindown_grace 900  # s after attach with no spin-down (boot); 0 = none
-sudo ~/sas2308-dext/tools/sas2308ctl spindown disk5            # stop one disk now (refused if mounted / open)
+~/sas2308-dext/tools/sas2308ctl stats | grep -Ei "idle|spin|stops"   # idle stops completed here / sent / in grace, ejects, spin-downs
+sudo ~/sas2308-dext/tools/sas2308ctl set sas2308_idle_spindown 0   # 0 never for idleness (default), 1 always (macOS), 2 only when not in use; Eject stops the disk in 0 and 2
+sudo ~/sas2308-dext/tools/sas2308ctl set sas2308_spindown_grace 900  # mode 2: s after attach with no spin-down (boot); 0 = none
+sudo ~/sas2308-dext/tools/sas2308ctl spindown disk5            # stop one disk now: an eject (refused if mounted)
 sudo ~/sas2308-dext/tools/sas2308ctl spindown all              # every disk behind the HBA that is not mounted
 pmset -g | grep disksleep                                     # macOS's idle timer (minutes) that sends the idle stops
 ```
@@ -104,10 +126,10 @@ Per volume: `sudo mdutil -i off /Volumes/F145TEST` (stored on the volume). Undo:
 `sudo defaults delete /Library/Preferences/com.apple.SpotlightServer.plist ExternalVolumesIgnore`,
 kickstart mds again, `sudo mdutil -i on /Volumes/F145TEST`.
 
-The exFAT volume drive8 (on the drive of the same serial, contents unknown, not ours) is kept
-from auto-mounting by `/etc/fstab`: `UUID=<volume-UUID> none exfat rw,noauto`
-(a GUI login would otherwise mount it read-write and macOS would write .fseventsd to it). Undo:
-delete that line (`sudo vifs`).
+All 8 drives were reformatted on 2026-11-22 (GPT + exFAT, one volume per drive named after its
+serial, /Volumes/<serial>) and are scratch. The earlier `/etc/fstab` noauto line for the old exFAT
+volume on drive8 is gone (no /etc/fstab on the Mac, checked 2026-11-22). A GUI login mounts all
+8 volumes; without one, mount them with `diskutil mount diskNs2`.
 
 ## Notes
 - Leaving SIP disabled lowers the Mac's protection system-wide (user approved this, 2026-11-18).

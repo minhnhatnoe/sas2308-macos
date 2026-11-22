@@ -40,7 +40,8 @@ log-noise); items FINAL.md already fixed.
 | **G1. Code fixes and reverts to FreeBSD (after F)** | D29, D22, D15a, D55b, D58, L12, L13, L4, L11, L3, L17, L7, L10, D43 | per item in design.md "Batch G1" (each failed before: ack asserts, default mask, plist value, one diag reset, max tasks, ASan bad-free, NULL target array, unreleased freeze, no KASSERT, QMD fault, HIS ignored, lock gone after Fini, nested hotplug, pump while not in the gate) | standard regression; `lose 1` + `reinit` under IO on all 7; sleep/wake under IO; `shutdown -r now` with a mounted JHFS+ volume; default log at idle and in the recovery |
 | **G2. FreeBSD defaults decided by experiments (after G1)** | D46, D21, D50, D15b, D65, core-callout IO timer, wake log class | per item in design.md "Batch G2" (D46 ORDERED cadence, D21 hot-add under a full pool, D15 SSU 60 s, D50 attach from OPERATIONAL, C1/D4 without the family timer, D43 kick, G2-wake) | D65 QD1 next to QD1024/2000 and D15b spin-up (before the install); D46 A/B (H soak, random 4K QD32), IO timer A/B (F1 4K point), D50 restart without the MUR (attach state, DART), restarts with spun-down drives; regression |
 | **S1. No idle spin-down (feature request, after the 14.5.0 import)** | S1 (`sas2308_idle_spindown`, default 0) | glue `S1-spindown` (idle stop not sent; START 1, LOEJ, POWER CONDITION, knob 1, system sleep, unknown state, halt: sent) | `pmset -a disksleep 1`: tunable 0 drives keep spinning after 3 min idle, tunable 1 they spin down; one sleep/wake; one restart; regression on 5 drives |
-| **S2. Spin only while in use + `sas2308ctl spindown` (feature request)** | S2 mode 2 (default), S2 grace (`sas2308_spindown_grace` 900 s), S2 spindown | glue `S2-in-use`, `S2-grace`, `S2-spindown` | disksleep 1: unmounted drive spins down, mounted / raw-open drive keeps spinning; boot-time stops absorbed by the grace; `spindown all` refuses the mounted drive, stops the others, reads and mounts recover; sleep/wake, restart; SMART 192 unchanged; regression on 7 drives |
+| **S2. Spin only while in use + `sas2308ctl spindown` (feature request)** | S2 mode 2 (an option since EJ), S2 grace (`sas2308_spindown_grace` 900 s), S2 spindown | glue `S2-in-use`, `S2-grace` | merged with EJ (not installed on its own); mode 2 not run on hardware |
+| **EJ. Never spin down for idleness, Eject spins the drive down (user decision, after S2)** | EJ (default `sas2308_idle_spindown` 0 again; an eject's stop is sent in modes 0 and 2), S2 spindown = macOS's eject | glue `EJ-eject` | disksleep 1: mounted and unmounted drives keep spinning; `diskutil eject` and `sas2308ctl spindown`: stop passed, spin-up on the next read, Start_Stop_Count + 1, mount and read/write back; sleep/wake, restart; SMART 192 unchanged; regression on 8 drives |
 
 Comment-only changes (no behaviour change) ride with whichever batch touches the file: listed in the last table.
 
@@ -164,9 +165,10 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | G2 | build fixes (Mac build) | done | ee94a31 | n/a | n/a |
 | vendor | FreeBSD release/14.5.0 import (2 upstream commits, 3 lines, no conflicts, no new deviation) | done | 9c0a5f9, 72654ac | all host tests | smoke test on 830E83B5 (see "FreeBSD 14.5.0 import hardware results") |
 | S1 | S1 (no idle spin-down; `sas2308_idle_spindown`, default 0: SAM's idle stop completed here) | done | f1cc568 | glue `S1-spindown` | tunable 0: first read 0.23-0.30 s after SAM's idle stop (5 stops completed here); tunable 1: 10.9-11.5 s (see "Batch S1 hardware results") |
-| S2 | mode 2 (default): SAM's idle stop sent only to a disk not in use (IORegistry walk, IOService::isOpen) | code done, HW pending | f8e8901 | glue `S2-in-use` | not run: kext approval needed (see "Batch S2 hardware results") |
-| S2 | `sas2308_spindown_grace` (900 s after attach, mode 2 completes the idle stop here) | code done, HW pending | d8c495e | glue `S2-grace` | not run |
-| S2 | `sas2308ctl spindown <diskN\|all>` (camcontrol stop through the shutdown-SSU path) | code done, HW pending | d055c1a | glue `S2-spindown` | tool against the old kext: enumerates 8 disks, refuses mounted disk4 and partitions / internal disks |
+| S2 | mode 2: SAM's idle stop sent only to a disk not in use (IORegistry walk, IOService::isOpen); the default only on the S2 branch, an option since EJ | done (option) | f8e8901 | glue `S2-in-use` | mode 2 not run on hardware (EJ chosen instead) |
+| S2 | `sas2308_spindown_grace` (900 s after attach, mode 2 completes the idle stop here) | done (option) | d8c495e | glue `S2-grace` | not run (mode 2 only) |
+| S2 | `sas2308ctl spindown <diskN\|all>`: was camcontrol stop through the shutdown-SSU path (d055c1a), then ATA STANDBY IMMEDIATE (3c60faa); both left the disk answering NOT READY 04/02 (SAM sends no START): now macOS's eject (DADiskEject), the kext passes its stop | done | d055c1a, 3c60faa, 5a9e440 | none (user tool; the kext part is EJ's) | spin-up 7.52-7.69 s on the next read, Start_Stop_Count + 1, mounts (see "Batch EJ hardware results") |
+| EJ | default `sas2308_idle_spindown` 0 again; an eject's idle-type stop sent in modes 0 and 2 (SAM still Active and no media reported / driver open for DKIOCEJECT), "Stops passed (ejected)" | done | 5d805aa, 515295d | glue `EJ-eject` | eject: stop passed, first read 7.5-7.6 s, Start_Stop_Count + 1; idle: 8 stops at SAM state 3 completed here, first reads 0.02-0.24 s (see "Batch EJ hardware results") |
 
 ### Batch A hardware results
 
@@ -587,6 +589,51 @@ baseline (192: 49 59 54 52 54 54 56 61 for drive6 drive2 drive7 drive8 drive3 dr
 drive4 drive1), and the new `sas2308ctl spindown all` against the old kext (8 disks found,
 disk4 refused as mounted, the others "kext too old"; `disk4s2` and internal `disk3` refused).
 Raw outputs: Mac `~/hwS2`.
+FCE29EDC was never loaded: EJ was chosen instead (mode 0 default, eject spins down); S2's code
+was merged with EJ, see "Batch EJ hardware results".
+
+### Batch EJ hardware results
+
+Rationale: the decision after S2 ("never spin down when idle, Eject spins the drive down",
+2026-11-22); FreeBSD never stops a disk for idleness and has no eject of a fixed disk (design.md
+"EJ"). Builds, all approved with a legacy-VNC step: 2CCCBE79 (detection by DKIOCEJECT's
+open + SAM's "Power Off"), 5EFAFE09 (SAM's power state), 57C2CBC0 (spindown as ATA STANDBY
+IMMEDIATE), 8A71718E (final: spindown = macOS's eject). Rollbacks ~/sas2308-rollback-<UUID8> of
+each. 8 drives (ST18000NM000J, exFAT volumes /Volumes/<serial>), mode 0, raw outputs Mac `~/hwEJ`.
+
+- What eject sends (95E0D6C9, debug log): unmount writes, a GPT re-read, SYNCHRONIZE CACHE, then
+  START STOP UNIT START 0 in the same millisecond; DA "ejected disk, success" in that millisecond;
+  SAM's state 4 -> 1; the IOMedia objects stay (`diskutil list` still shows the disk);
+  `diskutil mount diskNs2` brings the volume back. SAM's PM state sampled every ~9 ms: 4 until
+  0.76 s after the eject began (the eject returned at 0.26 s), then 1.
+- 2CCCBE79: "Power Off" was set on all 8 SAM devices, yet the eject took 0.27 s and the stop was
+  "media present" (the driver already closed): completed here, the drive kept spinning (Start_Stop
+  442 -> 442, first read 0.021 s). Hence 515295d.
+- (b) eject: drive7 and drive2 on 5EFAFE09, drive7 twice on 8A71718E: "Stops passed
+  (ejected)" + 1 each, log `idle-type stop, SAM power state 4, no media reported (doEjectMedia)`
+  and `START STOP UNIT (stop) sent: media ejected` (CDB `1b 00 00 00 00 00`); first 4K read 7.58 /
+  7.52 / - / 7.51 s (spin-up; START 1 in the log); Start_Stop_Count 442 -> 443, 449 -> 450,
+  443 -> 444, 444 -> 445; `diskutil mount` and a 64 MiB write + read back (after purge)
+  identical; 192 unchanged.
+- (b) `sas2308ctl spindown` on an unmounted drive: S2's START STOP UNIT (5EFAFE09) and the ATA STANDBY
+  IMMEDIATE of 57C2CBC0 both left drive3 answering every READ NOT READY 04/02 (reads failed after
+  3 s, mount failed; recovered by `diskutil eject` + `diskutil mount`). Now macOS's eject: drive3
+  (57C2CBC0 kext, new tool) and drive8 (8A71718E): stop passed, first read 7.69 / 7.52 s,
+  Start_Stop_Count + 1, mount + read/write fine.
+- (a) + (c) `pmset -a disksleep 1`, 7 mounted + drive3 unmounted (not ejected), 240 s idle: all 8
+  SAM states 4 -> 3 -> 2 -> 1; 8 idle stops completed here (log: `idle-type stop, SAM power state 3
+  (idle timer)` x 8, debug level), none passed; first 4K reads 0.021-0.236 s (the unmounted drive
+  0.031 s). Same on 5EFAFE09 (0.021-0.267 s).
+- (d) sleep/wake with the 8 volumes mounted: Suspends 1, Resumes 1 (without reset), 8 drives, 8
+  volumes, no ejected stop. Restart with the 8 volumes mounted: request -> boot 13 s (as S1), loaded
+  8A71718E, 8 drives, config page failures 0, IO timeouts 0, the volumes mount. A shutdown_stall
+  report as at every restart on this Mac since 2026-11-15 (before the kext; our hotplug thread idle
+  in it). SMART 192 (Power-Off_Retract_Count) before / after all tests, drive6 drive2 drive7
+  drive8 drive3 drive5 drive4 drive1: 49 59 54 52 54 54 56 61 / 49 59 54 52 54 54 56 61.
+- (e) regression on 8 drives (unmounted): random 4K read QD32 60 s 1996 IOPS (249.5 per drive),
+  seq 1 MiB read 60 s 2228.8 MB/s (278.6 per drive), verify 256 MiB per drive at 60-60.2 % 0
+  mismatches, 0 errors; no timeouts or resets. `diskutil verifyVolume`: all 8 exFAT volumes OK;
+  remounted at /Volumes/<serial>. End state: `pmset -a disksleep 10`, mode 0.
 
 ### Hardware tests still to run
 
@@ -679,10 +726,15 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
     `sasbench -b 4K -q 320 -p rand -t 300` on 6 raw drives (6 x 320 = 1920 tasks plus the seventh
     drive's re-add; 2046 OS tasks) and pull and re-insert the seventh drive. Expect the nub to come
     back, "Device re-adds given up" 0, "Config page failures" 0.
-16. **Batch S2, approve build FCE29EDC** (installed 2026-11-22, not yet approved). At the Mac (or
-    Screen Sharing with control): System Settings > Privacy & Security > "Allow" next to the
-    SAS2308HBA message (password twice), then "Restart". Or use a legacy-VNC approval
-    step. Then the S2 hardware tests (a)-(c) run unattended.
+16. ~~Batch S2, approve build FCE29EDC~~: superseded by EJ (8A71718E approved with a
+    legacy-VNC step, 2026-11-22).
+17. **Batch EJ, pull a drive after Eject** (build 8A71718E or later). With a volume mounted on one
+    drive: `diskutil eject diskN` (or Finder's eject); `sas2308ctl stats` shows "Stops passed
+    (ejected)" + 1; wait 20 s; pull the drive (or switch off its bay). Expect: no "disk not ejected
+    properly" alert, log `target N destroyed`, the other drives unaffected; SMART 192 of that drive
+    unchanged after it is back (`smartctl -A`). Plug it back: it comes back as a new disk and
+    `diskutil mount diskNs2` mounts it. Repeat once with `sas2308ctl spindown diskN` on an
+    unmounted drive instead of the eject.
 
 ## Ranked table: changes (CHANGE)
 
