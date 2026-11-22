@@ -128,7 +128,7 @@ const SAS2308HBA::Knob SAS2308HBA::kKnobs[] = {
     { "sas2308_send_ordered", MPSK_KNOB_SEND_ORDERED },     /* kern.cam.da.send_ordered (D46) */
     { "sas2308_shutdown_stop", 0 },     /* MUR at systemWillShutdown, 0 = FreeBSD's none (D50) */
     { "sas2308_family_timer", MPSK_KNOB_FAMILY_TIMER },     /* 1 = family timer per IO (A/B, G2) */
-    { "sas2308_idle_spindown", MPSK_KNOB_IDLE_SPINDOWN },   /* 1 = SAM's idle stop is sent (S1) */
+    { "sas2308_idle_spindown", MPSK_KNOB_IDLE_SPINDOWN },   /* 0 never, 1 always, 2 not in use (S1, S2) */
 };
 const size_t SAS2308HBA::kKnobCount = sizeof(kKnobs) / sizeof(kKnobs[0]);
 
@@ -602,7 +602,8 @@ SAS2308HBA::PublishStats(bool force)
         setProperty(kIocTemperatureKey, (unsigned long long)st.ioc_temp_c, 32);
     }
     SetNumber(d, "Ordered tags sent", st.ordered_tags);     /* da's periodic ORDERED tag (D46) */
-    SetNumber(d, "Idle stops completed here", st.idle_stops);   /* sas2308_idle_spindown 0 (S1) */
+    SetNumber(d, "Idle stops completed here", st.idle_stops);   /* mode 0, or 2 and in use (S1, S2) */
+    SetNumber(d, "Idle stops sent", st.idle_stops_sent);    /* mode 2, disk not in use (S2) */
     SetNumber(d, "KASSERT hits", st.kassert_hits);   /* KASSERT / panic() survived, all controllers (D55) */
     SetNumber(d, "Debug mask", mask);
     OSString *state = OSString::withCString(gone ? "gone" : fSuspended ? "suspended" : resetting ? "resetting" : "operational");

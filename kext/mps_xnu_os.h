@@ -162,6 +162,7 @@ struct mps_kext_task_glue {
 	uint8_t		 mapwait;	/* on the glue's mapping-wait list (D47) */
 	uint8_t		 retrying;	/* taken off it by the retrier, being mapped */
 	uint8_t		 cancel;	/* completion (done + 1) for the retrier instead of a post */
+	uint8_t		 stop_use;	/* MPSK_STOP_*: an idle stop's disk in use, sas2308_idle_spindown 2 (S2) */
 };
 struct mps_kext_task_glue *mps_kext_task_glue(void *td);
 
@@ -187,6 +188,15 @@ struct mps_kext_io_result {
 	uint8_t		 local;		/* SAM's idle stop, completed here with GOOD (S1) */
 };
 
+/*
+ * SAM's idle stop (S1, S2): START STOP UNIT with START 0, LOEJ 0, POWER
+ * CONDITION 0. With sas2308_idle_spindown 2 the glue tells mps_kext_submit
+ * whether the disk is in use (a mounted volume or an open /dev/(r)disk):
+ * FREE: sent; IN_USE: completed here (as mode 0).
+ */
+enum { MPSK_STOP_FREE, MPSK_STOP_IN_USE };
+int	 mps_kext_is_idle_stop(const uint8_t *cdb, uint8_t cdblen);
+
 enum { MPSK_SUBMIT_POSTED, MPSK_SUBMIT_HELD, MPSK_SUBMIT_DONE };
 /*
  * xpt_action with mps_mtx held. DONE: completed synchronously (*res, for
@@ -197,13 +207,14 @@ enum { MPSK_SUBMIT_POSTED, MPSK_SUBMIT_HELD, MPSK_SUBMIT_DONE };
  * callout is a backstop 10 s after it. 0: untimed (START STOP UNIT gets
  * 60 s, FORMAT UNIT / SANITIZE none, the rest 10 min). gen: the
  * generation of the nub the task came from; another device behind tid
- * now (mps_xnu_target_gen differs): DONE, CAM_DEV_NOT_THERE.
+ * now (mps_xnu_target_gen differs): DONE, CAM_DEV_NOT_THERE. stop_use:
+ * MPSK_STOP_*, for an idle stop with sas2308_idle_spindown 2 (S2).
  */
 int	 mps_kext_submit(struct mps_kext *k, void *td, void *os_task,
 	    uint64_t os_tag, uint32_t tid, uint64_t lun, const uint8_t *cdb,
 	    uint8_t cdblen,
 	    int dir, int attr, uint32_t nsegs, uint64_t len, uint32_t timeout_ms,
-	    int os_timed, uint32_t gen, struct mps_kext_io_result *res);
+	    int os_timed, uint32_t gen, int stop_use, struct mps_kext_io_result *res);
 #define	MPSK_BACKSTOP_MS	10000	/* core timeout = task timeout + this */
 #define	MPSK_UNTIMED_BACKSTOP_MS 600000	/* core timeout of a task with none (D15) */
 #define	MPSK_SSU_TIMEOUT_MS	60000	/* ... of an untimed START STOP UNIT: da's 60 s (D15b) */
@@ -229,7 +240,8 @@ int	 mps_kext_timeout(struct mps_kext *k, void *td, void *os_task,
  * the core callout as a backstop, the scheme before batch G2; 0 = the
  * core callout is the IO timer (FreeBSD mps). For A/B measurements.
  * IDLE_SPINDOWN: 0 = SAM's idle START STOP UNIT (START 0) is completed here
- * with GOOD status, the disk keeps spinning; 1 = it is sent (S1), 0/1.
+ * with GOOD status, the disk keeps spinning; 1 = it is sent (S1); 2 (the
+ * default) = it is sent only if the disk is not in use, else as 0 (S2).
  */
 enum { MPSK_KNOB_SEND_ORDERED = 1, MPSK_KNOB_FAMILY_TIMER, MPSK_KNOB_IDLE_SPINDOWN };
 int	 mps_kext_set_knob(struct mps_kext *k, int knob, uint32_t value);

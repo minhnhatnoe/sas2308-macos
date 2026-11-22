@@ -295,7 +295,7 @@ SAS2308Glue::Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs
     Unlock();
     struct mps_kext_io_result res;
     const int rc = mps_kext_submit(fMps, d.td, task, d.tag, d.target, d.lun, d.cdb, d.cdbLen, d.dir, d.attr, nsegs,
-                                   d.length, d.timeoutMs, osTimed ? 1 : 0, gen, &res);
+                                   d.length, d.timeoutMs, osTimed ? 1 : 0, gen, mps_kext_task_glue(d.td)->stop_use, &res);
     Lock();
     if (rc == MPSK_SUBMIT_DONE) {
         if (!res.local)                 /* SAM's idle stop completed here is not a refusal (S1) */
@@ -316,6 +316,20 @@ SAS2308Glue::Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs
     if (rc == MPSK_SUBMIT_DONE && !res.by_core && !res.local)
         Klog(res.kind == MPSK_IO_REJECT ? (MPSK_ERROR | MPSK_INFO) : MPSK_XINFO,
              "IO for target %u refused (CAM status 0x%x)", d.target, res.cam_status);
+}
+
+//-----------------------------------------------------------------------------
+//	StopUse - for SAM's idle stop with sas2308_idle_spindown 2 (S2): is the
+//	disk in use (MPSK_STOP_*)? Asked here, before the gate and with no lock
+//	held: the class walks the IORegistry. Anything else: FREE (unused).
+//-----------------------------------------------------------------------------
+
+uint8_t
+SAS2308Glue::StopUse(const SAS2308GluePort::TaskDesc &d)
+{
+    if (!fMps || !mps_kext_is_idle_stop(d.cdb, d.cdbLen) || mps_kext_knob(fMps, MPSK_KNOB_IDLE_SPINDOWN) != 2)
+        return MPSK_STOP_FREE;
+    return fPort->TargetInUse(d.target) ? MPSK_STOP_IN_USE : MPSK_STOP_FREE;
 }
 
 //-----------------------------------------------------------------------------
@@ -351,6 +365,7 @@ SAS2308Glue::ProcessTask(void *task)
     memset(tg, 0, sizeof(*tg));
     tg->task = task;
     tg->target = d.target;
+    tg->stop_use = StopUse(d);
 
     /* Tasks waiting for a mapping go first: this one waits behind them (order, as a frozen SIM queue). */
     Lock();

@@ -225,6 +225,14 @@ void SAS2308HBAPort::CompleteTask(void *t, int done, uint8_t st, uint64_t xfer, 
     fHba->PortCompleteTask((SCSIParallelTaskIdentifier)t, done, st, xfer, sense, slen);
 }
 bool SAS2308HBAPort::CreateTarget(uint32_t id) { return fHba->PortCreateTarget(id); }
+bool SAS2308HBAPort::TargetInUse(uint32_t id)
+{
+    char who[96];
+    const int use = fHba->TargetUse(id, who, sizeof(who));
+    if (use > 0)
+        fHba->Klog(MPSK_XINFO, "target %u: in use (%s)", id, who);
+    return use > 0;
+}
 void SAS2308HBAPort::DestroyTarget(uint32_t id) { fHba->DestroyTargetForID(id); }
 bool SAS2308HBAPort::CallEnter(int which)
 {

@@ -86,6 +86,95 @@ SAS2308HBA::PortCreateTarget(uint32_t targetID)
     return ok;
 }
 
+//-----------------------------------------------------------------------------
+//	TargetUse - is the disk behind targetID in use (S2)? In use: one of its
+//	IOMedia objects (whole disk, partitions, anything stacked on them) is
+//	open by a client other than a partition scheme, i.e. by its
+//	IOMediaBSDClient (a mounted volume opens /dev/diskNsM, a raw reader
+//	/dev/(r)diskN; dkopen opens the media with the BSD client as the
+//	IOService client) or by some other IOKit client. The partition scheme
+//	keeps the whole-disk media open while it is attached: that open does not
+//	count. One snapshot of our IORegistry subtree (iterateAll retains every
+//	entry, so a disk going away meanwhile is safe), then IOService::isOpen
+//	per (media, child) pair. Returns -1: no nub for the ID, 0: not in use,
+//	1: in use; *who says why.
+//	XNU: no FreeBSD counterpart (FreeBSD never stops an idle disk); the
+//	gate check: IOService::isOpen takes the IOService notification lock,
+//	which an opener holds across IOMedia::handleOpen -> the block storage
+//	driver's handleOpen; we never wait for it with the work-loop gate held
+//	(SAM's resend queue can call ProcessParallelTask from inside the gate):
+//	then the disk counts as in use, the stop is completed here.	[PRIVATE]
+//-----------------------------------------------------------------------------
+
+static bool SAS2308IsBelow(IORegistryEntry *e, IORegistryEntry *top, IORegistryEntry *stop)
+{
+    for (IORegistryEntry *p = e; p != nullptr && p != stop; p = p->getParentEntry(gIOServicePlane))
+        if (p == top)
+            return true;
+    return false;
+}
+
+int
+SAS2308HBA::TargetUse(uint32_t targetID, char *who, size_t whoLen)
+{
+    snprintf(who, whoLen, "not open");
+    IOWorkLoop *wl = GetWorkLoop();
+    if (wl && wl->inGate()) {
+        snprintf(who, whoLen, "not checked: work-loop gate held");
+        return 1;
+    }
+    IORegistryIterator *it = IORegistryIterator::iterateOver(this, gIOServicePlane, kIORegistryIterateRecursively);
+    OSOrderedSet *all = it ? it->iterateAll() : nullptr;
+    OSSafeReleaseNULL(it);
+    if (!all) {
+        snprintf(who, whoLen, "not checked: no memory");
+        return 1;
+    }
+    /* the target's nub: IOSCSIParallelInterfaceDevice, Protocol Characteristics / SCSI Target Identifier */
+    IORegistryEntry *nub = nullptr;
+    OSObject *o;
+    for (unsigned i = 0; nub == nullptr && (o = all->getObject(i)) != nullptr; i++) {
+        IORegistryEntry *e = OSDynamicCast(IORegistryEntry, o);
+        if (!e || !e->metaCast("IOSCSIParallelInterfaceDevice") || e->getParentEntry(gIOServicePlane) != this)
+            continue;
+        OSObject *pc = e->copyProperty(kIOPropertyProtocolCharacteristicsKey);
+        OSDictionary *d = OSDynamicCast(OSDictionary, pc);
+        OSNumber *n = d ? OSDynamicCast(OSNumber, d->getObject(kIOPropertySCSITargetIdentifierKey)) : nullptr;
+        if (n && n->unsigned32BitValue() == targetID)
+            nub = e;
+        OSSafeReleaseNULL(pc);
+    }
+    if (!nub) {
+        all->release();
+        snprintf(who, whoLen, "no nub");
+        return -1;
+    }
+    int use = 0;
+    IORegistryEntry *e, *c;
+    for (unsigned i = 0; !use && (o = all->getObject(i)) != nullptr; i++) {
+        e = OSDynamicCast(IORegistryEntry, o);
+        IOService *media = e && e->metaCast("IOMedia") ? OSDynamicCast(IOService, e) : nullptr;
+        if (!media || !SAS2308IsBelow(media, nub, this))
+            continue;
+        for (unsigned j = 0; !use && (o = all->getObject(j)) != nullptr; j++) {
+            c = OSDynamicCast(IORegistryEntry, o);
+            IOService *client = c ? OSDynamicCast(IOService, c) : nullptr;
+            if (!client || client->getParentEntry(gIOServicePlane) != media || client->metaCast("IOPartitionScheme"))
+                continue;
+            if (media->isOpen(client)) {
+                OSObject *bsd = media->copyProperty("BSD Name");
+                OSString *name = OSDynamicCast(OSString, bsd);
+                snprintf(who, whoLen, "%s open by %s", name ? name->getCStringNoCopy() : "media",
+                         client->getMetaClass()->getClassName());
+                OSSafeReleaseNULL(bsd);
+                use = 1;
+            }
+        }
+    }
+    all->release();
+    return use;
+}
+
 #if 0
 #pragma mark -
 #pragma mark Target properties

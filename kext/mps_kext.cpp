@@ -135,7 +135,7 @@ struct mps_kext {
     struct callout          otag_callout;
     int                     send_ordered;   /* kern.cam.da.send_ordered (sas2308_send_ordered) */
     int                     family_timer;   /* sas2308_family_timer: the family's timer per IO (G2 A/B) */
-    int                     idle_spindown;  /* sas2308_idle_spindown: SAM's idle stop is sent (S1) */
+    int                     idle_spindown;  /* sas2308_idle_spindown: 0 never, 1 always, 2 if not in use (S1, S2) */
     int                     sys_power;      /* MPSK_SYS_*: the class's view of the system (S1) */
 };
 
@@ -516,7 +516,9 @@ int mps_kext_attach(struct mps_kext *k, uint32_t debug_mask)
     memset_zero(k->otag, sizeof(*k->otag) * k->ntargets * MPSK_OTAG_SLOTS);
     k->send_ordered = (int)mps_kext_tunable(k, "sas2308_send_ordered", 1);
     k->family_timer = (int)mps_kext_tunable(k, "sas2308_family_timer", 0);
-    k->idle_spindown = (int)mps_kext_tunable(k, "sas2308_idle_spindown", 0);
+    k->idle_spindown = (int)mps_kext_tunable(k, "sas2308_idle_spindown", 2);
+    if ((unsigned)k->idle_spindown > 2)
+        k->idle_spindown = 2;           /* not a mode: the default */
     k->attached = 1;
     callout_init_mtx(&k->hold_callout, &sc->mps_mtx, 0);
     /* daregister: the ORDERED tag callout runs whether or not send_ordered is set */
@@ -740,43 +742,53 @@ static void mps_kext_queue_done(struct mps_kext *k, struct mps_kext_task *t)
 }
 
 /*
- * XNU: SAM's idle spin-down (S1). macOS's block driver
+ * XNU: SAM's idle spin-down (S1, S2). macOS's block driver
  * (IOSCSIBlockCommandsDevicePM.cpp, HandlePowerChange) stops the disk when
  * its idle timer (pmset disksleep) takes it to Standby or Sleep:
  * START STOP UNIT with IMMED 1, POWER CONDITION 0, START 0. FreeBSD never
  * stops a disk for idleness: da/CAM send START STOP UNIT only for an
- * explicit request (camcontrol stop, the shutdown SSU of the SATA SSDs),
- * and the goal is disks that never spin down, as a tunable. With
- * sas2308_idle_spindown 0 (the default) such a stop is completed here with
- * GOOD status and not sent; SAM's own START (START 1) on the next IO is
- * sent and finds the disk spinning. Sent as before: START 1, LOEJ, any
- * POWER CONDITION (SAM's system sleep uses 5), and every stop once the
- * system is going to sleep (kIOMessageSystemWillSleep until the wake), the
- * halt began (restart / power off, batch F), the IOC is stopped or
- * suspended, or the system's power state is not known (no priority
- * interest). The HBA sees no mounts: this is for every disk behind it, and
- * a stop sent from user space (a SCSI pass-through) is completed here too.
- * Called under mps_mtx.
+ * explicit request (camcontrol stop, the shutdown SSU of the SATA SSDs).
+ * Wanted: disks that spin only while in use, as a tunable:
+ * sas2308_idle_spindown 2 (the default) sends such a stop only if the disk
+ * is not in use (no mounted volume, no open /dev/(r)disk: the glue asks
+ * the class, which walks the IORegistry, stop_use) and completes it here
+ * otherwise; 0 completes every one here (S1), 1 sends every one. A stop
+ * completed here gets GOOD status; SAM's own START (START 1) on the next
+ * IO is sent and finds the disk spinning. Sent as before in every mode:
+ * START 1, LOEJ, any POWER CONDITION (SAM's system sleep uses 5), and
+ * every stop once the system is going to sleep (kIOMessageSystemWillSleep
+ * until the wake), the halt began (restart / power off, batch F), the IOC
+ * is stopped or suspended, or the system's power state is not known (no
+ * priority interest). A stop sent from user space (a SCSI pass-through)
+ * looks the same and is treated the same. Called under mps_mtx.
+ * Returns 0: send it; 1: complete it here.
  */
-static int mps_kext_idle_stop(struct mps_kext *k, uint32_t tid, const uint8_t *cdb, uint8_t cdblen)
+static int mps_kext_idle_stop(struct mps_kext *k, uint32_t tid, const uint8_t *cdb, uint8_t cdblen, int stop_use)
 {
     struct mps_softc *sc = &k->sc;
 
-    if (cdb[0] != 0x1B /* START STOP UNIT */ || cdblen < 5 || k->idle_spindown)
-        return 0;
-    if ((cdb[4] & 0xF3) != 0)       /* POWER CONDITION (7:4), LOEJ (1), START (0); NO_FLUSH (2) is a stop */
-        return 0;
+    if (!mps_kext_is_idle_stop(cdb, cdblen) || k->idle_spindown == 1)
+        return 0;                   /* POWER CONDITION (7:4), LOEJ (1), START (0); NO_FLUSH (2) is a stop */
     if (k->sys_power != MPSK_SYS_AWAKE || sc->xnu.halting || sc->xnu.suspending ||
         (sc->mps_flags & (MPS_FLAGS_SHUTDOWN | MPS_FLAGS_XNU_SUSPENDED | MPS_FLAGS_XNU_GONE)) != 0)
         return 0;
     if (tid >= k->ntargets || sc->sassc->targets[tid].handle == 0)
         return 0;                   /* no disk: mpssas_action_scsiio answers as for any command */
+    if (k->idle_spindown == 2 && stop_use == MPSK_STOP_FREE) {
+        sc->xnu.stats.idle_stops_sent++;
+        return 0;
+    }
     return 1;
+}
+
+int mps_kext_is_idle_stop(const uint8_t *cdb, uint8_t cdblen)
+{
+    return cdblen >= 5 && cdb[0] == 0x1B && (cdb[4] & 0xF3) == 0;
 }
 
 int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag, uint32_t tid,
                     uint64_t lun, const uint8_t *cdb, uint8_t cdblen, int dir, int attr, uint32_t nsegs, uint64_t len,
-                    uint32_t timeout_ms, int os_timed, uint32_t gen, struct mps_kext_io_result *res)
+                    uint32_t timeout_ms, int os_timed, uint32_t gen, int stop_use, struct mps_kext_io_result *res)
 {
     struct mps_softc *sc = &k->sc;
     struct mps_kext_task *t = (struct mps_kext_task *)td;
@@ -861,10 +873,11 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
         mps_kext_queue_done(k, t);
         return MPSK_SUBMIT_DONE;
     }
-    if (mps_kext_idle_stop(k, tid, cdb, cdblen)) {
+    if (mps_kext_idle_stop(k, tid, cdb, cdblen, stop_use)) {
         sc->xnu.stats.idle_stops++;
         mps_dprint(sc, MPS_XINFO, "target %u: idle START STOP UNIT completed here, not sent "
-                   "(sas2308_idle_spindown 0)\n", tid);
+                   "(sas2308_idle_spindown %d%s)\n", tid, k->idle_spindown,
+                   k->idle_spindown == 2 ? ": disk in use" : "");
         mps_unlock(sc);
         ccb->ccb_h.status = CAM_REQ_CMP;    /* GOOD, nothing transferred */
         mps_kext_result(t, res);
@@ -1159,7 +1172,7 @@ int mps_kext_set_knob(struct mps_kext *k, int knob, uint32_t value)
     case MPSK_KNOB_SEND_ORDERED:
     case MPSK_KNOB_FAMILY_TIMER:
     case MPSK_KNOB_IDLE_SPINDOWN:
-        if (value > 1)
+        if (value > (knob == MPSK_KNOB_IDLE_SPINDOWN ? 2u : 1u))
             error = EINVAL;
         else if (knob == MPSK_KNOB_SEND_ORDERED)
             k->send_ordered = (int)value;
@@ -1268,7 +1281,8 @@ void mps_kext_system_power(struct mps_kext *k, int state)
     mps_lock(sc);
     if (k->sys_power != state)
         mps_dprint(sc, MPS_XINFO, "system power state %d -> %d (idle stops %s)\n", k->sys_power, state,
-                   state == MPSK_SYS_AWAKE && !k->idle_spindown ? "completed here" : "sent");
+                   state != MPSK_SYS_AWAKE || k->idle_spindown == 1 ? "sent" :
+                   k->idle_spindown == 0 ? "completed here" : "sent if the disk is not in use");
     k->sys_power = state;
     mps_unlock(sc);
 }

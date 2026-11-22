@@ -169,6 +169,9 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
         return which == kCallHotplug ? (hotplugTq ? mps_kext_tq_cancel(hotplugTq) : false) : calls[which].Cancel();
     }
     void Log(uint32_t cls, const char *line) override { mps_kext_log(nullptr, cls, line); }
+    std::set<uint32_t> inUse;               /* disks with a mounted volume / open node (S2) */
+    int inUseCalls = 0;
+    bool TargetInUse(uint32_t id) override { inUseCalls++; return inUse.count(id) != 0; }
 
     int hotplugBodies = 0, hotplugDepth = 0, hotplugNested = 0;
     static void HotplugBody(void *hba) {
@@ -1384,7 +1387,7 @@ int main()
             return m.scsiOps.size() != ops;
         };
         const uint32_t before = gHost.sc->xnu.stats.idle_stops;
-        CHECK(mps_kext_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN) == 0);       /* the default */
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 0) == 0);  /* S2: 2 is the default */
         CHECK(ssu(0x01, 0x00));                     /* system state unknown (no priority interest): sent */
         mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
         CHECK(!ssu(0x01, 0x00));                    /* SAM's Standby / Sleep stop: completed here */
@@ -1401,9 +1404,9 @@ int main()
         CHECK(f.Submit(rd) == SAS2308Glue::kInProcess);
         HostRunPending();
         CHECK(rd->completions == 1 && rd->done == SAS2308GluePort::kDoneStatus);
-        /* the knob: 1 sends it, 2 is refused */
+        /* the knob: 1 sends it, 3 is refused (2: S2) */
         CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 1) == 0 && mps_kext_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN) == 1);
-        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 2) != 0);
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 3) != 0);
         CHECK(ssu(0x01, 0x00));
         CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 0) == 0);
         CHECK(!ssu(0x01, 0x00));
@@ -1417,6 +1420,73 @@ int main()
         mps_kext_halt_begin(f.k);
         CHECK(ssu(0x01, 0x00));
         CHECK(gHost.sc->xnu.stats.idle_stops == before + 5);
+        f.Detach();
+    }
+
+    if (Want("S2-in-use")) {
+        /*
+         * sas2308_idle_spindown 2 (the default): SAM's idle stop is sent
+         * when the disk is not in use, completed here when it is (a mounted
+         * volume, an open /dev/(r)disk: the class's TargetInUse). The disk
+         * is asked only for an idle stop in mode 2; modes 0 and 1 and the
+         * sleep / halt rules are as S1.
+         */
+        MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009), ta = f.Tid(0x000A);
+        auto ssu = [&](uint32_t tid, uint8_t b1, uint8_t b4) {
+            FakeTask *t = f.NewRead(tid, 0);
+            memset(t->cdb, 0, sizeof(t->cdb));
+            t->cdb[0] = 0x1B; t->cdb[1] = b1; t->cdb[4] = b4; t->cdbLen = 6; t->dir = MPSK_DIR_NONE; t->len = 0;
+            const size_t ops = m.scsiOps.size();
+            CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+            HostRunPending();
+            CHECK(t->completions == 1 && t->done == SAS2308GluePort::kDoneStatus && t->scsiStatus == 0);
+            return m.scsiOps.size() != ops;
+        };
+        struct mps_xnu_stats &st = gHost.sc->xnu.stats;
+        CHECK(mps_kext_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN) == 2);       /* the default */
+        mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
+        f.inUse = {t9};                             /* t9 mounted, ta not */
+        const uint32_t local0 = st.idle_stops, sent0 = st.idle_stops_sent;
+        int calls = f.inUseCalls;
+        CHECK(!ssu(t9, 0x01, 0x00));                /* in use: completed here */
+        CHECK(f.inUseCalls == calls + 1);
+        CHECK(st.idle_stops == local0 + 1 && st.idle_stops_sent == sent0);
+        CHECK(ssu(ta, 0x01, 0x00));                 /* not in use: sent */
+        CHECK(f.inUseCalls == calls + 2);
+        CHECK(st.idle_stops == local0 + 1 && st.idle_stops_sent == sent0 + 1);
+        CHECK(m.scsiOps.back().op == 0x1B && (m.scsiOps.back().b4 & 0x01) == 0);
+        /* not an idle stop: sent, and the disk is not asked */
+        calls = f.inUseCalls;
+        CHECK(ssu(t9, 0x00, 0x01));                 /* START 1 */
+        CHECK(ssu(t9, 0x01, 0x50));                 /* POWER CONDITION 5 (system sleep) */
+        FakeTask *rd = f.NewRead(t9);
+        CHECK(f.Submit(rd) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        CHECK(rd->completions == 1 && rd->done == SAS2308GluePort::kDoneStatus);
+        CHECK(f.inUseCalls == calls);
+        /* unmounted now: the next idle stop is sent */
+        f.inUse.clear();
+        CHECK(ssu(t9, 0x01, 0x00));
+        f.inUse = {t9};
+        /* going to sleep: sent though in use (S1's rule) */
+        mps_kext_system_power(f.k, MPSK_SYS_SLEEP);
+        CHECK(ssu(t9, 0x01, 0x00));
+        mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
+        CHECK(!ssu(t9, 0x01, 0x00));
+        /* modes 0 and 1: the disk is not asked */
+        calls = f.inUseCalls;
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 0) == 0);
+        CHECK(!ssu(ta, 0x01, 0x00));                /* not in use, completed here all the same */
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 1) == 0);
+        CHECK(ssu(t9, 0x01, 0x00));                 /* in use, sent all the same */
+        CHECK(f.inUseCalls == calls);
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 2) == 0);
+        /* the halt: sent */
+        mps_kext_halt_begin(f.k);
+        CHECK(ssu(t9, 0x01, 0x00));
         f.Detach();
     }
 

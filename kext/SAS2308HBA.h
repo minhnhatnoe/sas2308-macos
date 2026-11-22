@@ -64,6 +64,7 @@ public:
     bool CallEnter(int which) override;
     bool CallCancel(int which) override;
     void Log(uint32_t cls, const char *line) override;
+    bool TargetInUse(uint32_t id) override;
 };
 
 class SAS2308HBA : public IOSCSIParallelInterfaceController
@@ -185,6 +186,7 @@ private:
     void PortCompleteTask(SCSIParallelTaskIdentifier task, int done, uint8_t scsiStatus, uint64_t transferred,
                           const uint8_t *sense, uint32_t senseLen);
     bool PortCreateTarget(uint32_t id);
+    int TargetUse(uint32_t id, char *who, size_t whoLen);  /* -1 no such nub, 0 not in use, 1 in use (S2) */
 
     /* ---- SAS2308HBA_Props.cpp */
     void Klog(uint32_t cls, const char *fmt, ...) __attribute__((format(printf, 3, 4)));

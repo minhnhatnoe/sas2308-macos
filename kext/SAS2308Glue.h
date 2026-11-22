@@ -70,6 +70,11 @@ public:
     virtual bool CallEnter(int which) = 0;          /* thread_call_enter: true = was already queued */
     virtual bool CallCancel(int which) = 0;         /* thread_call_cancel: true = was queued */
     virtual void Log(uint32_t cls, const char *line) = 0;
+    /*
+     * The disk behind the target ID is in use: a volume on it is mounted or
+     * one of its /dev/(r)disk nodes is open (S2). Called with no lock held.
+     */
+    virtual bool TargetInUse(uint32_t id) = 0;
 
 protected:
     ~SAS2308GluePort() {}
@@ -171,6 +176,7 @@ private:
     void Hotplug(void);
     MapResult MapTask(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t *nsegs);
     void Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs, bool osTimed);
+    uint8_t StopUse(const SAS2308GluePort::TaskDesc &d);
     void RetryMapWait(void);            /* no lock held */
     bool TakeWaiting(void *td, int done);   /* fLock held */
 

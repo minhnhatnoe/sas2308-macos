@@ -91,6 +91,7 @@ struct mps_xnu_stats {
 	uint32_t	ordered_tags;		/* SIMPLE tasks sent ORDERED: da's periodic tag (D46) */
 	/* S1 */
 	uint32_t	idle_stops;		/* idle START STOP UNIT (START 0) completed here, not sent */
+	uint32_t	idle_stops_sent;	/* ... sent: the disk not in use, sas2308_idle_spindown 2 (S2) */
 };
 
 #endif /* !_MPS_XNU_STATS_H_ */
