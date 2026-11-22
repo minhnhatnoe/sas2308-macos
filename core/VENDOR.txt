@@ -115,4 +115,5 @@ Imports
         compat/mps_compat.h, which includes <stdarg.h> (va_list, va_start,
         va_end) in the host and kext builds. The 3 upstream commits listed
         for unported files were already in 14.5.0 (those files are
-        identical in both releases). No new deviation.
+        identical in both releases). No new deviation; kext 4DB88BC6
+        passed the hardware smoke test (design.md "Updating from FreeBSD").

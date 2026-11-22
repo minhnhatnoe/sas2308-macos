@@ -1757,4 +1757,9 @@ hunks each); ours was kept, since the core's include block is `compat/mps_compat
 includes `<stdarg.h>` (va_list, va_start, va_end) in the host and kext builds. No new deviation;
 `tools/diff-vs-freebsd.sh -s`: 10976 upstream lines, 7391 common, 1370 added, 3585 removed, 299
 XNU lines (2 upstream and 2 common lines fewer than against 14.5.0: the blank line upstream
-removed with each include).
+removed with each include). Kext **4DB88BC6** passed the smoke test on 8 drives: SMART PASSED on
+all 8, 0 default log lines in 5 min idle, a forced recovery under IO (timeout at 60 s, reinit
+1121 ms, 0 application errors), a sleep/wake under IO (2 resumes without a reset), a restart with
+a mounted JHFS+ volume (12 s, 202/202 files verify), and the regression (2012 IOPS random 4K QD32,
+2225.9 MB/s seq 1 MiB, verify 0 mismatches). Details: `docs/reviews/2026-11-freebsd-deviations.md`,
+"FreeBSD 15.1.0 import hardware results".

@@ -171,6 +171,7 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | S2 | `sas2308_spindown_grace` (900 s after attach, mode 2 completes the idle stop here) | done (option) | e70a86a | glue `S2-grace` | not run (mode 2 only) |
 | S2 | `sas2308ctl spindown <diskN\|all>`: was camcontrol stop through the shutdown-SSU path (569536b), then ATA STANDBY IMMEDIATE (03fedd9); both left the disk answering NOT READY 04/02 (SAM sends no START): now macOS's eject (DADiskEject), the kext passes its stop | done | 569536b, 03fedd9, 8be2f50 | none (user tool; the kext part is EJ's) | spin-up 7.52-7.69 s on the next read, Start_Stop_Count + 1, mounts (see "Batch EJ hardware results") |
 | EJ | default `sas2308_idle_spindown` 0 again; an eject's idle-type stop sent in modes 0 and 2 (SAM still Active and no media reported / driver open for DKIOCEJECT), "Stops passed (ejected)" | done | d52d7ca, 0ec0773 | glue `EJ-eject` | eject: stop passed, first read 7.5-7.6 s, Start_Stop_Count + 1; idle: 8 stops at SAM state 3 completed here, first reads 0.02-0.24 s (see "Batch EJ hardware results") |
+| vendor | FreeBSD release/15.1.0 import: move to the 15.x line (one #include line in each of 2 files, 2 conflict hunks per file, all in #include blocks, ours kept, no new deviation) | done | fd5ddbf, 7f2394b | all host tests | smoke test on 4DB88BC6 (see "FreeBSD 15.1.0 import hardware results") |
 
 ### Batch A hardware results
 
@@ -633,6 +634,38 @@ each. 8 drives (ST18000NM000J, exFAT volumes /Volumes/<serial>), mode 0.
   seq 1 MiB read 60 s 2228.8 MB/s (278.6 per drive), verify 256 MiB per drive at 60-60.2 % 0
   mismatches, 0 errors; no timeouts or resets. `diskutil verifyVolume`: all 8 exFAT volumes OK;
   remounted at /Volumes/<serial>. End state: `pmset -a disksleep 10`, mode 0.
+
+### FreeBSD 15.1.0 import hardware results
+
+Build **4DB88BC6-1716-371E-9BB3-8735A9C0ED7A** (branch import-fbsd-15.1, merge 7f2394b); rollback
+copy 8A71718E. Upstream changed only `#include <machine/stdarg.h>` to `<sys/stdarg.h>` in two
+files and the core keeps its own include block, so the driver code is the same as 8A71718E's:
+a smoke test, not an A/B. 8 drives (ST18000NM000J, empty exFAT volumes), mode 0.
+- **Install:** approval, reboot; 8 drives, state operational, 0 config page failures,
+  temperature read OK (51 C); os_log lines appear after a level change.
+- **SMART** `smartctl -a`: PASSED on all 8. drive6 returns rc 64 for its old ATA error log entry
+  (UNC at power-on hour 21639, as in the 14.5.0 import).
+- **Idle:** default level and mask (2, 0x3): 0 lines in 5 min.
+- **Forced recovery under IO** (random 4K read QD8 on all 8 for 170 s, `lose 1` at 10 s, `reinit`
+  at 110 s): the lost READ(16) timed out at 60 s, abort, LUN reset, target reset, reinit 1121 ms;
+  forced reinit 1170 ms; 0 application errors; KASSERT 0, TM waits in gate 0, tasks rejected 0.
+  (A first try without IO, the benchmark tool not yet built, lost a TEST UNIT READY instead:
+  timeout at 10 s, the same escalation, reinit 1119 ms, forced reinit 1120 ms.)
+- **Sleep/wake under IO** (random 4K read QD8 on all 8, `pmset sleepnow`, scheduled wake 120 s
+  later): 2 suspend/resume cycles (the sleep and a maintenance wake before the full wake), both
+  without a reset (348 / 337 ms), 0 application errors, 28 default lines, 0 fault lines.
+- **Restart with a mounted JHFS+ volume** (one drive reformatted for the test, 256+64 MiB + 200
+  small files, a 32 MiB file written just before the restart request): request to kernel boot
+  12 s, 0 driver lines in the shutdown window, `verifyVolume` OK, 202/202 shasums OK, the last
+  file present at full size. The drive was reformatted to exFAT with its previous volume name
+  afterwards.
+- **Regression (8 drives, unmounted):** random 4K read QD32 60 s (2-50 %): **2012 IOPS** (250-253
+  per drive; EJ 1996); seq 1 MiB read QD2 60 s (outer): **2225.9 MB/s** (273.6-283.2 per drive,
+  278.2 mean; EJ 2228.8); verify 256 MiB per drive (49-51 %, free space of the empty exFAT
+  volumes) **0 mismatches, 0 errors**; 0 IO timeouts, recoveries, diag resets, KASSERT hits.
+  A first random run over the whole disk (zone by mistake) gave 1609 IOPS (198-203 per drive:
+  longer seeks).
+  `diskutil verifyVolume`: all 8 exFAT volumes OK, remounted.
 
 ### Hardware tests still to run
 
