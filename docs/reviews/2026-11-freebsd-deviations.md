@@ -1,8 +1,8 @@
 # SAS2308 kext vs FreeBSD mps / CAM: deviations to fix
 
-Reviewed: sas2308-dext **master 4596c06** against FreeBSD 8c9ce319fef7 (`sys/dev/mps`, `sys/cam`) and Apple's
+Reviewed: sas2308-dext **master ea18896** against FreeBSD 8c9ce319fef7 (`sys/dev/mps`, `sys/cam`) and Apple's
 IOSCSIParallelFamily / SAM / IOPCIFamily sources. Full reasoning, every question and its answer:
-`2026-11-decisions.md` (81 entries, D1-D81, all RESOLVED after 4 rounds). Line numbers: ours on master 4596c06,
+`2026-11-decisions.md` (81 entries, D1-D81, all RESOLVED after 4 rounds). Line numbers: ours on master ea18896,
 FreeBSD in that tree. Out of scope: the check-condition log level and the TUR "xfer 65536/0" question (branch
 log-noise); items 2026-11-final.md already fixed.
 Raw outputs and helper scripts of the hardware tests below stayed on the test Mac and are not in this
