@@ -570,7 +570,6 @@ SAS2308HBA::StartController(void)
 
     /* Before any target exists, so the target nubs join the power tree below us. */
     InitializePowerManagement(GetProvider());
-    StartEjectSpinDown();                           /* before any target: SAM's devices get "Power Off" (EJ) */
 
     fGlue.Lock();
     fGlue.ScheduleHotplug();                        /* targets seen before we were started */
@@ -597,7 +596,6 @@ void
 SAS2308HBA::StopController(void)
 {
     Klog(MPSK_INIT | MPSK_INFO, "stopping controller");
-    StopEjectSpinDown();
     StopPowerManagement();                          /* no setPowerState() from here on */
     if (fStatsTimer) {
         fStatsTimer->cancelTimeout();
@@ -631,7 +629,6 @@ SAS2308HBA::StopController(void)
 void
 SAS2308HBA::TerminateController(void)
 {
-    StopEjectSpinDown();
     StopPowerManagement();
     fGlue.StopCore();                               /* if StopController did not run */
     Klog(MPSK_INIT | MPSK_INFO, "terminated: DMA freed, unloading");
@@ -702,7 +699,6 @@ SAS2308HBA::willTerminate(IOService *provider, IOOptionBits options)
 void
 SAS2308HBA::free(void)
 {
-    StopEjectSpinDown();
     StopPowerManagement();
     ReleaseResources();
     fGlue.FreeLock();                               /* no entry point left (retain count 0): L7 */
