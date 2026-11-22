@@ -1410,7 +1410,7 @@ xinfo, trace (most verbose: a line tagged `xinfo` is detail whatever else it car
 error (most serious), recovery, event, mapping, init, log, user, info: `MPS_RECOVERY|MPS_INFO` is
 `recovery`/DEFAULT, `MPS_ERROR|MPS_RECOVERY` is `error`/ERROR, `MPS_XINFO|MPS_RECOVERY` is
 `xinfo`/DEBUG. os_log type of that class: fault → FAULT; error → ERROR;
-info/recovery/init/event/mapping → DEFAULT (shown by `log stream`, persisted);
+info/recovery/init/event/mapping → DEFAULT (persisted);
 xinfo/trace/log/user → DEBUG (`--level debug`). Boot-arg `sas2308_iolog=1` (or
 property `SAS2308LogToIOLog`) sends them to IOLog instead (`dmesg`, survives into panic logs);
 lines without a device (printf, hexdump, KASSERT, thin CAM warnings) follow the last attached
@@ -1425,14 +1425,45 @@ Format strings must not use `%{public}`/`%{private}`: the kernel os_log encoder 
 `%{` (EINVAL, line dropped, msgbuf shows "{public}s"); kernel string arguments are always public.
 `make check` greps for it.
 
-**Stream / read.**
+**Read.** `log show` only: on macOS 27 `log stream` never shows the kext's lines (below).
 ```
-/usr/bin/log stream --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'                     # info level
-/usr/bin/log stream --level debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'       # debug/trace lines too
-/usr/bin/log stream --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA" AND category == "recovery"'
 /usr/bin/log show --last 1h --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'             # history
+/usr/bin/log show --last 1h --debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'     # + debug lines (if persisted)
+/usr/bin/log show --last 1h --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA" AND category == "recovery"'
 sudo log config --subsystem org.sas2308.driver.SAS2308HBA --mode "level:debug,persist:debug"   # keep debug lines
 ```
+
+**Lines missing (macOS logd, not the driver; 2026-11-22, macOS 27.0 26A425, xnu-13432).** From kext
+load until logd learns of the kext, logd drops all its os_log lines: the attach lines at boot in
+every boot, later lines for ~1 min after boot usually, but on 11-22 03:23 for the whole 11.7 h
+boot (until logd was restarted). Cause:
+- The kext lives in the Auxiliary KC, which iBoot places above the boot KC. On arm64 xnu
+  `vm_kernel_slid_base/top` cover the boot KC (plus the AuxKC only when it lies below it,
+  `arm_init_sptm.c`), so `VM_KERNEL_UNSLIDE()` of any kext address is 0. The kernel encoder
+  (`libkern/os/log.c` `resolve_location`) therefore sends every kext line with PC 0, and
+  `KextManagerCopyLoadedKextInfo` reports the kext at load address 0 and exec address 0 (Apple
+  kexts in the boot KC report real unslid addresses). All 580 persisted lines since 11-21 have
+  `senderProgramCounter 0`.
+- logd attributes a PC-0 line to the kext only through its own table of loaded kexts (where the
+  kext sits at address 0); the line then decodes (sender SAS2308HBA, format from uuidtext). logd
+  takes that table before the kext loads (logd starts at boot +3 s, the AuxKC kext at +4.5 s),
+  drops the lines it cannot attribute, and refreshes the table at some later point we could not
+  identify (loading another kext does not do it). The live `log stream` path never attributes them.
+- Evidence: the kernel does emit (dtrace `fbt::_os_log_internal:entry`: dso = the kext's Mach-O
+  header 0xfffffe0048608000, segments slid, format in its `__TEXT`, caller in `__TEXT_EXEC`;
+  msgbuf copy present); IOLog-routed lines (`sas2308ctl iolog on`, subsystem id 0) are dropped
+  the same way, so the subsystem registration is not the cause; loading another kext (cd9660)
+  did not help; `sudo killall logd` at 15:07, 11.7 h after boot: the next lines persisted at once.
+- In every boot since 11-21 the attach lines at boot are missing; logging came back later (first
+  line 11-21 09:12:51, a system sleep ~1 min after boot), on 11-22 03:23 never. Reboot 16:01:
+  0 lines from the attach, a level toggle at boot +54 s persisted, after
+  `launchctl kickstart -k system/com.apple.logd` the next toggle too.
+- Workaround (not installed): restart logd once the kext has loaded, e.g. a one-shot LaunchDaemon
+  that waits for `ioreg -r -c SAS2308HBA` and runs `launchctl kickstart -k system/com.apple.logd`.
+  Lines from before the restart (the attach lines) stay lost; for those, `sas2308_iolog=1`
+  (msgbuf, `sudo dmesg`) or the counters. No kext-side fix: `resolve_dso` accepts a line only
+  when its PC is in the image that holds the format, so every line from the kext (IOLog included)
+  carries a kext PC, which unslides to 0 wherever iBoot puts the AuxKC above the boot KC.
 
 **Change the level.**
 - Default: `SAS2308LogLevel` in the Info.plist personality (2).
@@ -1635,7 +1666,7 @@ similar IO error lines suppressed", printed with the next line after the window 
    version and `Protocol=(Initiator[,Target])` — confirms the card and its firmware.
 1. Dock + card on the Mac, kext NOT loaded: `ioreg -r -c IOPCIDevice | grep -A3 0087` → device enumerates through the tunnel.
 2. Load kext with **no disks attached**:
-   `log stream --level debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'`
+   `log show --last 5m --debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'`
    → expect "log level 2 (info)", IOC state lines, IOCFacts / IOCInit / queues lines,
    "using message-signalled interrupt index N", the core's port-enable / discovery lines
    (FreeBSD wording since M5); `tools/sas2308ctl stats`.
@@ -1656,7 +1687,7 @@ similar IO error lines suppressed", printed with the next line after the window 
    init line), 6 Gigabit; System Information → the disk shows Physical Interconnect SAS, Location
    External (screenshot). Check `IOPCITunnelled` in the attach log line.
 9. Sleep / wake (M5b) — first idle, then with a scratch disk mounted:
-   `log stream --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'` in a second session,
+   `log show --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'` afterwards,
    `pmset sleepnow`, wake after 1 min. Expect "power state 1 -> 0", "system sleep: quiescing",
    "suspended: IOC stopped", then "power state 0 -> 1", "resuming", a reinit and rediscovery with
    the same target IDs; `diskutil list` unchanged; `SAS2308Statistics` Suspends = Resumes = 1. Then

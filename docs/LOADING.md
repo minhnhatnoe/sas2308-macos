@@ -49,10 +49,11 @@ Logs (os_log subsystem `org.sas2308.driver.SAS2308HBA` (the bundle ID), one cate
 details in design.md "Logging"):
 ```
 # zsh has a builtin `log`, so use the full path /usr/bin/log
-/usr/bin/log stream --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'                  # default: level 2 (info)
-/usr/bin/log stream --level debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'    # + xinfo/trace lines
-/usr/bin/log stream --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA" AND category == "recovery"'
-/usr/bin/log show --last 30m --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'         # after the fact
+# log stream never shows the kext's lines on macOS 27; log show misses them until logd learns of
+# the kext (usually ~1 min after boot, sometimes never; design.md "Lines missing"). Sure way:
+sudo launchctl kickstart -k system/com.apple.logd                           # once per boot
+/usr/bin/log show --last 30m --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'         # default: level 2 (info)
+/usr/bin/log show --last 30m --debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"' # + xinfo/trace lines (if persisted)
 make -C ~/sas2308-dext/tools                                                # builds sas2308ctl
 ~/sas2308-dext/tools/sas2308ctl show                                        # level + mask
 ~/sas2308-dext/tools/sas2308ctl stats                                       # counters (or: ioreg -r -c SAS2308HBA -k SAS2308Statistics)
