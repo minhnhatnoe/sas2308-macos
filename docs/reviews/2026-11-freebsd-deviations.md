@@ -2,11 +2,11 @@
 
 Reviewed: sas2308-dext **master 4596c06** against FreeBSD 8c9ce319fef7 (`sys/dev/mps`, `sys/cam`) and Apple's
 IOSCSIParallelFamily / SAM / IOPCIFamily sources. Full reasoning, every question and its answer:
-`decisions-qa.md` (81 entries, D1-D81, all RESOLVED after 4 rounds). Line numbers: ours on master 4596c06,
+`2026-11-decisions.md` (81 entries, D1-D81, all RESOLVED after 4 rounds). Line numbers: ours on master 4596c06,
 FreeBSD in that tree. Out of scope: the check-condition log level and the TUR "xfer 65536/0" question (branch
-log-noise); items FINAL.md already fixed.
-Paths such as `~/hwF` or `~/sas2308-rollback-<UUID8>` below are working directories on the test Mac
-at the time; those raw outputs are not in this repo (the benchmark data is, under `bench/`).
+log-noise); items 2026-11-final.md already fixed.
+Raw outputs and helper scripts of the hardware tests below stayed on the test Mac and are not in this
+repo (the benchmark data is, under `bench/`). "Rollback" names the build `mac/install.sh` kept a copy of.
 
 ## Summary
 
@@ -27,7 +27,7 @@ at the time; those raw outputs are not in this repo (the benchmark data is, unde
   temperature failure mode, resume reset), or Linux/M4 habits (log defaults, extra lines). The fixes move the
   difference into compat/glue and put FreeBSD's text back in the core.
 - **Not a deviation worth fixing**: queue sizing, reply hardening, no-panic policy, thread-call callouts, DMA
-  through the DART, interrupts from the family, MSI only, no persistent mapping (batch 2 of decisions-qa.md).
+  through the DART, interrupts from the family, MSI only, no persistent mapping (batch 2 of 2026-11-decisions.md).
 
 ## Fix batches (one kext install each, in this order)
 
@@ -118,19 +118,19 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | C | D21 | done | 7dc658f | none new (location only, same value; tests follow the move) | "Core OS commands" 2040 |
 | C | D54 | done | 2cdc5a9 | core `D54` | lost command recovery requested its reinit through the wrapper |
 | C | D78 | done | 08c020f | core `D78`; whole suite with QUEUE_MACRO_DEBUG_TRASH/ASSERTIONS | n/a (host only) |
-| C | D6 | done | b8e6b94 | core `D6` (2 page reads during a stuck IDENTIFY; 1000 reads -> 0 mappings) | see "Batch C hardware results"; M5c retries / re-add slots kept: still to run, test 8 |
+| C | D6 | done | b8e6b94 | core `D6` (2 page reads during a stuck IDENTIFY; 1000 reads -> 0 mappings) | see "Batch C hardware results"; M5c retries / re-add slots kept: still to run (test 8) |
 | C | KEEP comments D38, D65, D69, D17 | done | 0e8927d, 7080f64, afe2fc5 | none (comments) | |
 | D | D52 | done | 9620c91 | `test/plist_test.sh` | loads on 0x0087 (the other two ids: no card to test) |
 | D | D48 | done | 5340603 | none (IOKit class) | registry IOMinimumSegmentAlignmentByteCount = 1 |
 | D | D30 | done | fe1ea5b | core `D30` | regression OK; faults would show in mps_periodic (none) |
 | D | D31 | done | a0fbc9b | core temperature `D31` | temperature read every 30 s, 0 timeouts / failures; IOC 61 C |
-| D | D29 (counter) | done | dd50951 | core `D29` | **"Event acks sent" 0 over 4 boots (25 events each), recovery tests included: D29 decided for boot; hot-plug: still to run, test 10** |
+| D | D29 (counter) | done | dd50951 | core `D29` | **"Event acks sent" 0 over 4 boots (25 events each), recovery tests included: D29 decided for boot; hot-plug: still to run (test 10)** |
 | D | D55 (counter) | done | e322813 | core `D55` | "KASSERT hits" 0 through every batch D test |
 | D | D46 | done | 1f30ae6 | glue `D46` | regression OK (SAM sends SIMPLE) |
 | D | D45 | done | 35d0029 | glue `D45` (did not build before) | random 4K QD32 1767 / 1762 / 1763 IOPS vs 1765 before (batch C): unchanged |
 | D | D47 | done | 01f164a | glue `D47` (zero-length part failed before; the rest did not build) | "Tasks waiting for a mapping" 0 (no IOVA shortage seen) |
 | D | D7 | done | b121c7f | core `D7` (failed at the 65th device before), glue `D7`, targets 1024 ids | MaxTargets 1024 (+ 0 volumes): initiator id 1024, the 7 drives keep ids 0-6 |
-| D | D9 | done | 987f693 | glue `D9` (failed before) | no SATA SSD attached: still to run, test 9 |
+| D | D9 | done | 987f693 | glue `D9` (failed before) | no SATA SSD attached: still to run (test 9) |
 | D | D73, D74 | done | bc5bfea | none (IOKit) | every DMA allocation and config page map succeeded (14 page 0 reads, temperature, 0 failures) |
 | D | PCIe Link property (feature request) | done | 6d5b57a | `kext_pcie_test` | **8.0 GT/s (Gen3) x4** of the card's Gen3 x8; MPS **128** B (supports 4096), MRRS 512 B; same after forced reinits |
 | D | D75 (switch for the A/B, then the default) | done | fb15323, ed91e3b | none (IOKit) | A/B below: posted writes faster on the host-bound load, 0 errors -> default (ed91e3b) |
@@ -154,14 +154,14 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | G1 | L3 (held batch visible to cancel/flush) | done | 39ead7b | core `L3` | none (latent) |
 | G1 | L17 (INTx fallback = mps_intr) | done | 67eb2d7 | glue `L17` | none (MSI only behind Thunderbolt) |
 | G1 | L7 (glue lock until free(); snapshots under it) | done | 0d7fc95 | glue `L7` | see "Batch G1 hardware results" |
-| G1 | L10 (hotplug on its own taskqueue thread) | done | ddddb5a | glue `H1`, `L10` | see "Batch G1 hardware results"; hot-plug: still to run, test 13 |
-| G1 | D43 (TM pump only in the gate; timer detects only) | done | bca741f | glue `D43` | see "Batch G1 hardware results"; hot-plug: still to run, test 13 |
+| G1 | L10 (hotplug on its own taskqueue thread) | done | ddddb5a | glue `H1`, `L10` | see "Batch G1 hardware results"; hot-plug: still to run (test 13) |
+| G1 | D43 (TM pump only in the gate; timer detects only) | done | bca741f | glue `D43` | see "Batch G1 hardware results"; hot-plug: still to run (test 13) |
 | G2 | D46 (da's periodic ORDERED tag; `sas2308_send_ordered`, default 1) | done | c760612 | glue `D46-otag` | A/B: no cost, no effect on the H pattern; kept on (see "Batch G2 hardware results") |
-| G2 | D21 (one normal frame kept, not 8: 2046 OS tasks) | done | cbdc3eb | glue `D21` (FreeBSD's sizing loses the hot-add under a full pool; 1 or 8 frames do not) | regression; hot-add under a full pool: still to run, test 15 |
+| G2 | D21 (one normal frame kept, not 8: 2046 OS tasks) | done | cbdc3eb | glue `D21` (FreeBSD's sizing loses the hot-add under a full pool; 1 or 8 frames do not) | regression; hot-add under a full pool: still to run (test 15) |
 | G2 | D15b (untimed START STOP UNIT 60 s) | done | ca24b59 | glue `D15` | spin-up measured 10.5-11.7 s |
 | G2 | D15b (halt cap 15 s, not 10 s) | done | 3679398 | glue `F`, `F-new`, `F-spinup` | restarts with spun-down disks 17-18 s on 21A171AA, no panic |
 | G2 | wake log ("IOC in unexpected reset state" INIT on resume) | done | acc56e5 | mock `G2-wake` | see "Batch G2 hardware results" |
-| G2 | D50 (no MUR at shutdown; `sas2308_shutdown_stop`, default 0) | done | 3a2a62b | mock `D50` | 7 restarts without the MUR: next attach READY, no DART line; power off: still to run, test 14 |
+| G2 | D50 (no MUR at shutdown; `sas2308_shutdown_stop`, default 0) | done | 3a2a62b | mock `D50` | 7 restarts without the MUR: next attach READY, no DART line; power off: still to run (test 14) |
 | G2 | IO timer (core callout; `sas2308_family_timer`, default 0) | done | 8df1186 | glue `C1`, `C1-family`, `C1-backstop`, `D4`, `D43` | F1 4K point +7.2 % (7 drives QD2), +14.5 % (QD1) |
 | G2 | D65 (no per-device cap, KEEP-WITH-EVIDENCE) | done | bee8d0b | none (comment) | QD1 drive unchanged next to QD 1024 / 2000 |
 | G2 | build fixes (Mac build) | done | ee94a31 | n/a | n/a |
@@ -177,7 +177,7 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 Build **DDA7E6AD** (fix-batch-A bb3a24c), installed 2026-11-20 18:23, 7 drives, 0 config page failures.
 
 - **D3 + D8, 5x sleep/wake under IO** (`pmset sleepnow` + `pmset schedule wake` 60 s later):
-  `~/hwA/fsyncw` writing 1 MiB + F_FULLFSYNC in a loop on both mounted JHFS+ test volumes, `sasbench`
+  `fsyncw` writing 1 MiB + F_FULLFSYNC in a loop on both mounted JHFS+ test volumes, `sasbench`
   4K random reads QD8 on the other 5 drives. Each wake: one diag reset (reinit 496 ms), and every
   drive answered the first command with **UNIT ATTENTION 29/00**: `Unit attentions after reset
   retried` 7 per wake, 35 in all, each re-sent (log `UNIT ATTENTION 29/00 after our reset,
@@ -197,7 +197,7 @@ Build **DDA7E6AD** (fix-batch-A bb3a24c), installed 2026-11-20 18:23, 7 drives, 
 Build **9E6663B6** (fix-batch-B 3fc7ac5 code), installed 2026-11-20 19:17, 7 drives, 0 config page
 failures, IOC 57 C. Debug triggers: `sas2308ctl reinit | hold <ms> | lose <n>`.
 
-- **D12, 5x sleep/wake under IO** (batch A's harness in `~/hwB`: F_FULLFSYNC writers on the two
+- **D12, 5x sleep/wake under IO** (batch A's harness: F_FULLFSYNC writers on the two
   JHFS+ volumes, 4K random reads QD8 on the other 5): 7 suspend/resume pairs (5 cycles, 2 extra
   around Thunderbolt dark wakes). **Every resume took the READY path** (log `resume: controller
   reinitialized without a reset`; `Resumes without reset` 7, `with diag reset` 0, `Diag resets` 0).
@@ -227,7 +227,7 @@ failures, IOC 57 C. Debug triggers: `sas2308ctl reinit | hold <ms> | lose <n>`.
 ### Batch C hardware results
 
 Build **6DD7CE42** (fix-batch-C 0e8927d), installed 2026-11-20 20:33, 7 drives, 0 config page
-failures, IOC 59 C. Rollback: `~/sas2308-rollback-9E6663B6` (batch B build).
+failures, IOC 59 C. Rollback: 9E6663B6 (batch B build).
 
 - **D6 on hardware**: discovery read the 14 SAS Device Page 0s (7 drives + parents) and every
   IO Unit Page 7 (temperature, every 30 s) into `malloc`'d pages mapped at load: 0 failures, 0
@@ -264,7 +264,7 @@ failures, IOC 59 C. Rollback: `~/sas2308-rollback-9E6663B6` (batch B build).
 
 Builds **EBB85578** (fix-batch-D fb15323, BAR1 non-posted by default) and **509E19D3** (ed91e3b,
 posted writes by default; the batch's final build), installed 2026-11-20 21:27 and 21:55, 7 drives,
-0 config page failures, IOC 61 C. Rollback: `~/sas2308-rollback-6DD7CE42` (batch C build, master).
+0 config page failures, IOC 61 C. Rollback: 6DD7CE42 (batch C build, master).
 `tools/diff-vs-freebsd.sh -s`: 1281 added / 3595 removed lines (batch C: 1198 / 3836; the
 use_phynum block, the SSU functions and the INQUIRY/SSU_refcount lines are FreeBSD's text again,
 D31's timeout handler and the D7 table hooks are new XNU lines).
@@ -276,7 +276,7 @@ D31's timeout handler and the D7 table hooks are new XNU lines).
   JHL7440 bridge (15ef), which supports 128 B only (its own registers not read here). Unchanged after 2 forced diag resets (re-read with "Controller Limits").
 - **D29**: "Event acks sent" **0** on every boot (4 boots this batch, 25 events each: port enable
   discovery of 7 drives) and through the recovery test below; the 9207's IT firmware never set
-  AckRequired so far. Hot-plug events still to see: still to run, test 10, then the ack code goes
+  AckRequired so far. Hot-plug events still to see: still to run (test 10), then the ack code goes
   (FreeBSD) if still 0.
 - **D31 / temperature**: polled every 30 s ("IOC temperature reads" 2 right after boot, 9 after
   ~5 min, 21 after the A regression), "IOC Temperature (C)" property 61 C, 0 failures, 0 timeouts.
@@ -299,18 +299,18 @@ D31's timeout handler and the D7 table hooks are new XNU lines).
   mismatches, 0 errors**. `sas2308ctl stats` after: 1 IO timeout, 1 recovery, 2 reinits, 1 target
   reset (all from the forced recovery test), 0 temperature timeouts, 0 stale replies, 0 lost kicks,
   0 transient all-ones reads, 0 config page failures, 0 KASSERT hits.
-- **Not tested here**: D9 (no SATA SSD: still to run, test 9), D52's other two ids (no such card),
+- **Not tested here**: D9 (no SATA SSD: still to run (test 9)), D52's other two ids (no such card),
   D7 beyond 64 devices (no expander: host tests only).
 
 ### Batch E hardware results
 
 Build **6542C39F** (fix-batch-E 89b4e62), installed 2026-11-20 22:29, 7 drives, 0 config page
 failures, IOC 54 C; `SAS2308DebugMask` 0x23 = info,fault,error. Rollback:
-`~/sas2308-rollback-509E19D3` (batch D build, master a71e38a). `tools/diff-vs-freebsd.sh`: common
+509E19D3 (batch D build, master a71e38a). `tools/diff-vs-freebsd.sh`: common
 7383 unchanged, removed 3595 unchanged, added 1281 -> 1293 (D49's said-and-counted sleep stop in
 the XNU-only `mps_xnu_suspend`, D26's member in `struct mpssas_target`; mps.c's default mask line is
 FreeBSD's again plus `MPS_ERROR`). Persisted lines counted with `log show --info --debug --style
-ndjson` (script `~/hwE/count.sh`).
+ndjson` (a small counting script).
 
 - **Boot**: 0 driver lines persisted from attach and discovery. macOS loses the first ~1 min of
   kernel os_log after boot (the check ran 29 s after boot; it was the same on every earlier build),
@@ -337,7 +337,7 @@ ndjson` (script `~/hwE/count.sh`).
   diag resets, **0 IO errors, 0 mismatches**, 1084 IOPS (old 1087), max latency 38.9 s (the lost
   command).
 - **D24**: no FAULT line in any window (no IOC fault, nothing disabled); the FAULT path (IOC fault,
-  failed reinit) and the ERROR surprise removal are host-tested; dock unplug: still to run, test 11.
+  failed reinit) and the ERROR surprise removal are host-tested; dock unplug: still to run (test 11).
 - **D25**: no device-less line occurred (no KASSERT hit, `KASSERT hits` 0); host-tested.
 - **D49(b)**: `Sleep stop failures` 0 (published); no sleep cycle in this batch (the wake path is
   unchanged except for the failure lines; batches A/B ran 10 wakes on it).
@@ -347,18 +347,18 @@ ndjson` (script `~/hwE/count.sh`).
   after: 1 IO timeout, 2 reinits / diag resets, 1 target reset (all from the forced recovery
   test), 0 stale replies, 0 lost kicks, 0 transient all-ones reads, 0 config page failures, 0
   KASSERT hits, 0 sleep stop failures.
-- **Not tested here**: hot-plug line counts (still to run, test 11).
+- **Not tested here**: hot-plug line counts (still to run (test 11)).
 
 ### Batch F hardware results
 
 Build **085DA9D6** (fix-batch-F), installed 2026-11-20 23:19, 7 drives, 0 config page failures,
 IOC 53-59 C, no "no priority power interest" error line (the halt notifier registered). Rollback:
-`~/sas2308-rollback-6542C39F` (batch E build, master ba4a02f). `tools/diff-vs-freebsd.sh`: common
+6542C39F (batch E build, master ba4a02f). `tools/diff-vs-freebsd.sh`: common
 7383 -> 7380 (the three TM `callout_reset` lines and the IO timeout line carry the cap), added
 1293 -> 1360 (`mpssas_xnu_halt_caps` in mps_sas.c, the two reinit hooks in mps.c; the halt
-functions themselves are in the XNU-only mps_xnu.c). Scripts and outputs: Mac `~/hwF`.
+functions themselves are in the XNU-only mps_xnu.c).
 
-- **Deterministic halt test** (`~/hwF/hwF-halt.sh`; drives unmounted): `sas2308ctl lose 1`, a 4K
+- **Deterministic halt test** (drives unmounted): `sas2308ctl lose 1`, a 4K
   raw read of disk4 (target 0) is lost at 23:25:38.3; 3 s later `sas2308ctl halt` (the same
   `mps_xnu_halt_begin` the restart's priority interest calls): `halt: 1 commands outstanding, 1
   capped at 10 s`. At **+10.00 s** `Command timeout ... 40000 set` (the ccb keeps its original
@@ -382,10 +382,10 @@ functions themselves are in the XNU-only mps_xnu.c). Scripts and outputs: Mac `~
   lost command. A command lost **inside** the halt cannot be produced by a restart on this setup:
   on restart nothing sends IO in the halt (SAM marks "Power Off" and sends its START STOP UNIT only
   for power off, and D9's SSU goes only to SATA SSDs, none attached); that case is covered by the
-  deterministic test above (same entry point) and by the host tests; power off: still to run, test
-  12.
+  deterministic test above (same entry point) and by the host tests; power off: still to run (test
+  12).
 - **Shutdown stall reports** (all of `/Library/Logs/DiagnosticReports/shutdown_stall_*`, decoded
-  with `spindump -i`, `~/hwF/stalls.sh`): one per restart, 31 since 2026-11-15, including 11 from
+  with `spindump -i`): one per restart, 31 since 2026-11-15, including 11 from
   2026-11-15..17 before the kext existed; the 20 of 2026-11-20 decoded, two of them (00:08, 05:35)
   with no SAS2308HBA loaded.
   Each is launchd's routine sample ("shutdown stall", sampling starts 2 s into the userspace
@@ -406,7 +406,7 @@ functions themselves are in the XNU-only mps_xnu.c). Scripts and outputs: Mac `~
 ### Batch G1 hardware results
 
 Build **430A4B8A-5B0C-341E-8CBF-F2388BF576E4** from bca741f (no build fixes needed; 5626d4e after it is
-docs only). Raw outputs: Mac `~/hwG1`.
+docs only).
 - **Default log:** mask 0x3 (info,fault), level info. 5 min idle: **0 lines**.
 - **Forced recovery under IO** (random reads on all 7): `lose 1`: the family timeout fired at
   **60.0 s** (D15a), abort → LUN reset → target reset → reinit **1118 ms** (one attempt, D55b); the lost
@@ -422,8 +422,8 @@ docs only). Raw outputs: Mac `~/hwG1`.
 - **Restart with a mounted JHFS+ volume** (G1TEST on disk9 drive6): 13 s from request to boot, no
   panic (the routine launchd shutdown stall report only), verifyVolume OK, **202/202 files verify**.
 - **SMART:** `smartctl -a` on all 7 after the install reboot: all **PASSED**. disk4 drive1 and disk5
-  drive2, which reported "SMART Status: Not Supported" after an earlier `smartctl -x`
-  (entry 76), recovered with the reboot. Not a driver issue as far as seen: smartmontools' `-x` on
+  drive2, which reported "SMART Status: Not Supported" after an earlier `smartctl -x`,
+  recovered with the reboot. Not a driver issue as far as seen: smartmontools' `-x` on
   macOS left the two nubs without SMART until reboot; reads were unaffected. disk9 rc 64 = one old
   entry in its error log.
 - **Regression:** random 4K read QD32 all 7, 60 s: **1757 IOPS**; seq 1 MiB read all 7, 60 s:
@@ -433,8 +433,8 @@ docs only). Raw outputs: Mac `~/hwG1`.
 
 Before the install (build 430A4B8A, the G1 code), on build **4746DE60-BFFE-3991-B29A-822AD3810EBE**
 (ee94a31) and on the final build **21A171AA-980F-3D71-9714-E9503E8B0A25** (3679398, the 15 s halt
-cap); rollback copies `~/sas2308-rollback-430A4B8A`, `~/sas2308-rollback-4746DE60`. Raw outputs: Mac `~/hwG2` (scripts `pre.sh`, `exp1.sh`, `rs.sh`, `postboot.sh`, `reg.sh`)
-and `~/sasbench/profile/<tag>` for the 4K point.
+cap); rollback copies 430A4B8A, 4746DE60.
+The 4K point's profile data is under `bench/profile/`.
 - **D65, one deep queue next to a QD1 drive** (430A4B8A, random 4K read, full LBA range): drive B at
   QD1 alone 84 IOPS, p50 11.5 ms, p99 20.5 ms, max 27.8 ms; next to drive A at QD 1024: 84 IOPS, p99
   20.0 ms, max 26.4 ms; next to A at QD 2000: 84 IOPS, p99 20.5 ms, max 49.0 ms. A: 203 IOPS at QD 1024
@@ -506,10 +506,10 @@ and `~/sasbench/profile/<tag>` for the 4K point.
 ### FreeBSD 14.5.0 import hardware results
 
 Build **830E83B5-D729-3439-B6D9-592E227B457C** (branch import-fbsd-14.5, merge 72654ac); rollback
-copy `~/sas2308-rollback-21A171AA`. Raw outputs: Mac `~/hw145` (the G1 scripts with paths changed).
+copy 21A171AA. The G1 test scripts were reused.
 Upstream changed only a dprint string and loop-header whitespace, so this is a smoke test, not an
 A/B.
-- **Install:** VNC approval, reboot; 7 drives, 0 config page failures, temperature read OK.
+- **Install:** approval, reboot; 7 drives, 0 config page failures, temperature read OK.
 - **SMART** `smartctl -a`: PASSED on all 7. drive6 (disk9) returns rc 64 for one old ATA error
   log entry (UNC at power-on hour 21639, 130 h before this test; the count was already 1 in G1).
 - **Idle:** default level and mask (2, 0x3): 0 lines in 5 min, 0 with info+debug.
@@ -527,15 +527,14 @@ A/B.
 
 ### Batch S1 hardware results
 
-Rationale: drives that never spin down, with a tunable (the request: "never spin down ... it
-should be param"); FreeBSD's da/CAM never stop a disk for idleness, so the default is FreeBSD's
+Rationale: drives that never spin down, with a tunable to change that; FreeBSD's da/CAM never stop a disk for idleness, so the default is FreeBSD's
 behaviour and the deviation is macOS's SAM idle timer being cut off at the HBA. The HBA sees no
 mounts: it applies to every drive behind it. Design: `design.md` "S1".
 
 Build **95E0D6C9-AC58-399D-A2CB-370687C33590** (branch spindown-tunable, f1cc568), installed with
 `mac/install.sh` (first real use; sudo), rollback copy
-`~/sas2308-rollback-830E83B5`. Two drives were removed before this batch (drive4, drive5): 5 drives
-(drive1, drive2, drive3, drive6, drive7). Raw outputs: Mac `~/hwS1` (`spin.sh LABEL KNOB
+830E83B5. Two drives were removed before this batch (drive4, drive5): 5 drives
+(drive1, drive2, drive3, drive6, drive7). Test script (`spin.sh LABEL KNOB
 DISKSLEEP`: knob, `pmset -a disksleep`, 240 s idle with SAM's CurrentPowerState every 20 s, then one
 timed 4K read at a random LBA per drive in parallel, then a second one).
 - **(a) `sas2308_idle_spindown` 0, disksleep 1:** SAM went 4 → 3 (40 s) → 2 (80 s) → 1 (100 s) on all 5;
@@ -581,27 +580,25 @@ failed). Mac stayed up; the next boots attached 8 drives (7 known + drive8), sta
 
 ### Batch S2 hardware results
 
-Rationale: feature request (spin only while in use, an immediate spin-down command); FreeBSD never
+Rationale: spin only while in use, plus an immediate spin-down command; FreeBSD never
 stops a disk for idleness, `camcontrol stop` is its manual equivalent (design.md "S2"). Built on
 the Mac (FCE29EDC-ADAC-3CD7-8E14-97B601FD078D, `make check` clean), installed with mac/install.sh
-(backup ~/sas2308-rollback-95E0D6C9, kmutil rc 27). Not approved yet: the legacy-VNC step of the
-approval was not run, so 95E0D6C9 is still loaded and the
-hardware tests (a)-(c) are not run. Done without the new kext: Spotlight (LOADING.md), SMART
+(kmutil rc 27). It was not approved, so 95E0D6C9 stayed loaded and the hardware
+tests (a)-(c) were not run. Done without the new kext: Spotlight (LOADING.md), SMART
 baseline (192: 49 59 54 52 54 54 56 61 for drive6 drive2 drive7 drive8 drive3 drive5
 drive4 drive1), and the new `sas2308ctl spindown all` against the old kext (8 disks found,
 disk4 refused as mounted, the others "kext too old"; `disk4s2` and internal `disk3` refused).
-Raw outputs: Mac `~/hwS2`.
 FCE29EDC was never loaded: EJ was chosen instead (mode 0 default, eject spins down); S2's code
 was merged with EJ, see "Batch EJ hardware results".
 
 ### Batch EJ hardware results
 
-Rationale: the decision after S2 ("never spin down when idle, Eject spins the drive down",
+Rationale: the decision after S2 (never spin down when idle, Eject spins the drive down;
 2026-11-22); FreeBSD never stops a disk for idleness and has no eject of a fixed disk (design.md
-"EJ"). Builds, all approved with a legacy-VNC step: 2CCCBE79 (detection by DKIOCEJECT's
+"EJ"). Builds: 2CCCBE79 (detection by DKIOCEJECT's
 open + SAM's "Power Off"), 5EFAFE09 (SAM's power state), 57C2CBC0 (spindown as ATA STANDBY
-IMMEDIATE), 8A71718E (final: spindown = macOS's eject). Rollbacks ~/sas2308-rollback-<UUID8> of
-each. 8 drives (ST18000NM000J, exFAT volumes /Volumes/<serial>), mode 0, raw outputs Mac `~/hwEJ`.
+IMMEDIATE), 8A71718E (final: spindown = macOS's eject). Rollback copies of
+each. 8 drives (ST18000NM000J, exFAT volumes /Volumes/<serial>), mode 0.
 
 - What eject sends (95E0D6C9, debug log): unmount writes, a GPT re-read, SYNCHRONIZE CACHE, then
   START STOP UNIT START 0 in the same millisecond; DA "ejected disk, success" in that millisecond;
@@ -729,8 +726,7 @@ drives found with `bench/scripts/sasdisks.sh`; after each test `sas2308ctl stats
     `sasbench -b 4K -q 320 -p rand -t 300` on 6 raw drives (6 x 320 = 1920 tasks plus the seventh
     drive's re-add; 2046 OS tasks) and pull and re-insert the seventh drive. Expect the nub to come
     back, "Device re-adds given up" 0, "Config page failures" 0.
-16. ~~Batch S2, approve build FCE29EDC~~: superseded by EJ (8A71718E approved with a
-    legacy-VNC step, 2026-11-22).
+16. (Batch S2's build FCE29EDC: not run, superseded by EJ.)
 17. **Batch EJ, pull a drive after Eject** (build 8A71718E or later). With a volume mounted on one
     drive: `diskutil eject diskN` (or Finder's eject); `sas2308ctl stats` shows "Stops passed
     (ejected)" + 1; wait 20 s; pull the drive (or switch off its bay). Expect: no "disk not ejected

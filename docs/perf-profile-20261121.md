@@ -49,7 +49,7 @@ Scripts in `bench/profile/scripts/` (run with sudo; output in `bench/out/profile
 
 us/IO = samples / 4997 Hz / IOs in the window. The profile window ran at **157.3k IOPS** (interval CSV;
 profile-4997 costs ~2 %): 3.146M IOs in 20 s, 12 CPUs, 1,197,769 samples. Kext PCs are symbolised with
-`nm` of /Library/Extensions/SAS2308HBA.kext (UUID 085DA9D6, copy kept in `~/sas2308-rollback-085DA9D6`).
+`nm` of /Library/Extensions/SAS2308HBA.kext (UUID 085DA9D6, the rollback copy `mac/install.sh` kept).
 Many kernel functions are unsymbolised (no KDK). They are classified by the frames above them, and the
 two idle leaves (callers in the idle thread) are counted as idle. The fbt timing scripts with
 thread-local variables (`t1`, `t2`, `sched`) lost most of their state to dynamic-variable drops and

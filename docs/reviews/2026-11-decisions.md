@@ -12,9 +12,10 @@ log-noise); items FINAL.md lists as fixed; pure renames and formatting.
 or wrong in code/design.md; Q = unclear, needs an answer or a hardware test; K = justified and documented, keep.
 Risk H/M/L. "LIKELY BUG" = functional bug, not style.
 
-**Format.** Each entry has an answer (`Answer:`) and a check of that answer (`Check:`), with further rounds where needed.
-Each entry ends as `Status: RESOLVED-KEEP (reason)`, `RESOLVED-CHANGE (what)` or `OPEN-NEEDS-HW-TEST (which test)`.
-Batch 1 (D1-D52) is the one to answer now. Batch 2 (D53-D81) is what the scan would keep; a one-line confirmation is enough.
+**Format.** Each entry has an answer (`Answer:`) and a check of that answer (`Check:`); points still open went to
+further rounds (`Answer (round 3):`, `Check (round 4):`). Each entry ends as `Status: RESOLVED-KEEP (reason)`,
+`RESOLVED-CHANGE (what)` or `OPEN-NEEDS-HW-TEST (which test)`. Batch 1 (D1-D52): deviations that needed an answer.
+Batch 2 (D53-D81): what the scan would keep; a one-line confirmation was enough.
 
 **Likely bugs found (batch 1):**
 - D1 `MPSSAS_TARGET_XNU_REMOVE_WAIT` = `MPS_TARGET_IS_SATA_SSD` (both `1 << 6`): a SATA SSD gets a target reset + REMOVE_DEVICE at the first freed TM. Verified.

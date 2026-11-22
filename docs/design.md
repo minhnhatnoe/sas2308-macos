@@ -1,7 +1,7 @@
 # SAS2308HBA.kext — design notes
 
 Development stages, as named in this file and in older comments (the code of M1-M4, a driver
-written from scratch before the port of FreeBSD's mps, is only in the tag `archive/pre-rewrite`;
+written from scratch before the port of FreeBSD's mps, is not in this repository's history;
 master starts from the FreeBSD vendor import):
 
 | Stage | What |
@@ -367,10 +367,9 @@ IOKit DMA, the family) is compiled and link-checked only.
 | total | 9489 | 7244 | 6475 | 769 | 3014 | 172 |
 
 ## M5b: Mac conventions — kext layout, power management, termination, properties
-Goal (user, verbatim): "try to make the code look as similar as existing code as possible (the
-reference driver, and open source mac drivers) so that we have an easier time reviewing it. Also
-make it compatible with standard mac driver stuffs". Research: `../mac-conventions-research.md`
-(IOSCSIParallelFamily-352, IOPCIFamily, xnu PM, iSCSIInitiator, IntelMausi, itlwm, Linux mpt3sas).
+Goal: make the code look like existing driver code (the reference driver and open-source macOS
+drivers) so it is easier to review, and follow the usual macOS driver conventions. Code studied:
+IOSCSIParallelFamily-352, IOPCIFamily, xnu PM, iSCSIInitiator, IntelMausi, itlwm, Linux mpt3sas.
 
 ### Kext layout
 | File | Contents | Model |

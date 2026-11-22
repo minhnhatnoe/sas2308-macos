@@ -1,8 +1,8 @@
-# Loading SAS2308HBA.kext on the Mac mini (Apple silicon, macOS 27)
+# Installing and loading SAS2308HBA.kext (Apple silicon, macOS 27)
 
-Status: these steps load the kext on the Mac mini in use since 2026-11-19 (see the
-"Verified" sections of docs/design.md). Steps marked (inferred) follow Apple's documented
-Apple-silicon kext flow and were written before the first load.
+Status: these steps load the kext on the one tested setup (Mac18,5, macOS 27.0; see README
+"Safety" and the "Verified" sections of docs/design.md). Points marked **(untested)** follow
+Apple's documented Apple-silicon kext flow but were never needed or run on that setup.
 
 ## One-time security change (needs someone at the Mac's keyboard)
 1. Shut the Mac down. Press and hold the power button until "Loading startup options" →
@@ -12,8 +12,8 @@ Apple-silicon kext flow and were written before the first load.
 3. Utilities → Startup Security Utility → select the disk → Security Policy:
    **Reduced Security** + tick **"Allow user management of kernel extensions from identified developers"** → OK.
 4. Restart into macOS.
-Check afterwards: `csrutil status` → disabled. (inferred: on Apple silicon `csrutil disable`
-alone already implies Permissive Security; step 3 is still needed for third-party kexts.)
+Check afterwards: `csrutil status` → disabled. (**Untested** claim: on Apple silicon `csrutil
+disable` alone already implies Permissive Security; step 3 is still needed for third-party kexts.)
 
 ## Install, roll back, uninstall with the scripts
 On the Mac, as the admin user (the scripts call sudo; you type the password). Start with
@@ -24,7 +24,7 @@ mac/install.sh -n               # dry run: security state, bundle, backup path, 
 mac/install.sh                  # make + make check, back up the installed bundle to
                                 # ~/sas2308-rollback-<UUID8>, unmount the volumes on the SAS2308HBA
                                 # disks, copy to /Library/Extensions, chown, kmutil load -p
-mac/install.sh --verify --expect 7   # after approval + restart: loaded UUID, drives, counters
+mac/install.sh --verify --expect N   # after approval + restart: loaded UUID, N drives, counters
 mac/install.sh --rollback -n    # newest backup that differs from the installed one (or give a path)
 mac/uninstall.sh -n             # backup, unmount, kmutil unload, remove, clear-staging if staged
 ```
@@ -41,7 +41,7 @@ sudo cp -R build/SAS2308HBA.kext /Library/Extensions/
 sudo chown -R root:wheel /Library/Extensions/SAS2308HBA.kext
 sudo kmutil load -p /Library/Extensions/SAS2308HBA.kext
 ```
-(inferred) The first load stages the kext into the Auxiliary Kernel Collection and macOS
+The first load stages the kext into the Auxiliary Kernel Collection and macOS
 shows "System Extension Blocked". Then:
 5. System Settings → Privacy & Security → "Allow" for the SAS2308HBA extension (keyboard/mouse or Screen Sharing needed).
 6. Reboot when prompted. After reboot: `kmutil showloaded | grep SAS2308` (only loads once the card is present — it matches PCI 1000:0087).
@@ -73,7 +73,9 @@ sudo kmutil clear-staging                                 # then reboot
 ```
 If it panics at boot: hold the power button → Recovery → Terminal:
 `rm -rf "/Volumes/Macintosh HD/Library/Extensions/SAS2308HBA.kext"`, then
-`kmutil trigger-panic-medic --volume-root "/Volumes/Macintosh HD"` (inferred), reboot.
+`kmutil trigger-panic-medic --volume-root "/Volumes/Macintosh HD"`, reboot.
+**Untested:** this recovery was never needed on the test setup; the volume name may differ
+(check `ls /Volumes` in Recovery) and so may kmutil's options (`kmutil help` there).
 To restore full security later: Recovery → `csrutil enable` and Startup Security Utility → Full Security.
 
 ## What to look at once it is loaded
@@ -84,9 +86,10 @@ ioreg -r -c IOSCSIParallelInterfaceDevice | grep -E "SAS Target|Protocol Charact
 system_profiler SPSASDataType SPParallelSCSIDataType          # System Information (may list it under SAS or SCSI)
 /usr/bin/log show --last 10m --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA" AND category == "init"' | grep -Ei "power|quiesc|wake|suspend"
 ```
-Sleep / wake and restart are handled since M5b (IO held across sleep, IOC stopped before a
-restart) but were never exercised on hardware: test them as in docs/design.md "Hardware test
-plan" before relying on them with mounted disks.
+Sleep / wake and restart are handled (IO held across sleep, IOC stopped before a restart) and
+were tested on the one test setup (docs/reviews/2026-11-freebsd-deviations.md, "hardware
+results"); test them on yours (docs/design.md "Hardware test plan") before relying on them
+with mounted disks.
 
 ## How to unplug a drive: Eject, wait for the stop, pull
 
@@ -110,7 +113,7 @@ mounted one). Do not stop a drive any other way (a START STOP UNIT or ATA STANDB
 the HBA's SAT layer then answers every read NOT READY until a START, which macOS sends only after
 its own eject or idle stop.
 
-## Disk spin-down (S1, S2, EJ) and Spotlight on the SAS disks
+## Disk spin-down (S1, S2, EJ)
 ```
 tools/sas2308ctl stats | grep -Ei "idle|spin|stops"                  # idle stops completed here / sent / in grace, ejects, spin-downs
 sudo tools/sas2308ctl set sas2308_idle_spindown 0                  # 0 never for idleness (default), 1 always (macOS), 2 only when not in use; Eject stops the disk in 0 and 2
@@ -119,20 +122,18 @@ sudo tools/sas2308ctl spindown disk5                           # stop one disk n
 sudo tools/sas2308ctl spindown all                             # every disk behind the HBA that is not mounted
 pmset -g | grep disksleep                                     # macOS's idle timer (minutes) that sends the idle stops
 ```
-Spotlight (set 2026-11-22, macOS 27): system-wide, external volumes are not indexed:
+Optional tip, to keep Spotlight from indexing the volumes on these disks (all external
+volumes, macOS 27):
 `sudo defaults write /Library/Preferences/com.apple.SpotlightServer.plist ExternalVolumesIgnore -bool true`
-then `sudo launchctl kickstart -k system/com.apple.metadata.mds`. Verified: a fresh JHFS+ volume
-showed "Indexing and searching disabled" and got no .Spotlight-V100 (control without the key:
-"Indexing enabled" and .Spotlight-V100 created); the internal disk stays "Indexing enabled".
-Per volume: `sudo mdutil -i off /Volumes/F145TEST` (stored on the volume). Undo:
-`sudo defaults delete /Library/Preferences/com.apple.SpotlightServer.plist ExternalVolumesIgnore`,
-kickstart mds again, `sudo mdutil -i on /Volumes/F145TEST`.
+then `sudo launchctl kickstart -k system/com.apple.metadata.mds`; a new volume then shows
+"Indexing and searching disabled" in `mdutil -s`. Per volume instead: `sudo mdutil -i off /Volumes/NAME`
+(stored on the volume). Undo: `sudo defaults delete /Library/Preferences/com.apple.SpotlightServer.plist
+ExternalVolumesIgnore`, kickstart mds again, `sudo mdutil -i on /Volumes/NAME`.
 
-All 8 drives were reformatted on 2026-11-22 (GPT + exFAT, one volume per drive named after its
-serial, /Volumes/<serial>) and are scratch. The earlier `/etc/fstab` noauto line for the old exFAT
-volume on drive8 is gone (no /etc/fstab on the Mac, checked 2026-11-22). A GUI login mounts all
-8 volumes; without one, mount them with `diskutil mount diskNs2`.
+Volumes on the SAS disks mount at a GUI login; without one (ssh only), mount them with
+`diskutil mount diskNs2`.
 
 ## Notes
-- Leaving SIP disabled lowers the Mac's protection system-wide (user approved this, 2026-11-18).
+- Leaving SIP disabled lowers the Mac's protection system-wide; turn it back on (above) when
+  you stop using the kext.
 - Each macOS update may require rebuilding (`make`) and re-approving.
