@@ -2,10 +2,10 @@ FreeBSD sys/dev/mps, vendor import
 ==================================
 
 Upstream:  https://github.com/freebsd/freebsd-src
-Commit:    4099b5c828800776fda3eccd6537ceed638a2a8b
-Date:      2026-09-04
-Release:   release/14.5.0
-Tag:       vendor/freebsd-mps/14.5.0
+Commit:    96841ea08dcfa84b954a32dc5ae1a26c28966cf4
+Date:      2026-06-11
+Release:   release/15.1.0
+Tag:       vendor/freebsd-mps/15.1.0
 License:   BSD-2-Clause (mps driver, LSI/Avago MPI2 headers)
 
 This file is the only record of the upstream commit the port follows
