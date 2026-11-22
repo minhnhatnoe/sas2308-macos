@@ -10,7 +10,7 @@
 #
 # Nothing here loads the kext. See docs/LOADING.md for loading.
 
-BUNDLE_ID := org.sas2308.driver.SAS2308HBA
+BUNDLE_ID := io.github.minhnhatnoe.sas2308
 VERSION   := 0.1.0
 NAME      := SAS2308HBA
 

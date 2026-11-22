@@ -24,7 +24,7 @@ run X-cachehit-read-128K-q8-7drv -b 128K -q 8 -t 15 $(jobs r 3-3.00003 $ALL)
 run X-cachehit-read-4K-q8-7drv   -b 4K -q 8 -t 15 $(jobs r 3-3.00003 $ALL)
 # confirm SYNCHRONIZE CACHE reaches the driver: trace on for a few seconds
 OLD=$($CTL show | awk '/Debug mask/ {print $NF; exit}')
-/usr/bin/log stream --level debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"' > $OUT/trace-sync.txt 2>&1 &
+/usr/bin/log stream --level debug --predicate 'subsystem == "io.github.minhnhatnoe.sas2308"' > $OUT/trace-sync.txt 2>&1 &
 LP=$!; sleep 2
 $CTL mask +trace >> $LOG 2>&1
 run K-trace-fullfsync -b 4K -q 1 -t 3 -F 1 $(jobs w 3-3.1 $i)

@@ -10,7 +10,7 @@ run K2-wr1M-seq-qd1-nosync      -b 1M -q 1 -t 15 $(jobs w 3-3.1 $i)
 run K2-wr1M-seq-qd1-dkiocsync   -b 1M -q 1 -t 15 -F 2 $(jobs w 3-3.1 $i)
 run K2-wr4K-seq-qd1-dkiocsync-all7 -b 4K -q 1 -t 15 -F 2 $(jobs w 3-3.1 $ALL)
 OLD=$($CTL show | awk '/Debug mask/ {print $NF; exit}')
-/usr/bin/log stream --level debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"' > $OUT/trace-sync2.txt 2>&1 &
+/usr/bin/log stream --level debug --predicate 'subsystem == "io.github.minhnhatnoe.sas2308"' > $OUT/trace-sync2.txt 2>&1 &
 LP=$!; sleep 2
 $CTL mask +trace >> $LOG 2>&1
 run K2-trace-dkiocsync -b 4K -q 1 -t 2 -F 2 $(jobs w 3-3.1 $i)

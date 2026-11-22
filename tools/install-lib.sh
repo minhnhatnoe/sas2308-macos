@@ -4,7 +4,10 @@
 # Shared helpers for tools/install.sh and tools/uninstall.sh (sourced, not run).
 # Written for macOS /bin/bash 3.2: no associative arrays, no mapfile.
 
-BUNDLE_ID=org.sas2308.driver.SAS2308HBA
+BUNDLE_ID=io.github.minhnhatnoe.sas2308
+# Bundle ID of builds before 2026-11-22. A kext installed or loaded under it
+# is found, backed up, unloaded and replaced or removed like the current one.
+OLD_BUNDLE_ID=org.sas2308.driver.SAS2308HBA
 KEXT_NAME=SAS2308HBA.kext
 KEXT_BIN=Contents/MacOS/SAS2308HBA
 INSTALLED=/Library/Extensions/$KEXT_NAME
@@ -46,10 +49,31 @@ bundle_uuid() {
   dwarfdump --uuid "$1/$KEXT_BIN" 2>/dev/null | awk '/^UUID:/ { print $2; exit }'
 }
 
-# UUID of the loaded kext, or empty.
-loaded_uuid() {
-  kmutil showloaded --list-only 2>/dev/null | awk -v id="$BUNDLE_ID" '
-    index($0, id) { for (i = 1; i <= NF; i++) if (length($i) == 36 && $i ~ /^[0-9A-F-]+$/) { print $i; exit } }'
+# "bundle-ID UUID" of the loaded kext (current or old bundle ID), or empty.
+loaded_kext() {
+  kmutil showloaded --list-only 2>/dev/null | awk -v a="$BUNDLE_ID" -v b="$OLD_BUNDLE_ID" '
+    { id = ""; u = ""
+      for (i = 1; i <= NF; i++) {
+        if ($i == a || $i == b) id = $i
+        else if (length($i) == 36 && $i ~ /^[0-9A-F-]+$/) u = $i
+      }
+      if (id != "") { print id, u; exit } }'
+}
+
+# UUID / bundle ID of the loaded kext, or empty.
+loaded_uuid() { loaded_kext | awk '{ print $2 }'; }
+loaded_id()   { loaded_kext | awk '{ print $1 }'; }
+
+# Bundle ID of a bundle, or empty.
+bundle_id() { plutil -extract CFBundleIdentifier raw "$1/Contents/Info.plist" 2>/dev/null; }
+
+# Note when the installed or loaded kext still has the old bundle ID.
+note_old_id() {
+  local what=""
+  [ -d "$INSTALLED" ] && [ "$(bundle_id "$INSTALLED")" = "$OLD_BUNDLE_ID" ] && what=installed
+  [ "$(loaded_id)" = "$OLD_BUNDLE_ID" ] && what="${what:+$what and }loaded"
+  [ -n "$what" ] || return 0
+  say "$what under the old bundle ID $OLD_BUNDLE_ID (current ID: $BUNDLE_ID)"
 }
 
 uuid8() { printf '%s' "${1%%-*}"; }
@@ -61,8 +85,12 @@ check_bundle() {
   [ -d "$b" ] || die "no bundle at $b"
   [ -f "$b/$KEXT_BIN" ] || die "$b has no $KEXT_BIN"
   plutil -lint "$b/Contents/Info.plist" >/dev/null || die "$b: Info.plist does not lint"
-  id=$(plutil -extract CFBundleIdentifier raw "$b/Contents/Info.plist" 2>/dev/null)
-  [ "$id" = "$BUNDLE_ID" ] || die "$b: bundle ID '$id', expected $BUNDLE_ID"
+  id=$(bundle_id "$b")
+  case "$id" in
+    "$BUNDLE_ID") ;;
+    "$OLD_BUNDLE_ID") say "$b has the old bundle ID $id" ;;
+    *) die "$b: bundle ID '$id', expected $BUNDLE_ID" ;;
+  esac
   archs=$(lipo -archs "$b/$KEXT_BIN" 2>/dev/null)
   case " $archs " in *" arm64e "*) ;; *) die "$b: binary is '$archs', not arm64e" ;; esac
   codesign --verify "$b" 2>/dev/null || die "$b: codesign --verify fails (rebuild with make)"

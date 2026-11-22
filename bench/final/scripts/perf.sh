@@ -107,14 +107,14 @@ run K-wcon-wr4K-seq-qd1-nosync -b 4K -q 1 -t 10 $(jobs w 3-3.1 $i)
 # SYNCHRONIZE CACHE trace: trace class + subsystem debug persist for ~1 s, read back with log show --debug
 OLDM=$($CTL show | awk '/SAS2308DebugMask/ {print $NF; exit}')
 T0=$(date '+%Y-%m-%d %H:%M:%S')
-/usr/bin/log config --subsystem org.sas2308.driver.SAS2308HBA --mode "level:debug,persist:debug" >> $LOG 2>&1
+/usr/bin/log config --subsystem io.github.minhnhatnoe.sas2308 --mode "level:debug,persist:debug" >> $LOG 2>&1
 $CTL mask +trace >> $LOG 2>&1
 run K-trace-dkiocsync -b 4K -q 1 -t 1 -F 2 $(jobs w 3-3.1 $i)
 $CTL mask $OLDM >> $LOG 2>&1
-/usr/bin/log config --subsystem org.sas2308.driver.SAS2308HBA --mode "level:info,persist:default" >> $LOG 2>&1
-echo "mask now $($CTL show | awk '/SAS2308DebugMask/ {print $NF; exit}') (was $OLDM); $(/usr/bin/log config --status --subsystem org.sas2308.driver.SAS2308HBA)" >> $LOG
+/usr/bin/log config --subsystem io.github.minhnhatnoe.sas2308 --mode "level:info,persist:default" >> $LOG 2>&1
+echo "mask now $($CTL show | awk '/SAS2308DebugMask/ {print $NF; exit}') (was $OLDM); $(/usr/bin/log config --status --subsystem io.github.minhnhatnoe.sas2308)" >> $LOG
 sleep 2
-/usr/bin/log show --debug --style compact --start "$T0" --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"' 2>/dev/null | grep -E "IO (start|done)" > $OUT/trace-sync.txt
+/usr/bin/log show --debug --style compact --start "$T0" --predicate 'subsystem == "io.github.minhnhatnoe.sas2308"' 2>/dev/null | grep -E "IO (start|done)" > $OUT/trace-sync.txt
 
 ## X: path ceiling, reads (drive read-cache hits) and writes (drive write cache absorbs a small region)
 setup || exit 1

@@ -35,6 +35,10 @@ make uninstall                  # tools/uninstall.sh: backup, unmount, kmutil un
 `make install` and `make uninstall` run the scripts without options; use the scripts directly
 for `-n`, `--verify`, `--rollback` and `--force`. `tools/install.sh path/to/SAS2308HBA.kext`
 installs a given bundle; `--force` reinstalls the installed UUID. When kmutil returns 27 the script prints the approval steps (below, 5-6).
+Bundle ID: `io.github.minhnhatnoe.sas2308` (also the os_log subsystem). Builds before 2026-11-22
+used `org.sas2308.driver.SAS2308HBA`; the scripts recognise a kext installed or loaded under that ID,
+back it up, unload and replace or remove it like the current one, and roll back to such a backup.
+The raw log captures in `bench/final/trace-sync*.txt` predate the rename and show the old subsystem.
 The manual steps below do the same and are the fallback.
 
 ## Install and load by hand (on the Mac, or over ssh)
@@ -49,16 +53,16 @@ sudo kmutil load -p /Library/Extensions/SAS2308HBA.kext
 The first load stages the kext into the Auxiliary Kernel Collection and macOS
 shows "System Extension Blocked". Then:
 5. System Settings → Privacy & Security → "Allow" for the SAS2308HBA extension (keyboard/mouse or Screen Sharing needed).
-6. Reboot when prompted. After reboot: `kmutil showloaded | grep SAS2308` (only loads once the card is present — it matches PCI 1000:0087).
-Logs (os_log subsystem `org.sas2308.driver.SAS2308HBA` (the bundle ID), one category per FreeBSD debug class;
+6. Reboot when prompted. After reboot: `kmutil showloaded --list-only | grep -i sas2308` (only loads once the card is present — it matches PCI 1000:0087).
+Logs (os_log subsystem `io.github.minhnhatnoe.sas2308` (the bundle ID), one category per FreeBSD debug class;
 details in design.md "Logging"):
 ```
 # zsh has a builtin `log`, so use the full path /usr/bin/log
 # log stream never shows the kext's lines on macOS 27; log show misses them until logd learns of
 # the kext (usually ~1 min after boot, sometimes never; design.md "Lines missing"). Sure way:
 sudo launchctl kickstart -k system/com.apple.logd                           # once per boot
-/usr/bin/log show --last 30m --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'         # default: level 2 (info)
-/usr/bin/log show --last 30m --debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"' # + xinfo/trace lines (if persisted)
+/usr/bin/log show --last 30m --predicate 'subsystem == "io.github.minhnhatnoe.sas2308"'         # default: level 2 (info)
+/usr/bin/log show --last 30m --debug --predicate 'subsystem == "io.github.minhnhatnoe.sas2308"' # + xinfo/trace lines (if persisted)
 # from the repo root:
 make -C tools                                                               # builds sas2308ctl
 tools/sas2308ctl show                                                       # level + mask
@@ -72,7 +76,7 @@ Level at boot: `sudo nvram boot-args="<existing args> sas2308_log=3"` (0–4) or
 
 ## Unload / roll back (by hand; `tools/uninstall.sh` does this)
 ```
-sudo kmutil unload -b org.sas2308.driver.SAS2308HBA     # with no disks mounted
+sudo kmutil unload -b io.github.minhnhatnoe.sas2308     # with no disks mounted
 sudo rm -rf /Library/Extensions/SAS2308HBA.kext
 sudo kmutil clear-staging                                 # then reboot
 ```
@@ -89,7 +93,7 @@ ioreg -l -w0 | grep -E "Physical Interconnect|SAS Address"   # HBA + every targe
 ioreg -r -c SAS2308HBA -k "Controller Characteristics"        # vendor LSI, product, firmware, 6 Gigabit
 ioreg -r -c IOSCSIParallelInterfaceDevice | grep -E "SAS Target|Protocol Characteristics"
 system_profiler SPSASDataType SPParallelSCSIDataType          # System Information (may list it under SAS or SCSI)
-/usr/bin/log show --last 10m --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA" AND category == "init"' | grep -Ei "power|quiesc|wake|suspend"
+/usr/bin/log show --last 10m --predicate 'subsystem == "io.github.minhnhatnoe.sas2308" AND category == "init"' | grep -Ei "power|quiesc|wake|suspend"
 ```
 Sleep / wake and restart are handled (IO held across sleep, IOC stopped before a restart) and
 were tested on the one test setup (docs/reviews/2026-11-freebsd-deviations.md, "hardware

@@ -671,7 +671,7 @@ a smoke test, not an A/B. 8 drives (ST18000NM000J, empty exFAT volumes), mode 0.
 
 Run on build DDA7E6AD or later, from the repo root on the Mac, `sudo tools/sas2308ctl level debug` first,
 drives found with `bench/scripts/sasdisks.sh`; after each test `sas2308ctl stats` and
-`/usr/bin/log show --last 10m --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'`.
+`/usr/bin/log show --last 10m --predicate 'subsystem == "io.github.minhnhatnoe.sas2308"'`.
 
 1. **D14 / M7, disk pull under IO.** Start `sasbench -b 4K -q 8 -p rand -t 300` on all 7 raw drives
    (unmounted). Pull one drive from its breakout. Expect: its sasbench job gets errors, the other 6
@@ -728,7 +728,7 @@ drives found with `bench/scripts/sasdisks.sh`; after each test `sas2308ctl stats
     `level debug`; since batch G1 the default mask is FreeBSD's `info,fault`, the lines below are
     tagged `info|error`). Note the time, do the pull / re-insert and the dock unplug / re-plug, then
     count the lines by type: `/usr/bin/log show --style compact --start "<time>" --predicate
-    'subsystem == "org.sas2308.driver.SAS2308HBA"' | awk '{print $3}' | sort | uniq -c`. Expect: a pull shows FreeBSD's info lines for the
+    'subsystem == "io.github.minhnhatnoe.sas2308"' | awk '{print $3}' | sort | uniq -c`. Expect: a pull shows FreeBSD's info lines for the
     removal and the re-add (no event field dumps, no `PHY[..]` lines); the dock unplug shows
     `controller gone (surprise removal)` and `surprise removal: controller disabled` as **Error**,
     no **Fault** line; a few dozen lines in all, not hundreds.

@@ -2,7 +2,7 @@
 
 Hardware: Mac mini (Mac18,5, macOS 27.0 26A425), LSI SAS 9207-8i (SAS2308, FW 20.00.07.00) in the
 Thunderbolt PCIe dock (PCIe 3.0 x4 tunnel), 7 x Seagate Exos X18 ST18000NM000J (SATA 6 Gb/s, FW SN02,
-512e: 512 B logical / 4 KiB physical, 7200 rpm) on PHY0, PHY2-7. Kext `org.sas2308.driver.SAS2308HBA`
+512e: 512 B logical / 4 KiB physical, 7200 rpm) on PHY0, PHY2-7. Kext SAS2308HBA
 0.1.0, UUID 67BF18CF, log level 2 (mask 631), loaded throughout; no driver change, no reboot.
 Run 03:29-05:20 EST (Mac local time).
 

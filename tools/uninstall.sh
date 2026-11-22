@@ -31,9 +31,10 @@ require_mac
 [ "$DRY" = 1 ] && say "DRY RUN: nothing will be changed"
 
 inst=$( [ -d "$INSTALLED" ] && bundle_uuid "$INSTALLED" )
-load=$(loaded_uuid)
+load=$(loaded_uuid) load_id=$(loaded_id)
 staged=0; [ -d "$STAGED" ] && staged=1
 say "installed: ${inst:-none}   loaded: ${load:-none}   staged: $([ $staged = 1 ] && echo yes || echo no)"
+note_old_id
 if [ ! -d "$INSTALLED" ] && [ -z "$load" ] && [ $staged = 0 ]; then
   say "SAS2308HBA is not installed, loaded or staged: nothing to do"
   exit 0
@@ -51,10 +52,10 @@ unloaded=0
 if [ -n "$load" ]; then
   if [ "$DRY" = 1 ]; then
     say "[dry-run] a real run refuses to unload if any volume above is still mounted after unmounting"
-    act sudo kmutil unload -b "$BUNDLE_ID"
+    act sudo kmutil unload -b "$load_id"
   elif [ -n "$(sas_mounts)" ]; then
     die "a volume on a SAS2308HBA disk is mounted: not unloading"
-  elif act sudo kmutil unload -b "$BUNDLE_ID"; then
+  elif act sudo kmutil unload -b "$load_id"; then
     unloaded=1
   else
     warn "kmutil unload failed (driver busy?); it stays loaded until the restart"

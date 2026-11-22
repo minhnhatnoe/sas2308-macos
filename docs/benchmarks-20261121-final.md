@@ -2,7 +2,7 @@
 
 Hardware as on 2026-11-20 (`docs/benchmarks-20261120.md`): Mac mini Mac18,5 (macOS 27.0 26A425), LSI
 SAS 9207-8i (SAS2308, FW 20.00.07.00) in the Thunderbolt PCIe dock, 7 x Seagate Exos X18
-ST18000NM000J (SATA 6 Gb/s, 512e, 7200 rpm). Kext `org.sas2308.driver.SAS2308HBA` 0.1.0, **UUID
+ST18000NM000J (SATA 6 Gb/s, 512e, 7200 rpm). Kext SAS2308HBA 0.1.0, **UUID
 085DA9D6-7832-3034-AAB2-460054CDFFA8 = master fae7e39** (batches A-F), 2040 tasks
 (`IOCommandPoolSize`), log level 2, debug mask 35. Loaded throughout, no reboot, no debug triggers.
 Run 2026-11-20 23:41 - 2026-11-21 01:00 EST: performance part 23:41-00:31 (50 min), thermal soak
@@ -384,7 +384,7 @@ Plot of the whole run: `bench/final/temps.png`; 30 s ASCII view of the soak: `be
 
 ## Counters, logs
 - Driver counters (`bench/final/stats-final.txt`, since 23:41, after the recheck): 15,902,367 IOs (tasks accepted = IOs completed), 1.922 TB read, 1.783 TB written, latency max 3.39 s, chain free low-water 16383, 111 recovered sense (not errors), 0 events; every timeout / error / recovery / TM / held / reinit / fault / KASSERT / lost-kick / stale-reply / chain-failure counter **0**; state operational.
-- Driver log (`log show`, subsystem org.sas2308.driver.SAS2308HBA, 23:41-01:05): only 2 lines, both the recheck's `debug mask ... set from userland`, now logged at default level (old anomaly 6 fixed). No error/fault/recovery line, and no event lines (the old 0xff02 event every ~30 s no longer appears; `Events` counter 0 since the reset).
+- Driver log (`log show`, driver subsystem, 23:41-01:05): only 2 lines, both the recheck's `debug mask ... set from userland`, now logged at default level (old anomaly 6 fixed). No error/fault/recovery line, and no event lines (the old 0xff02 event every ~30 s no longer appears; `Events` counter 0 since the reset).
 - `monitor_final.sh`: 307 samples, never alerted; IOC 58-62 C over the whole run.
 
 ## Anomalies and notes

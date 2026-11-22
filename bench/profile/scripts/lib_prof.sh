@@ -17,7 +17,7 @@ setup() {
   for d in "${D[@]}"; do diskutil unmountDisk /dev/$d > /dev/null 2>&1; done
   local m=$(mount | grep -cE "/dev/($(echo ${D[@]} | tr ' ' '|'))s")
   [ "$m" = 0 ] || { echo "REFUSE: mounted" >> $LOG; return 1; }
-  echo "$(date +%T) setup ok ${D[*]} kext $(kmutil showloaded --list-only 2>/dev/null | grep org.sas2308 | awk '{print $7}')" >> $LOG
+  echo "$(date +%T) setup ok ${D[*]} kext $(kmutil showloaded --list-only 2>/dev/null | grep -i sas2308 | awk '{print $7}')" >> $LOG
 }
 jobs() { local m=$1 z=$2; shift 2; for i in "$@"; do printf '/dev/r%s,%s,%s,%s ' "${D[$i]}" "$m" "$z" "${SER[$i]}"; done; }
 ALL="0 1 2 3 4 5 6"

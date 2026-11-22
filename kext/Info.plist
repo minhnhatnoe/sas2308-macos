@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>SAS2308HBA</string>
 	<key>CFBundleIdentifier</key>
-	<string>org.sas2308.driver.SAS2308HBA</string>
+	<string>io.github.minhnhatnoe.sas2308</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -29,7 +29,7 @@
 		<key>SAS2308</key>
 		<dict>
 			<key>CFBundleIdentifier</key>
-			<string>org.sas2308.driver.SAS2308HBA</string>
+			<string>io.github.minhnhatnoe.sas2308</string>
 			<key>IOClass</key>
 			<string>SAS2308HBA</string>
 			<key>IOProviderClass</key>

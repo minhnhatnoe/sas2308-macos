@@ -21,7 +21,7 @@
 #include <stdarg.h>
 
 #ifndef SAS2308_BUNDLE_ID
-#define SAS2308_BUNDLE_ID "org.sas2308.driver.SAS2308HBA"
+#define SAS2308_BUNDLE_ID "io.github.minhnhatnoe.sas2308"
 #endif
 
 /* MPI2_SCSITASKMGMT_TASKTYPE_* (core/mpi/mpi2_init.h) */

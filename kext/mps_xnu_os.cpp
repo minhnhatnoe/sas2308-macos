@@ -80,7 +80,7 @@ static_assert(sizeof(struct mps_kext_seg) == sizeof(bus_dma_segment_t) &&
 
 /* os_log subsystem = the bundle identifier (Makefile: SAS2308_BUNDLE_ID = CFBundleIdentifier) */
 #ifndef SAS2308_BUNDLE_ID
-#define SAS2308_BUNDLE_ID "org.sas2308.driver.SAS2308HBA"
+#define SAS2308_BUNDLE_ID "io.github.minhnhatnoe.sas2308"
 #endif
 static const char *const kLogSubsystem = SAS2308_BUNDLE_ID;
 static const char *const kLogCats[] = {

@@ -50,6 +50,9 @@ verify() {
   if [ -z "$load" ]; then
     warn "SAS2308HBA is not loaded (it loads only when the card is present; after an install: approval and restart done?)"
     rc=1
+  elif [ "$(loaded_id)" = "$OLD_BUNDLE_ID" ]; then
+    warn "the loaded kext has the old bundle ID $OLD_BUNDLE_ID: install the current build and restart"
+    rc=1
   elif [ -n "$inst" ] && [ "$inst" != "$load" ]; then
     warn "loaded UUID differs from the installed bundle: approve it in System Settings and/or restart"
     rc=1
@@ -132,6 +135,7 @@ install() {
   new=$( [ -d "$SRC" ] && bundle_uuid "$SRC" )
   inst=$( [ -d "$INSTALLED" ] && bundle_uuid "$INSTALLED" )
   say "to install: ${new:-unknown until built}   installed: ${inst:-none}   loaded: $(loaded_uuid)"
+  note_old_id
   if [ -n "$new" ] && [ "$new" = "$inst" ] && [ "$FORCE" = 0 ]; then
     say "$new is already installed; nothing to do (--force reinstalls it, --verify checks it)"
     return 0

@@ -502,8 +502,7 @@ and `mps_xnu_os.cpp` are compiled with `-fvisibility=hidden`, the class files wi
 symbols, all the class's (methods, metaclass, vtables) and `_kmod_info`.
 
 ### Other changes
-- os_log subsystem = the bundle ID `org.sas2308.driver.SAS2308HBA` (Makefile passes
-  `SAS2308_BUNDLE_ID`); docs updated.
+- os_log subsystem = the bundle ID (Makefile passes `SAS2308_BUNDLE_ID`); docs updated.
 - `IOPCITunnelled` is read and logged at attach and shown in the Port Description.
 - compat `msleep` returns the core's `EWOULDBLOCK` whatever the hook returns (the Linux host hook
   returned 11, the core's value is 35: `mps_wait_command` timeouts never reached their reinit
@@ -1207,7 +1206,7 @@ the deviations plan, "Batch EJ hardware results".
 | Timeout escalation (M2, async M4) | `mpssas_scsiio_timeout`, `mpssas_abort_complete`, `mpssas_logical_unit_reset_complete`, `mpssas_target_reset_complete` | `TimeoutIo` + per-target `Recovery` state machine advanced from TM completions: abort each timed-out IO → LUN reset → target reset → reinit; a step succeeds only if nothing is left outstanding for the IO / LUN / target (FreeBSD rule, status ignored) |
 | IOC reinit (M2, threaded M4) | `mps_reinit`, `mpssas_handle_reinit`, `mps_iocfacts_allocate(FALSE)` | `Reinit` on the kext's recovery thread, lock dropped in every wait; up to 3 attempts (nested faults); fail posted IO with `SCSI_IOC_TERMINATED` (kext → `DeliveryFailure`, retryable); held IO kept and posted afterwards; async PortEnable for rediscovery. Targets whose handle is not re-announced are destroyed (`IocReset`/`RediscoveryDone`). If every attempt fails: core goes `Gone()`, IO failed `DEVICE_NOT_THERE`, kext disables bus mastering (FreeBSD panics here) |
 | Fault detection (M2) | `mps_periodic` (watchdog) | `PollFault`: doorbell FAULT or not-OPERATIONAL. Checked on every interrupt that finds the reply queue empty, inside every internal-command wait, and by `Service()` from the kext's watchdog timer (≤ 1 s); a fault makes `NeedsReinit()` true and the kext schedules the recovery thread |
-| Logging (M4) | `mps_dprint` classes, `mps_table.c`, `mpssas_log_command` | `Dprint(cls, …)` → `MpsHw::LogLine` → os_log subsystem `org.sas2308.driver.SAS2308HBA` (the bundle ID), one category per class; see "Logging" |
+| Logging (M4) | `mps_dprint` classes, `mps_table.c`, `mpssas_log_command` | `Dprint(cls, …)` → `MpsHw::LogLine` → os_log subsystem `io.github.minhnhatnoe.sas2308` (the bundle ID), one category per class; see "Logging" |
 | Multi-LUN (M2) | `MPS_SET_LUN` | `ReportHBAHighestLogicalUnitNumber` = 255. The family answers `kSCSIProtocolFeature_GetMaximumLogicalUnitNumber` with it and `IOSCSITargetDevice` does REPORT LUNS / creates the LUN nubs itself; `ProcessParallelTask` passes the family's SAM LUN bytes into the SCSI IO `LUN` field unchanged. TMs encode `SCSILogicalUnitNumber` with `MpsCore::EncodeLun` (port of `mpssas_set_lun`) |
 
 ### Chain SGLs (M3)
@@ -1403,8 +1402,8 @@ the level. Changing the level or mask and the debug triggers log one `info` line
 Before D22 the default also had recovery/init/event/mapping: every event dumped field by field, a
 `Doorbell=` line per 50 ms poll of `mps_transition_ready` and both devq lines of every TM persisted.
 
-**Where lines go.** os_log subsystem `org.sas2308.driver.SAS2308HBA` (the bundle ID), message prefixed
-`hbaN:`. One class of the line decides both the category and the type (D24), picked in the order
+**Where lines go.** os_log subsystem `io.github.minhnhatnoe.sas2308` (the bundle ID; renamed
+2026-11-22, docs/LOADING.md), message prefixed `hbaN:`. One class of the line decides both the category and the type (D24), picked in the order
 xinfo, trace (most verbose: a line tagged `xinfo` is detail whatever else it carries), fault,
 error (most serious), recovery, event, mapping, init, log, user, info: `MPS_RECOVERY|MPS_INFO` is
 `recovery`/DEFAULT, `MPS_ERROR|MPS_RECOVERY` is `error`/ERROR, `MPS_XINFO|MPS_RECOVERY` is
@@ -1426,10 +1425,10 @@ Format strings must not use `%{public}`/`%{private}`: the kernel os_log encoder 
 
 **Read.** `log show` only: on macOS 27 `log stream` never shows the kext's lines (below).
 ```
-/usr/bin/log show --last 1h --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'             # history
-/usr/bin/log show --last 1h --debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'     # + debug lines (if persisted)
-/usr/bin/log show --last 1h --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA" AND category == "recovery"'
-sudo log config --subsystem org.sas2308.driver.SAS2308HBA --mode "level:debug,persist:debug"   # keep debug lines
+/usr/bin/log show --last 1h --predicate 'subsystem == "io.github.minhnhatnoe.sas2308"'             # history
+/usr/bin/log show --last 1h --debug --predicate 'subsystem == "io.github.minhnhatnoe.sas2308"'     # + debug lines (if persisted)
+/usr/bin/log show --last 1h --predicate 'subsystem == "io.github.minhnhatnoe.sas2308" AND category == "recovery"'
+sudo log config --subsystem io.github.minhnhatnoe.sas2308 --mode "level:debug,persist:debug"   # keep debug lines
 ```
 
 **Lines missing (macOS logd, not the driver; 2026-11-22, macOS 27.0 26A425, xnu-13432).** From kext
@@ -1685,7 +1684,7 @@ similar IO error lines suppressed", printed with the next line after the window 
    version and `Protocol=(Initiator[,Target])` — confirms the card and its firmware.
 1. Dock + card on the Mac, kext NOT loaded: `ioreg -r -c IOPCIDevice | grep -A3 0087` → device enumerates through the tunnel.
 2. Load kext with **no disks attached**:
-   `log show --last 5m --debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'`
+   `log show --last 5m --debug --predicate 'subsystem == "io.github.minhnhatnoe.sas2308"'`
    → expect "log level 2 (info)", IOC state lines, IOCFacts / IOCInit / queues lines,
    "using message-signalled interrupt index N", the core's port-enable / discovery lines
    (FreeBSD wording since M5); `tools/sas2308ctl stats`.
@@ -1706,7 +1705,7 @@ similar IO error lines suppressed", printed with the next line after the window 
    init line), 6 Gigabit; System Information → the disk shows Physical Interconnect SAS, Location
    External (screenshot). Check `IOPCITunnelled` in the attach log line.
 9. Sleep / wake (M5b) — first idle, then with a scratch disk mounted:
-   `log show --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'` afterwards,
+   `log show --predicate 'subsystem == "io.github.minhnhatnoe.sas2308"'` afterwards,
    `pmset sleepnow`, wake after 1 min. Expect "power state 1 -> 0", "system sleep: quiescing",
    "suspended: IOC stopped", then "power state 0 -> 1", "resuming", a reinit and rediscovery with
    the same target IDs; `diskutil list` unchanged; `SAS2308Statistics` Suspends = Resumes = 1. Then

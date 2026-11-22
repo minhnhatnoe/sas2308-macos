@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Minh Nhat Nguyen
 # K3: confirm SYNCHRONIZE CACHE reaches the driver (trace class for ~3 s, then mask back to 631)
 . "$(dirname "$0")/lib.sh"
-/usr/bin/log stream --timeout 10s --level debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"' > $OUT/trace-sync3.txt 2>&1 &
+/usr/bin/log stream --timeout 10s --level debug --predicate 'subsystem == "io.github.minhnhatnoe.sas2308"' > $OUT/trace-sync3.txt 2>&1 &
 LP=$!; sleep 2
 $CTL mask 1655 >> $LOG 2>&1
 run K3-trace-dkiocsync -b 4K -q 1 -t 2 -F 2 $(jobs w 3-3.1 1)
