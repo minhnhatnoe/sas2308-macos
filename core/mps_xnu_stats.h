@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  *
  * mps_xnu_stats.h - the driver statistics (sc->xnu.stats).  Only <stdint.h>, so
  * that the kext's IOKit translation unit (which cannot include the compat

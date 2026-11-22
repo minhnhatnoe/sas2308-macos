@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  *
  * mock_ioc_test.cpp - the scenario groups M1-M4 (named after the development
  * milestones, docs/design.md) against the FreeBSD-shaped core

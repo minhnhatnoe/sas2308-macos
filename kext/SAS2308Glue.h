@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  *
  * SAS2308Glue.h - the IOKit-free half of the SAS2308HBA class: the gate
  * around the core, ProcessParallelTask / HandleTimeout /

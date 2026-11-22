@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  *
  * mps_compat.c - shared implementation of the FreeBSD kernel API subset in
  * mps_compat.h, on top of the mps_os_*() platform hooks.

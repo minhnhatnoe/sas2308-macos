@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2026 Minh Nhat Noe
+# Copyright (c) 2026 Minh Nhat Nguyen
 #
 # Import a FreeBSD sys/dev/mps release onto the vendor branch (core/VENDOR.txt).
 #

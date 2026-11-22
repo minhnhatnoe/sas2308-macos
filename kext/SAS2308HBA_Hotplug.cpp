@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  *
  * SAS2308HBA_Hotplug.cpp - SCSI target nubs: created and destroyed from the
  * core's discovery events, their properties, and their teardown when the

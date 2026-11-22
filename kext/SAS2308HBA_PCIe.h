@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  *
  * SAS2308HBA_PCIe.h - decode the card's PCI Express capability registers for
  * the "PCIe Link" property: the negotiated link (Link Status), the maximum

@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  *
  * mps_compat.h - the subset of the FreeBSD kernel API that the ported
  * sys/dev/mps code (mps.c, mps_sas.c, mps_sas_lsi.c, mps_table.c) uses.

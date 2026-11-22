@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  *
  * kmod_info for the kext. Xcode generates this file; without Xcode we
  * write it by hand. _start/_stop come from libkmodc++.a / libkmod.a.

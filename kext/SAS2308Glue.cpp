@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  *
  * SAS2308Glue.cpp - see SAS2308Glue.h. No IOKit: built into the kext and
  * into test/kext_glue_test.

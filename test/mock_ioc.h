@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  *
  * mock_ioc.h - software model of the SAS2308 IOC (MPI 2.0 IT firmware) as the
  * host driver sees it: doorbell handshake, diag reset, request/reply queues,

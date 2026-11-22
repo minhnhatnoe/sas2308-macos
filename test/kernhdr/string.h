@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  */
 /* Stand-in for Kernel.framework <string.h>: freestanding compile check only. */
 #ifndef _KERNHDR_STRING_H_

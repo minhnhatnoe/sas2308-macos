@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  *
  * cam_compat.h - thin CAM for the ported mps_sas.c: the ccb layout, status
  * codes and xpt_*() calls the driver uses, on top of mps_compat.h.  Values

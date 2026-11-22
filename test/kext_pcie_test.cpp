@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  *
  * kext_pcie_test.cpp - the "PCIe Link" decoding (kext/SAS2308HBA_PCIe.h):
  * register values as the SAS2308 behind the JHL7440 shows them, and the

@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
  *
- * Copyright (c) 2026 Minh Nhat Noe
+ * Copyright (c) 2026 Minh Nhat Nguyen
  *
  * kext_glue_test.cpp - the kext's IOKit-free half (kext/SAS2308Glue.cpp,
  * kext/mps_kext.cpp) on the real core and the IOC model, against a fake
