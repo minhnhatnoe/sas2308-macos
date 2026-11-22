@@ -519,7 +519,7 @@ then rerun the fast->normal transition with Idle_A disabled (volatile) or set to
 step 1.**
 - `smartctl` 7.5 has no EPC support: `-g epc` is rejected ("VALID ARGUMENTS ARE: aam, apm, dsn,
   lookahead, security, wcache, rcache, wcreorder, wcache-sct"), with and without `-d sat`; `-s` has
-  no EPC setting either (`smartctl-h.txt`). Only `-s standby,N` exists, which is the legacy
+  no EPC setting either (`smartctl -h`). Only `-s standby,N` exists, which is the legacy
   standby timer, not EPC.
 - Underneath, Darwin smartctl goes through Apple's SMART interface, which carries only SMART
   commands and IDENTIFY: `ATA_READ_LOG_EXT ... failed: 48-bit ATA commands not implemented`, so the
