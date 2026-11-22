@@ -53,7 +53,7 @@ Loading it needs Reduced Security and SIP disabled (`docs/LOADING.md`). Read
 
 ## FreeBSD upstream
 
-`core/` is a vendor import of FreeBSD `sys/dev/mps` (release/14.5.0). The
+`core/` is a vendor import of FreeBSD `sys/dev/mps` (release/15.1.0). The
 branch `vendor/freebsd-mps` holds the pristine files; `git diff
 vendor/freebsd-mps master -- core/` is the whole port. `core/VENDOR.txt` has
 the pin, the path map and the update procedure (`tools/import-freebsd.sh`).

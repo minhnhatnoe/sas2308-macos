@@ -1728,7 +1728,7 @@ similar IO error lines suppressed", printed with the next line after the window 
 our paths, master descends from it, and `git diff vendor/freebsd-mps master -- core/` is the whole
 port delta. `core/VENDOR.txt` is the only record of the upstream commit and has the path map, the
 files not ported, the files derived from FreeBSD without being vendored, which upstream line to
-follow (FreeBSD 14.x release tags), and the update procedure: `tools/import-freebsd.sh
+follow (FreeBSD 15.x release tags), and the update procedure: `tools/import-freebsd.sh
 release/X.Y.0` commits the new pristine files on the vendor branch and tags them, then a branch
 from master merges `vendor/freebsd-mps` and resolves conflicts by the rules there (#include
 blocks: take ours and check for a newly needed include; `/* XNU: */` code: keep the deviation,
@@ -1746,3 +1746,15 @@ test: 7 drives, SMART PASSED on all 7, 0 default log lines in 5 min idle, a forc
 IO, a sleep/wake under IO, a restart with a mounted JHFS+ volume, and the regression (1764 IOPS
 random 4K QD32, 1945.2 MB/s seq 1 MiB, verify 0 mismatches). Details:
 `docs/reviews/2026-11-freebsd-deviations.md`, "FreeBSD 14.5.0 import hardware results".
+
+Move to the 15.x line, 2026-11-22: release/14.5.0 -> release/15.1.0 (96841ea08dcf, tag
+`vendor/freebsd-mps/15.1.0`). The policy in `core/VENDOR.txt` was to follow 14.x until its end of
+life; the port now follows 15.x release tags. Upstream `sys/dev/mps` changed one line in each of
+`mps_sas.c` and `mps_sas_lsi.c` (`<machine/stdarg.h>` -> `<sys/stdarg.h>`), nothing in `mpi/` or
+in the unported files (the three commits the import script lists for them are main commits whose
+stable/14 merges were already in 14.5.0). Both files conflicted only in their #include blocks (2
+hunks each); ours was kept, since the core's include block is `compat/mps_compat.h`, which
+includes `<stdarg.h>` (va_list, va_start, va_end) in the host and kext builds. No new deviation;
+`tools/diff-vs-freebsd.sh -s`: 10976 upstream lines, 7391 common, 1370 added, 3585 removed, 299
+XNU lines (2 upstream and 2 common lines fewer than against 14.5.0: the blank line upstream
+removed with each include).
