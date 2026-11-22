@@ -318,7 +318,7 @@ IOC 59-61 C, drives up to 35 C. The first 28 s ran with the trace class on (see 
   "debug mask ... set from userland" lines (logged with type ERROR, see anomalies).
 - The watchdog never fired; `ALERTS.txt` stayed empty.
 
-## macOS without code (feature-ideas section 0)
+## What macOS shows without driver code
 - **SMART status: yes.** `diskutil info` shows `SMART Status: Verified` for all seven, and
   System Information > SAS shows `S.M.A.R.T. status: Verified` per logical unit. The Homebrew
   `smartctl` 7.5 reads them as ATA without any `-d` option and without root: identity, all
@@ -386,7 +386,7 @@ All 7 drives at once, 120 s per point, zone 2-50 % for random IO, outer zone for
 | verify 1 MiB seq, 1 GiB/drive | 4 (28) | 1819 | 1907 (953 W + 953 R) | 15 ms | 17 ms | 2.5 s | - |
 | verify 64 KiB random, 256 MiB/drive | 64 (448) | 1034 | 67.8 | 49 ms | 2.2 s | 3.2 s | - |
 
-- Previous build (256 commands, entry 63): random 4K read QD32 1707 IOPS, worst 0.91 s;
+- Previous build (256 commands, an earlier run of that build): random 4K read QD32 1707 IOPS, worst 0.91 s;
   sequential read 1945 MB/s. No regression.
 - **IOPS do not rise beyond QD32** (1748 → 1742 → 1738) while latency doubles with each
   doubling of the queue. Little's law with the driver latency gives 224, 448 and 896 commands
