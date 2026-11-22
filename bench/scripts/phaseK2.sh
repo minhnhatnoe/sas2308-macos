@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # K2: flush tests with ioctl DKIOCSYNCHRONIZECACHE (F_FULLFSYNC is refused on raw devices)
 . "$(dirname "$0")/lib.sh"
 i=1

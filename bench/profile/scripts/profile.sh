@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # step 2: one long F1 4 KiB load (7 drives, QD2, outer); dtrace windows of 20 s, idle gaps between,
 # IOs counted around each window. Args: LO HI (our kext text range for prof.d, hex).
 . "$(dirname "$0")/lib_prof.sh"

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # G: integrity. $1 = tag (early/final). Seeds from out/seeds (written here).
 . "$(dirname "$0")/lib.sh"
 TAG=$1; SEED1=$(date +%s); SEED2=$((SEED1+1))

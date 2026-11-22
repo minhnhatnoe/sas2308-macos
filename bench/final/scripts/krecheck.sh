@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # K recheck (run with sudo, bash 3.2): QD1 4 KiB re-read of a small region (drive read cache) on drive2 (idx 1)
 # and drive1 (idx 0): idle spread, region-size sweep, outer vs middle, CPU-load control, and the
 # recovery after the final run's K write sequence (perf.sh lines 78-87). Read flags = K-rd4K-qd1-* rows.

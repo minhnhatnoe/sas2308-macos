@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # plist_test.sh - the kext personality matches every SAS2308 device id of
 # FreeBSD's mps_pci.c (D52): SAS2308_1 0x0086, SAS2308_2 0x0087,
 # SAS2308_3 0x006E (MPI2_MFGPAGE_DEVID_SAS2308_*), vendor 0x1000, and no

@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # EPC read-only probe (run with sudo). Args: the serial numbers of the drives to probe.
 # OUT = output directory (default bench/out/krecheck/epc)
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }

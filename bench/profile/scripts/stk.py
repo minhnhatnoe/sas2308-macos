@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 import sys,re,collections
 f=sys.argv[1]; pat=sys.argv[2]; k=int(sys.argv[3]) if len(sys.argv)>3 else 3
 txt=open(f).read().split('=== kst\n',1)[1]

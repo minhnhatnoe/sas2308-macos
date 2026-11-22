@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 """us of CPU per IO by role (submitting threads, work loop, interrupt, idle) and, within a role, by
 component (leaf attributed to the nearest frame of a known component). usage:
 roles.py dt-prof.txt syms.txt BASE IOS"""

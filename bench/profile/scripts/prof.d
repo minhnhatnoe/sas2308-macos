@@ -1,3 +1,8 @@
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Nguyen
+ */
 /* kernel/user PC sampling, 20 s. $1/$2 = our kext's text range (0 0 if unknown). */
 #pragma D option quiet
 #pragma D option aggsize=32m

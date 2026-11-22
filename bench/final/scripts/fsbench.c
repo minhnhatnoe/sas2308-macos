@@ -1,3 +1,8 @@
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Nguyen
+ */
 /* fsbench: QD1 sequential writes of BS bytes into FILE (wrapping at SIZE_MIB), F_NOCACHE, for SEC
  * seconds, with MODE after every write: 0 none, 1 fsync(), 2 fcntl(F_FULLFSYNC), 3 fcntl(F_BARRIERFSYNC).
  * The file is preallocated (written once) first. Latency = write + sync.

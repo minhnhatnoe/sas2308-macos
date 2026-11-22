@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # runner (run with sudo): stats before + reset, monitor, perf suite, thermal soak, monitor stop
 # OUT = output directory (default bench/out/final)
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }

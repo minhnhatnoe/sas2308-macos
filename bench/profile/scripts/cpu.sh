@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 . "$(dirname "$0")/lib_prof.sh"
 setup || exit 1
 sysctl hw.perflevel0.logicalcpu hw.perflevel1.logicalcpu hw.perflevel2.logicalcpu hw.perflevel0.name hw.perflevel1.name hw.perflevel2.name > $OUT/cpu-topo.txt 2>&1

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 import re,collections,sys
 f=sys.argv[1]; ios=float(sys.argv[2]); HZ=4997
 txt=open(f).read().split('=== kst\n',1)[1]

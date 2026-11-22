@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 import re,collections,sys,bisect
 f=sys.argv[1]; ios=float(sys.argv[2]); base=int(sys.argv[3],16); symf=sys.argv[4]; HZ=4997
 syms=sorted((int(p[0],16),p[2]) for p in (l.split() for l in open(symf)) if len(p)==3 and p[1] in 'tT')

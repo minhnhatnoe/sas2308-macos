@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # step 1: the F1 4 KiB point (sasbench -b 4K -q 2, 7 drives, outer), 3 x 30 s, plus 1 drive QD2 and QD1
 . "$(dirname "$0")/lib_prof.sh"
 setup || exit 1

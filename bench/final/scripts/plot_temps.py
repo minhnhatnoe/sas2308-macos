@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 """plot_temps.py DIR -> DIR/temps.png and DIR/soak-temps.txt (whole run: IOC, drives, SoC)."""
 import csv, sys, datetime as dt
 import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt

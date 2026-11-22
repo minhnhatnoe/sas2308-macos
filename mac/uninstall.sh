@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # Remove SAS2308HBA.kext from an Apple-silicon Mac.
 #
 #   mac/uninstall.sh -n     dry run: print every action, change nothing

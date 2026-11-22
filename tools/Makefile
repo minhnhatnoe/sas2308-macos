@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # sas2308ctl: runtime log level / counters for SAS2308HBA (macOS userland).
 # sasbench: raw-disk benchmark used by the bench/ scripts (`make -C tools sasbench`).
 sas2308ctl: sas2308ctl.c

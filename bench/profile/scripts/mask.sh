@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # runtime A/B of the log checks (batch E candidate): debug mask 35 (now) / 0 / 631 (2026-11-20 run), F1 4 KiB 20 s each, restored to 35
 . "$(dirname "$0")/lib_prof.sh"
 setup || exit 1

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 """compare.py OLD_RESULTS.csv OLD_Q.csv NEW_RESULTS.csv -> markdown tables (before / now / delta) per pattern."""
 import csv, sys, re
 def load(p):

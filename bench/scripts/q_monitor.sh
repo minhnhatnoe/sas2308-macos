@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # Background sampler (run with sudo; bash 3.2 compatible): driver stats every 15 s, drive temps
 # every 60 s. Watchdog: IOC temp >= 90, non-operational state, or any increase of a watched
 # error counter -> ALERT line; kills sasbench if out/abort_on_alert exists.

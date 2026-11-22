@@ -1,3 +1,8 @@
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Nguyen
+ */
 /* top-level per-call cost: submit (SendSCSICommand), completion (CompleteParallelTask),
    interrupt (filter count, checkForWork = work loop run incl. HandleInterruptRequest), 20 s */
 #pragma D option quiet

@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # post-run rechecks (run with sudo): read-cache-hit QD1 on two drives, and the SYNCHRONIZE CACHE trace capture
 . "$(dirname "$0")/lib_final.sh"
 setup || exit 1

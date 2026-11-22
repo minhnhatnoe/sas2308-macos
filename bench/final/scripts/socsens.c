@@ -1,3 +1,8 @@
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Nguyen
+ */
 /* socsens: print Apple-silicon temperature sensors (IOHIDEventSystem, private API).
  * usage: socsens        -> "name=value" for every temperature sensor
  *        socsens -s     -> one line "tdie_max tdie_avg n_tdie all_max" (C)

@@ -1,3 +1,8 @@
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Nguyen
+ */
 /* mutex contention on the IO path, 20 s: spin/block time by lock and short stack */
 #pragma D option quiet
 #pragma D option aggsize=16m

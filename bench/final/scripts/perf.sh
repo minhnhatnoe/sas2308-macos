@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # Final performance suite (run with sudo). Every pattern of docs/benchmarks-20261120.md, shorter points.
 . "$(dirname "$0")/lib_final.sh"
 SC=${SMARTCTL:-$(command -v smartctl || echo smartctl)}

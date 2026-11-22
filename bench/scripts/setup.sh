@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # Re-derive the drive list, refuse unless 7, unmount them. Writes $OUT/disks.txt (run with sudo).
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$SCRIPT_DIR/../.." && pwd)

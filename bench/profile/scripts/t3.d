@@ -1,3 +1,8 @@
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Nguyen
+ */
 /* count-only probes (no thread-local state, no drops), 10 s: gate acquisitions per IO by call path,
    family/kernel calls per IO, distinct tasks handed out by the family pool */
 #pragma D option quiet

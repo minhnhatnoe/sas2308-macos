@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # Builds SAS2308HBA.kext with the Command Line Tools only (no Xcode).
 #
 #   make            build build/SAS2308HBA.kext (arm64e, ad-hoc signed)

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # Helpers of the final-run scripts (macOS): socsens (SoC temperatures), fsbench (file-system fsync test).
 all: socsens fsbench
 

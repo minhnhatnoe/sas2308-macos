@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # Print "diskN SERIAL TGT" for every whole disk that qualifies as one of the
 # SAS2308HBA Exos drives: descendant of SAS2308HBA in IORegistry AND diskutil
 # Protocol SAS, model ST18000NM000J, size 18000207937536 bytes. Exit 1 if none.

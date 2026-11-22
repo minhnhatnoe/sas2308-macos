@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # find our kext's load address: return addresses of calls from our kext into the family, 5 s under a short load
 . "$(dirname "$0")/lib_prof.sh"
 setup || exit 1

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # shellcheck shell=bash
 # Shared helpers for mac/install.sh and mac/uninstall.sh (sourced, not run).
 # Written for macOS /bin/bash 3.2: no associative arrays, no mapfile.

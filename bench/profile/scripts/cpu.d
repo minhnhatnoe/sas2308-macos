@@ -1,3 +1,8 @@
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Nguyen
+ */
 /* where the work runs: samples by cpu for the work loop (in runEventSources/threadMain), sasbench, audiomxd, configd, idle; 10 s */
 #pragma D option quiet
 profile-997 { @c[cpu, execname == "kernel_task" ? (curthread == 0 ? "?" : "kernel_task") : execname] = count(); }

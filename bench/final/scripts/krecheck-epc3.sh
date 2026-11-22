@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # CHECK POWER MODE probe on disk6 (serial $1) + 3 s QD1 read sanity on disk5 (serial $2) (run with sudo)
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$SCRIPT_DIR/../../.." && pwd)

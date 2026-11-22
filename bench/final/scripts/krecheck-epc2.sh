@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # read-only IDENTIFY dump on one still-SMART-capable drive of the same model/firmware (run with sudo)
 # Arg: its serial number (looked up in disks.txt of krecheck-epc1.sh). OUT as there.
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }

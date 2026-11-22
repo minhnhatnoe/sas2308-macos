@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # Host-side tests.
 #   mock_ioc_test   the milestone M1-M4 scenarios (IO, chains, recovery, logging) against the
 #                   FreeBSD-shaped core (core/mps*.c, core/compat) and the IOC model

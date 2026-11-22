@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # Install, roll back or verify SAS2308HBA.kext on an Apple-silicon Mac.
 #
 #   mac/install.sh -n                  dry run: print every action, change nothing

@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # Background sampler for the final run (run with sudo, bash 3.2): driver stats every 15 s -> monitor.csv;
 # SMART 194 of each drive + SoC sensors every 60 s -> drivetemps.csv, soc.csv.
 # Watchdog: IOC temp >= 90, drive >= 60, state != operational, or any increase of a watched counter

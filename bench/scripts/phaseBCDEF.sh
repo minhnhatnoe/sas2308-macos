@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 . "$(dirname "$0")/lib.sh"
 warm B
 # B: scaling, outer, 1M seq q2

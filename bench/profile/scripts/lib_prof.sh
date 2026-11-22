@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # sourced by the profile scripts (bash 3.2): run them with sudo. TAG = build tag (UUID prefix).
 # OUT = output directory (default bench/out/profile/TAG); SASBENCH, SAS2308CTL override the tool paths.
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }

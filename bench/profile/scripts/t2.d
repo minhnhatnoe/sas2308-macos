@@ -1,3 +1,8 @@
+/*-
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2026 Minh Nhat Nguyen
+ */
 /* inner family/kernel calls on the IO path: per-call on-CPU ns and counts, 20 s */
 #pragma D option quiet
 #pragma D option aggsize=8m

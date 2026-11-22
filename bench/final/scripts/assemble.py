@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 """assemble.py TEMPLATE CMP.md FILLS.json OUT.md: insert compare.py tables and text fills."""
 import sys, re, json
 tpl = open(sys.argv[1]).read(); cmp = open(sys.argv[2]).read(); fills = json.load(open(sys.argv[3]))

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # re-read the data written by an earlier G run (no writes): $1 = tag in out/seeds
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
 bash "$(dirname "$0")/phaseK3.sh"

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # sourced by the phase scripts: run them with sudo, e.g. `sudo bash bench/scripts/phaseA.sh`.
 # OUT = output directory (default bench/out/run); SASBENCH, SAS2308CTL override the tool paths.
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }

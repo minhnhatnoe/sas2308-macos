@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 """Summarise prof.d output: us of CPU per IO by component (leaf frame) and by path (stack contains).
 usage: analyze.py dt-prof.txt syms.txt BASE IOS SECS [dis.txt]
 BASE = our kext's load address (hex), IOS / SECS = IOs completed in the window and its length."""

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # K3: confirm SYNCHRONIZE CACHE reaches the driver (trace class for ~3 s, then mask back to 631)
 . "$(dirname "$0")/lib.sh"
 /usr/bin/log stream --timeout 10s --level debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"' > $OUT/trace-sync3.txt 2>&1 &

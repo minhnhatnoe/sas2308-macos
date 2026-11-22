@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # Thermal soak (run with sudo): 2 min idle baseline, 30 min all 7 drives 1 MiB sequential 50/50 R/W over the
 # full LBA range at QD8 per drive, 5 min cool-down. Sample every 30 s -> soak.csv.
 . "${FINAL_SCRIPTS:-$(dirname "$0")}/lib_final.sh"

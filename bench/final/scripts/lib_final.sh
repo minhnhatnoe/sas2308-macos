@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Minh Nhat Nguyen
 # sourced by the final-run phase scripts (bash 3.2): run them with sudo.
 # OUT = output directory (default bench/out/final); SASBENCH, SAS2308CTL, SOCSENS, FSBENCH override the tool paths.
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
