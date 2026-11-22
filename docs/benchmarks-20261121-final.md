@@ -3,7 +3,7 @@
 Hardware as on 2026-11-20 (`docs/benchmarks-20261120.md`): Mac mini Mac18,5 (macOS 27.0 26A425), LSI
 SAS 9207-8i (SAS2308, FW 20.00.07.00) in the Thunderbolt PCIe dock, 7 x Seagate Exos X18
 ST18000NM000J (SATA 6 Gb/s, 512e, 7200 rpm). Kext `org.sas2308.driver.SAS2308HBA` 0.1.0, **UUID
-085DA9D6-7832-3034-AAB2-460054CDFFA8 = master 4ce58a7** (batches A-F), 2040 tasks
+085DA9D6-7832-3034-AAB2-460054CDFFA8 = master fae7e39** (batches A-F), 2040 tasks
 (`IOCommandPoolSize`), log level 2, debug mask 35. Loaded throughout, no reboot, no debug triggers.
 Run 2026-11-20 23:41 - 2026-11-21 01:00 EST: performance part 23:41-00:31 (50 min), thermal soak
 00:31-01:00. **The soak load was stopped by hand after 21 min 21 s of the planned 30 min**

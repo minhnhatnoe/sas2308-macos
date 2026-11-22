@@ -1,8 +1,8 @@
 # SAS2308 kext vs FreeBSD mps / CAM: deviations to fix
 
-Reviewed: sas2308-dext **master ea18896** against FreeBSD 8c9ce319fef7 (`sys/dev/mps`, `sys/cam`) and Apple's
+Reviewed: sas2308-dext **master face481** against FreeBSD 8c9ce319fef7 (`sys/dev/mps`, `sys/cam`) and Apple's
 IOSCSIParallelFamily / SAM / IOPCIFamily sources. Full reasoning, every question and its answer:
-`2026-11-decisions.md` (81 entries, D1-D81, all RESOLVED after 4 rounds). Line numbers: ours on master ea18896,
+`2026-11-decisions.md` (81 entries, D1-D81, all RESOLVED after 4 rounds). Line numbers: ours on master face481,
 FreeBSD in that tree. Out of scope: the check-condition log level and the TUR "xfer 65536/0" question (branch
 log-noise); items 2026-11-final.md already fixed.
 Raw outputs and helper scripts of the hardware tests below stayed on the test Mac and are not in this
@@ -84,97 +84,97 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | Batch | Item | Status | Commit | Host test | Hardware |
 |---|---|---|---|---|---|
 | A | D1 | done | 2665587 | core `D1` | regression OK; SSD: still to run |
-| A | D2 | done | f865cc8 | core `D2` | regression OK |
-| A | D5 | done | 5870a52 | glue `D5` | still to run (dock unplug) |
-| A | D3 | done | bb0b43e | glue `D3` | confirmed: 35 UAs (29/00) re-sent over 5 wakes, 0 F_FULLFSYNC errors |
+| A | D2 | done | 140e545 | core `D2` | regression OK |
+| A | D5 | done | 338b41a | glue `D5` | still to run (dock unplug) |
+| A | D3 | done | 941cb3e | glue `D3` | confirmed: 35 UAs (29/00) re-sent over 5 wakes, 0 F_FULLFSYNC errors |
 | A | D8 | done | 1297470 | core `D8`, `D8-swap`, `D8-giveup`; glue `D8` | 5x sleep/wake: no eject, 0 generation changes; swap: still to run |
-| A | D14 | done | 705347e | glue `D14`, `D14-cap` | still to run (disk pull) |
-| A | D20 | done | 3715d37 | glue `D20a`; core `D20b`, `D20c` | regression OK |
-| A | KEEP comments D28, D43, D46 | done | 51b85a5 | none (comments) | |
-| B | D4 | done | 4e6f7bd | glue `D4` | IO held 35 s (`sas2308ctl hold`): 4 family timeouts, 4 re-arms, 0 IO timeouts, 0 TMs, 0 errors; a lost command times out once |
-| B | D15 | done | ae0e70b | glue `D15` | regression OK |
-| B | D44 | done | dcbfeef | none (IOKit class) | regression OK |
-| B | D10 | done | 6101d7e | glue `D10`; mock OS-TM scenarios on `XPT_RESET_DEV` | recovery path on hardware (lost command: abort, LUN reset, target reset, reinit, IO re-sent, 0 errors); family TM requests: still to run (no unattended trigger) |
-| B | D11 | done | bcafc51 | core `D11` | still to run (dock unplug: test 2 below) |
-| B | D12 | done | c75c9b2 | core `D12` | 5x sleep/wake under IO (7 resumes incl. 2 dark wakes): all by the READY path, 0 diag resets, 0 re-IDENTIFYs; the 29/00 UNIT ATTENTION still came on every wake (7 per resume, all re-sent by D3) |
-| B | D13 | done | a857195 | none (IOKit class) | forced diag reset: MSI control 0x81, address 0xFFFFF000, data 0x64, command 0x406 identical before/after; 1 restore, 0 failures; IO at full rate after |
-| B | D19 | done | 784c280 | core `D19` | forced diag resets: restore called each time, IO fine |
-| B | D18 | done | d916e4e | core `D18` | regression OK |
-| B | D51 | done | d75366f | core `D51` | `kmutil unload` under 64K QD16 reads on all 7 raw drives: unloaded in ~2 s, no panic, no outstanding-IO or fault line, the reads end with errors; reload: 7 drives |
-| B | D43 | done | 1414bbc | glue `D43` | `Lost completion kicks` 0 through all batch B tests |
-| B | debug triggers (`sas2308ctl reinit/hold/lose`) | done | 3fc7ac5 | glue `debug` | used below |
-| C | D37 | done | 3f35ef8 | core `D37` | regression OK |
-| C | D36 | done | 99afc6c | glue `D36` | regression OK |
-| C | D27 | done | a8a8407 | core `D27` (did not build before: new API) | attach log `IOCCapabilities: ...<...>` |
-| C | D16 | done | 24ec6d2 | core `D16` | forced reinits under IO: OK (below) |
-| C | D35, D67 | done | 7080f64 | core `D35` (3.1 M held-ccb checks before, 2501 after), `D67`; thin CAM test | forced reinit + lost command under IO: 0 errors |
-| C | D17 | done | afe2fc5 | core `D17` | lost command: abort, LUN and target reset, 0 errors |
+| A | D14 | done | 53929ad | glue `D14`, `D14-cap` | still to run (disk pull) |
+| A | D20 | done | 92f78e6 | glue `D20a`; core `D20b`, `D20c` | regression OK |
+| A | KEEP comments D28, D43, D46 | done | 0d0de80 | none (comments) | |
+| B | D4 | done | bac7611 | glue `D4` | IO held 35 s (`sas2308ctl hold`): 4 family timeouts, 4 re-arms, 0 IO timeouts, 0 TMs, 0 errors; a lost command times out once |
+| B | D15 | done | 7ed6b6f | glue `D15` | regression OK |
+| B | D44 | done | 2a6e614 | none (IOKit class) | regression OK |
+| B | D10 | done | 6487276 | glue `D10`; mock OS-TM scenarios on `XPT_RESET_DEV` | recovery path on hardware (lost command: abort, LUN reset, target reset, reinit, IO re-sent, 0 errors); family TM requests: still to run (no unattended trigger) |
+| B | D11 | done | dba70ef | core `D11` | still to run (dock unplug: test 2 below) |
+| B | D12 | done | 9afc9b8 | core `D12` | 5x sleep/wake under IO (7 resumes incl. 2 dark wakes): all by the READY path, 0 diag resets, 0 re-IDENTIFYs; the 29/00 UNIT ATTENTION still came on every wake (7 per resume, all re-sent by D3) |
+| B | D13 | done | bfc0817 | none (IOKit class) | forced diag reset: MSI control 0x81, address 0xFFFFF000, data 0x64, command 0x406 identical before/after; 1 restore, 0 failures; IO at full rate after |
+| B | D19 | done | e19bd24 | core `D19` | forced diag resets: restore called each time, IO fine |
+| B | D18 | done | c1df29b | core `D18` | regression OK |
+| B | D51 | done | 755b86f | core `D51` | `kmutil unload` under 64K QD16 reads on all 7 raw drives: unloaded in ~2 s, no panic, no outstanding-IO or fault line, the reads end with errors; reload: 7 drives |
+| B | D43 | done | db76b62 | glue `D43` | `Lost completion kicks` 0 through all batch B tests |
+| B | debug triggers (`sas2308ctl reinit/hold/lose`) | done | 727fd91 | glue `debug` | used below |
+| C | D37 | done | aa92360 | core `D37` | regression OK |
+| C | D36 | done | bd401b5 | glue `D36` | regression OK |
+| C | D27 | done | bfd46e3 | core `D27` (did not build before: new API) | attach log `IOCCapabilities: ...<...>` |
+| C | D16 | done | 71eac38 | core `D16` | forced reinits under IO: OK (below) |
+| C | D35, D67 | done | 7522bbd | core `D35` (3.1 M held-ccb checks before, 2501 after), `D67`; thin CAM test | forced reinit + lost command under IO: 0 errors |
+| C | D17 | done | 3fb6d0f | core `D17` | lost command: abort, LUN and target reset, 0 errors |
 | C | D40 | done | 8914685 | core `D40` | attach OK (one HBA) |
-| C | D42 | done | 4684bb2 | core `D42` | regression OK |
-| C | D41 | done | b185c8a | core `D41` | regression OK |
-| C | D39 | done | 23e5890 | core `D39` (did not build before: new API) | reinits under IO, two reboots and the D34 shutdown on the queue threads: OK |
-| C | D33 | done | adb3ee7 | core `D33` | `mps.max_io_pages` from the personality: 257 segments, 2040 commands |
-| C | D32 | done | 14ac253 | core `D32` | max transfer 1 MiB, task data 9.06 MiB (unchanged) |
-| C | D21 | done | 7dc658f | none new (location only, same value; tests follow the move) | "Core OS commands" 2040 |
-| C | D54 | done | 2cdc5a9 | core `D54` | lost command recovery requested its reinit through the wrapper |
-| C | D78 | done | 08c020f | core `D78`; whole suite with QUEUE_MACRO_DEBUG_TRASH/ASSERTIONS | n/a (host only) |
-| C | D6 | done | b8e6b94 | core `D6` (2 page reads during a stuck IDENTIFY; 1000 reads -> 0 mappings) | see "Batch C hardware results"; M5c retries / re-add slots kept: still to run (test 8) |
-| C | KEEP comments D38, D65, D69, D17 | done | 0e8927d, 7080f64, afe2fc5 | none (comments) | |
-| D | D52 | done | 9620c91 | `test/plist_test.sh` | loads on 0x0087 (the other two ids: no card to test) |
+| C | D42 | done | 6d49b8e | core `D42` | regression OK |
+| C | D41 | done | e32d2d5 | core `D41` | regression OK |
+| C | D39 | done | e90d545 | core `D39` (did not build before: new API) | reinits under IO, two reboots and the D34 shutdown on the queue threads: OK |
+| C | D33 | done | b623631 | core `D33` | `mps.max_io_pages` from the personality: 257 segments, 2040 commands |
+| C | D32 | done | 61eb256 | core `D32` | max transfer 1 MiB, task data 9.06 MiB (unchanged) |
+| C | D21 | done | b79cd9b | none new (location only, same value; tests follow the move) | "Core OS commands" 2040 |
+| C | D54 | done | abd9027 | core `D54` | lost command recovery requested its reinit through the wrapper |
+| C | D78 | done | 9a17797 | core `D78`; whole suite with QUEUE_MACRO_DEBUG_TRASH/ASSERTIONS | n/a (host only) |
+| C | D6 | done | 026b2a4 | core `D6` (2 page reads during a stuck IDENTIFY; 1000 reads -> 0 mappings) | see "Batch C hardware results"; M5c retries / re-add slots kept: still to run (test 8) |
+| C | KEEP comments D38, D65, D69, D17 | done | d38aa32, 7522bbd, 3fb6d0f | none (comments) | |
+| D | D52 | done | f0d36ad | `test/plist_test.sh` | loads on 0x0087 (the other two ids: no card to test) |
 | D | D48 | done | 5340603 | none (IOKit class) | registry IOMinimumSegmentAlignmentByteCount = 1 |
-| D | D30 | done | fe1ea5b | core `D30` | regression OK; faults would show in mps_periodic (none) |
-| D | D31 | done | a0fbc9b | core temperature `D31` | temperature read every 30 s, 0 timeouts / failures; IOC 61 C |
-| D | D29 (counter) | done | dd50951 | core `D29` | **"Event acks sent" 0 over 4 boots (25 events each), recovery tests included: D29 decided for boot; hot-plug: still to run (test 10)** |
-| D | D55 (counter) | done | e322813 | core `D55` | "KASSERT hits" 0 through every batch D test |
-| D | D46 | done | 1f30ae6 | glue `D46` | regression OK (SAM sends SIMPLE) |
-| D | D45 | done | 35d0029 | glue `D45` (did not build before) | random 4K QD32 1767 / 1762 / 1763 IOPS vs 1765 before (batch C): unchanged |
-| D | D47 | done | 01f164a | glue `D47` (zero-length part failed before; the rest did not build) | "Tasks waiting for a mapping" 0 (no IOVA shortage seen) |
-| D | D7 | done | b121c7f | core `D7` (failed at the 65th device before), glue `D7`, targets 1024 ids | MaxTargets 1024 (+ 0 volumes): initiator id 1024, the 7 drives keep ids 0-6 |
-| D | D9 | done | 987f693 | glue `D9` (failed before) | no SATA SSD attached: still to run (test 9) |
-| D | D73, D74 | done | bc5bfea | none (IOKit) | every DMA allocation and config page map succeeded (14 page 0 reads, temperature, 0 failures) |
-| D | PCIe Link property (feature request) | done | 6d5b57a | `kext_pcie_test` | **8.0 GT/s (Gen3) x4** of the card's Gen3 x8; MPS **128** B (supports 4096), MRRS 512 B; same after forced reinits |
-| D | D75 (switch for the A/B, then the default) | done | fb15323, ed91e3b | none (IOKit) | A/B below: posted writes faster on the host-bound load, 0 errors -> default (ed91e3b) |
-| D | KEEP comment D46 (no periodic ORDERED) | done | 51b85a5, 1f30ae6 | none (comment) | |
-| E | D22 | done | 9e2b9ed | core `D22` (default mask; no event dumps / Doorbell lines at attach and reinit) | see "Batch E hardware results" |
-| E | D24 | done | aa63b9c | core `D24` (FAULT type, one precedence, surprise removal ERROR) | see "Batch E hardware results" |
-| E | D23 | done | b98a54d | glue `D23` (core-refused IO: one line; xinfo race; no async lines) | see "Batch E hardware results" |
-| E | D25 | done | 079715a | glue `D25` (did not build before: new API) | see "Batch E hardware results" |
-| E | D26 | done | e5733f1 | core `D26` (handles 0x09/0x11 shared a window before) | see "Batch E hardware results" |
-| E | D49(b) + KEEP comment D49(a) | done | 89b4e62 | core `D49` (MUR ignored at sleep: counted, said) | see "Batch E hardware results" |
-| F | F1 (halt timeout cap, new) | done | 301d0d8 | glue `F`, `F-new`, `F-tm`, `F-pending-tm`, `F-reinit` (all failed before) | see "Batch F hardware results": lost read capped and failed 10.15 s after the halt began, stop instead of reinit, 0 diag resets; mounted restarts clean, no panic, volume OK |
-| G1 | D29 (revert: no EVENT_ACK) | done | ee85cb9 | core/port: no ack on discovery, hot-add, reinit, removal | see "Batch G1 hardware results" |
-| G1 | D22 (revert: default info,fault; stand-ins info,error) | done | cc9f637 | core `D22`, level presets | see "Batch G1 hardware results" |
-| G1 | D15a (revert: 60 s Read/Write Time Out) | done | de1a7b2 | `plist_test.sh` | see "Batch G1 hardware results" |
-| G1 | D55b (revert: one reinit attempt) | done | 512fa5b | mock reinit failure / nested fault, `D19`, port `TestReinitFailure` | see "Batch G1 hardware results" |
-| G1 | D58 (reserve counted from FreeBSD's reqs: 2039) | done | 432549f | glue: max tasks == SIM openings − 8 | see "Batch G1 hardware results" |
-| G1 | L12 (bad free: KASSERT, leak) | done | 9d2fe75 | core `L12` | KASSERT hits 0 |
-| G1 | L13 (realloc targets: allocate first) | done | 650322a | core `L13` | none (needs a firmware change across a reset) |
-| G1 | L4 (devq freeze fallback entry) | done | 4c304d9 | core `L4` | none (allocation failure) |
-| G1 | L11 (callout handler marker + KASSERTs) | done | eac1298 | core `L11` | KASSERT hits 0 |
-| G1 | L3 (held batch visible to cancel/flush) | done | 39ead7b | core `L3` | none (latent) |
-| G1 | L17 (INTx fallback = mps_intr) | done | 67eb2d7 | glue `L17` | none (MSI only behind Thunderbolt) |
-| G1 | L7 (glue lock until free(); snapshots under it) | done | 0d7fc95 | glue `L7` | see "Batch G1 hardware results" |
-| G1 | L10 (hotplug on its own taskqueue thread) | done | ddddb5a | glue `H1`, `L10` | see "Batch G1 hardware results"; hot-plug: still to run (test 13) |
-| G1 | D43 (TM pump only in the gate; timer detects only) | done | bca741f | glue `D43` | see "Batch G1 hardware results"; hot-plug: still to run (test 13) |
-| G2 | D46 (da's periodic ORDERED tag; `sas2308_send_ordered`, default 1) | done | c760612 | glue `D46-otag` | A/B: no cost, no effect on the H pattern; kept on (see "Batch G2 hardware results") |
-| G2 | D21 (one normal frame kept, not 8: 2046 OS tasks) | done | cbdc3eb | glue `D21` (FreeBSD's sizing loses the hot-add under a full pool; 1 or 8 frames do not) | regression; hot-add under a full pool: still to run (test 15) |
-| G2 | D15b (untimed START STOP UNIT 60 s) | done | ca24b59 | glue `D15` | spin-up measured 10.5-11.7 s |
+| D | D30 | done | e1e8d75 | core `D30` | regression OK; faults would show in mps_periodic (none) |
+| D | D31 | done | f495531 | core temperature `D31` | temperature read every 30 s, 0 timeouts / failures; IOC 61 C |
+| D | D29 (counter) | done | aeaf312 | core `D29` | **"Event acks sent" 0 over 4 boots (25 events each), recovery tests included: D29 decided for boot; hot-plug: still to run (test 10)** |
+| D | D55 (counter) | done | 244a9f8 | core `D55` | "KASSERT hits" 0 through every batch D test |
+| D | D46 | done | a805d01 | glue `D46` | regression OK (SAM sends SIMPLE) |
+| D | D45 | done | 8438ffc | glue `D45` (did not build before) | random 4K QD32 1767 / 1762 / 1763 IOPS vs 1765 before (batch C): unchanged |
+| D | D47 | done | 1411590 | glue `D47` (zero-length part failed before; the rest did not build) | "Tasks waiting for a mapping" 0 (no IOVA shortage seen) |
+| D | D7 | done | d97e447 | core `D7` (failed at the 65th device before), glue `D7`, targets 1024 ids | MaxTargets 1024 (+ 0 volumes): initiator id 1024, the 7 drives keep ids 0-6 |
+| D | D9 | done | b38a4b2 | glue `D9` (failed before) | no SATA SSD attached: still to run (test 9) |
+| D | D73, D74 | done | 29faedd | none (IOKit) | every DMA allocation and config page map succeeded (14 page 0 reads, temperature, 0 failures) |
+| D | PCIe Link property (feature request) | done | 8baa0ed | `kext_pcie_test` | **8.0 GT/s (Gen3) x4** of the card's Gen3 x8; MPS **128** B (supports 4096), MRRS 512 B; same after forced reinits |
+| D | D75 (switch for the A/B, then the default) | done | 763ba4e, 7f81f11 | none (IOKit) | A/B below: posted writes faster on the host-bound load, 0 errors -> default (7f81f11) |
+| D | KEEP comment D46 (no periodic ORDERED) | done | 0d0de80, a805d01 | none (comment) | |
+| E | D22 | done | c8c1b0d | core `D22` (default mask; no event dumps / Doorbell lines at attach and reinit) | see "Batch E hardware results" |
+| E | D24 | done | 4292e06 | core `D24` (FAULT type, one precedence, surprise removal ERROR) | see "Batch E hardware results" |
+| E | D23 | done | 4a570e9 | glue `D23` (core-refused IO: one line; xinfo race; no async lines) | see "Batch E hardware results" |
+| E | D25 | done | dbaaa06 | glue `D25` (did not build before: new API) | see "Batch E hardware results" |
+| E | D26 | done | 7e13d59 | core `D26` (handles 0x09/0x11 shared a window before) | see "Batch E hardware results" |
+| E | D49(b) + KEEP comment D49(a) | done | e074e36 | core `D49` (MUR ignored at sleep: counted, said) | see "Batch E hardware results" |
+| F | F1 (halt timeout cap, new) | done | dc71ed2 | glue `F`, `F-new`, `F-tm`, `F-pending-tm`, `F-reinit` (all failed before) | see "Batch F hardware results": lost read capped and failed 10.15 s after the halt began, stop instead of reinit, 0 diag resets; mounted restarts clean, no panic, volume OK |
+| G1 | D29 (revert: no EVENT_ACK) | done | d4702dc | core/port: no ack on discovery, hot-add, reinit, removal | see "Batch G1 hardware results" |
+| G1 | D22 (revert: default info,fault; stand-ins info,error) | done | f549728 | core `D22`, level presets | see "Batch G1 hardware results" |
+| G1 | D15a (revert: 60 s Read/Write Time Out) | done | 367b01b | `plist_test.sh` | see "Batch G1 hardware results" |
+| G1 | D55b (revert: one reinit attempt) | done | adf8aae | mock reinit failure / nested fault, `D19`, port `TestReinitFailure` | see "Batch G1 hardware results" |
+| G1 | D58 (reserve counted from FreeBSD's reqs: 2039) | done | 2e4b0a6 | glue: max tasks == SIM openings − 8 | see "Batch G1 hardware results" |
+| G1 | L12 (bad free: KASSERT, leak) | done | 9b28320 | core `L12` | KASSERT hits 0 |
+| G1 | L13 (realloc targets: allocate first) | done | 2a90030 | core `L13` | none (needs a firmware change across a reset) |
+| G1 | L4 (devq freeze fallback entry) | done | 9bc0d1f | core `L4` | none (allocation failure) |
+| G1 | L11 (callout handler marker + KASSERTs) | done | 090432e | core `L11` | KASSERT hits 0 |
+| G1 | L3 (held batch visible to cancel/flush) | done | 51cfe32 | core `L3` | none (latent) |
+| G1 | L17 (INTx fallback = mps_intr) | done | 8e70362 | glue `L17` | none (MSI only behind Thunderbolt) |
+| G1 | L7 (glue lock until free(); snapshots under it) | done | 8e22f23 | glue `L7` | see "Batch G1 hardware results" |
+| G1 | L10 (hotplug on its own taskqueue thread) | done | cb41810 | glue `H1`, `L10` | see "Batch G1 hardware results"; hot-plug: still to run (test 13) |
+| G1 | D43 (TM pump only in the gate; timer detects only) | done | ae51552 | glue `D43` | see "Batch G1 hardware results"; hot-plug: still to run (test 13) |
+| G2 | D46 (da's periodic ORDERED tag; `sas2308_send_ordered`, default 1) | done | 7771066 | glue `D46-otag` | A/B: no cost, no effect on the H pattern; kept on (see "Batch G2 hardware results") |
+| G2 | D21 (one normal frame kept, not 8: 2046 OS tasks) | done | ec25323 | glue `D21` (FreeBSD's sizing loses the hot-add under a full pool; 1 or 8 frames do not) | regression; hot-add under a full pool: still to run (test 15) |
+| G2 | D15b (untimed START STOP UNIT 60 s) | done | ddf767f | glue `D15` | spin-up measured 10.5-11.7 s |
 | G2 | D15b (halt cap 15 s, not 10 s) | done | 3679398 | glue `F`, `F-new`, `F-spinup` | restarts with spun-down disks 17-18 s on 21A171AA, no panic |
-| G2 | wake log ("IOC in unexpected reset state" INIT on resume) | done | acc56e5 | mock `G2-wake` | see "Batch G2 hardware results" |
-| G2 | D50 (no MUR at shutdown; `sas2308_shutdown_stop`, default 0) | done | 3a2a62b | mock `D50` | 7 restarts without the MUR: next attach READY, no DART line; power off: still to run (test 14) |
-| G2 | IO timer (core callout; `sas2308_family_timer`, default 0) | done | 8df1186 | glue `C1`, `C1-family`, `C1-backstop`, `D4`, `D43` | F1 4K point +7.2 % (7 drives QD2), +14.5 % (QD1) |
-| G2 | D65 (no per-device cap, KEEP-WITH-EVIDENCE) | done | bee8d0b | none (comment) | QD1 drive unchanged next to QD 1024 / 2000 |
-| G2 | build fixes (Mac build) | done | ee94a31 | n/a | n/a |
-| vendor | FreeBSD release/14.5.0 import (2 upstream commits, 3 lines, no conflicts, no new deviation) | done | 9c0a5f9, 72654ac | all host tests | smoke test on 830E83B5 (see "FreeBSD 14.5.0 import hardware results") |
-| S1 | S1 (no idle spin-down; `sas2308_idle_spindown`, default 0: SAM's idle stop completed here) | done | f1cc568 | glue `S1-spindown` | tunable 0: first read 0.23-0.30 s after SAM's idle stop (5 stops completed here); tunable 1: 10.9-11.5 s (see "Batch S1 hardware results") |
-| S2 | mode 2: SAM's idle stop sent only to a disk not in use (IORegistry walk, IOService::isOpen); the default only on the S2 branch, an option since EJ | done (option) | f8e8901 | glue `S2-in-use` | mode 2 not run on hardware (EJ chosen instead) |
-| S2 | `sas2308_spindown_grace` (900 s after attach, mode 2 completes the idle stop here) | done (option) | d8c495e | glue `S2-grace` | not run (mode 2 only) |
-| S2 | `sas2308ctl spindown <diskN\|all>`: was camcontrol stop through the shutdown-SSU path (d055c1a), then ATA STANDBY IMMEDIATE (3c60faa); both left the disk answering NOT READY 04/02 (SAM sends no START): now macOS's eject (DADiskEject), the kext passes its stop | done | d055c1a, 3c60faa, 5a9e440 | none (user tool; the kext part is EJ's) | spin-up 7.52-7.69 s on the next read, Start_Stop_Count + 1, mounts (see "Batch EJ hardware results") |
-| EJ | default `sas2308_idle_spindown` 0 again; an eject's idle-type stop sent in modes 0 and 2 (SAM still Active and no media reported / driver open for DKIOCEJECT), "Stops passed (ejected)" | done | 5d805aa, 515295d | glue `EJ-eject` | eject: stop passed, first read 7.5-7.6 s, Start_Stop_Count + 1; idle: 8 stops at SAM state 3 completed here, first reads 0.02-0.24 s (see "Batch EJ hardware results") |
+| G2 | wake log ("IOC in unexpected reset state" INIT on resume) | done | c41df5c | mock `G2-wake` | see "Batch G2 hardware results" |
+| G2 | D50 (no MUR at shutdown; `sas2308_shutdown_stop`, default 0) | done | 969d69f | mock `D50` | 7 restarts without the MUR: next attach READY, no DART line; power off: still to run (test 14) |
+| G2 | IO timer (core callout; `sas2308_family_timer`, default 0) | done | fecb010 | glue `C1`, `C1-family`, `C1-backstop`, `D4`, `D43` | F1 4K point +7.2 % (7 drives QD2), +14.5 % (QD1) |
+| G2 | D65 (no per-device cap, KEEP-WITH-EVIDENCE) | done | bb1353b | none (comment) | QD1 drive unchanged next to QD 1024 / 2000 |
+| G2 | build fixes (Mac build) | done | f73415b | n/a | n/a |
+| vendor | FreeBSD release/14.5.0 import (2 upstream commits, 3 lines, no conflicts, no new deviation) | done | 9c0a5f9, 43e8c2f | all host tests | smoke test on 830E83B5 (see "FreeBSD 14.5.0 import hardware results") |
+| S1 | S1 (no idle spin-down; `sas2308_idle_spindown`, default 0: SAM's idle stop completed here) | done | c8bfb09 | glue `S1-spindown` | tunable 0: first read 0.23-0.30 s after SAM's idle stop (5 stops completed here); tunable 1: 10.9-11.5 s (see "Batch S1 hardware results") |
+| S2 | mode 2: SAM's idle stop sent only to a disk not in use (IORegistry walk, IOService::isOpen); the default only on the S2 branch, an option since EJ | done (option) | 4433015 | glue `S2-in-use` | mode 2 not run on hardware (EJ chosen instead) |
+| S2 | `sas2308_spindown_grace` (900 s after attach, mode 2 completes the idle stop here) | done (option) | e70a86a | glue `S2-grace` | not run (mode 2 only) |
+| S2 | `sas2308ctl spindown <diskN\|all>`: was camcontrol stop through the shutdown-SSU path (569536b), then ATA STANDBY IMMEDIATE (03fedd9); both left the disk answering NOT READY 04/02 (SAM sends no START): now macOS's eject (DADiskEject), the kext passes its stop | done | 569536b, 03fedd9, 8be2f50 | none (user tool; the kext part is EJ's) | spin-up 7.52-7.69 s on the next read, Start_Stop_Count + 1, mounts (see "Batch EJ hardware results") |
+| EJ | default `sas2308_idle_spindown` 0 again; an eject's idle-type stop sent in modes 0 and 2 (SAM still Active and no media reported / driver open for DKIOCEJECT), "Stops passed (ejected)" | done | d52d7ca, 0ec0773 | glue `EJ-eject` | eject: stop passed, first read 7.5-7.6 s, Start_Stop_Count + 1; idle: 8 stops at SAM state 3 completed here, first reads 0.02-0.24 s (see "Batch EJ hardware results") |
 
 ### Batch A hardware results
 
-Build **DDA7E6AD** (fix-batch-A bb3a24c), installed 2026-11-20 18:23, 7 drives, 0 config page failures.
+Build **DDA7E6AD** (fix-batch-A 0fe2404), installed 2026-11-20 18:23, 7 drives, 0 config page failures.
 
 - **D3 + D8, 5x sleep/wake under IO** (`pmset sleepnow` + `pmset schedule wake` 60 s later):
   `fsyncw` writing 1 MiB + F_FULLFSYNC in a loop on both mounted JHFS+ test volumes, `sasbench`
@@ -194,7 +194,7 @@ Build **DDA7E6AD** (fix-batch-A bb3a24c), installed 2026-11-20 18:23, 7 drives, 
 
 ### Batch B hardware results
 
-Build **9E6663B6** (fix-batch-B 3fc7ac5 code), installed 2026-11-20 19:17, 7 drives, 0 config page
+Build **9E6663B6** (fix-batch-B 727fd91 code), installed 2026-11-20 19:17, 7 drives, 0 config page
 failures, IOC 57 C. Debug triggers: `sas2308ctl reinit | hold <ms> | lose <n>`.
 
 - **D12, 5x sleep/wake under IO** (batch A's harness: F_FULLFSYNC writers on the two
@@ -226,7 +226,7 @@ failures, IOC 57 C. Debug triggers: `sas2308ctl reinit | hold <ms> | lose <n>`.
 
 ### Batch C hardware results
 
-Build **6DD7CE42** (fix-batch-C 0e8927d), installed 2026-11-20 20:33, 7 drives, 0 config page
+Build **6DD7CE42** (fix-batch-C d38aa32), installed 2026-11-20 20:33, 7 drives, 0 config page
 failures, IOC 59 C. Rollback: 9E6663B6 (batch B build).
 
 - **D6 on hardware**: discovery read the 14 SAS Device Page 0s (7 drives + parents) and every
@@ -262,7 +262,7 @@ failures, IOC 59 C. Rollback: 9E6663B6 (batch B build).
 
 ### Batch D hardware results
 
-Builds **EBB85578** (fix-batch-D fb15323, BAR1 non-posted by default) and **509E19D3** (ed91e3b,
+Builds **EBB85578** (fix-batch-D 763ba4e, BAR1 non-posted by default) and **509E19D3** (7f81f11,
 posted writes by default; the batch's final build), installed 2026-11-20 21:27 and 21:55, 7 drives,
 0 config page failures, IOC 61 C. Rollback: 6DD7CE42 (batch C build, master).
 `tools/diff-vs-freebsd.sh -s`: 1281 added / 3595 removed lines (batch C: 1198 / 3836; the
@@ -304,9 +304,9 @@ D31's timeout handler and the D7 table hooks are new XNU lines).
 
 ### Batch E hardware results
 
-Build **6542C39F** (fix-batch-E 89b4e62), installed 2026-11-20 22:29, 7 drives, 0 config page
+Build **6542C39F** (fix-batch-E e074e36), installed 2026-11-20 22:29, 7 drives, 0 config page
 failures, IOC 54 C; `SAS2308DebugMask` 0x23 = info,fault,error. Rollback:
-509E19D3 (batch D build, master a71e38a). `tools/diff-vs-freebsd.sh`: common
+509E19D3 (batch D build, master 7badc2b). `tools/diff-vs-freebsd.sh`: common
 7383 unchanged, removed 3595 unchanged, added 1281 -> 1293 (D49's said-and-counted sleep stop in
 the XNU-only `mps_xnu_suspend`, D26's member in `struct mpssas_target`; mps.c's default mask line is
 FreeBSD's again plus `MPS_ERROR`). Persisted lines counted with `log show --info --debug --style
@@ -353,7 +353,7 @@ ndjson` (a small counting script).
 
 Build **085DA9D6** (fix-batch-F), installed 2026-11-20 23:19, 7 drives, 0 config page failures,
 IOC 53-59 C, no "no priority power interest" error line (the halt notifier registered). Rollback:
-6542C39F (batch E build, master ba4a02f). `tools/diff-vs-freebsd.sh`: common
+6542C39F (batch E build, master 4064e3b). `tools/diff-vs-freebsd.sh`: common
 7383 -> 7380 (the three TM `callout_reset` lines and the IO timeout line carry the cap), added
 1293 -> 1360 (`mpssas_xnu_halt_caps` in mps_sas.c, the two reinit hooks in mps.c; the halt
 functions themselves are in the XNU-only mps_xnu.c).
@@ -405,7 +405,7 @@ functions themselves are in the XNU-only mps_xnu.c).
 
 ### Batch G1 hardware results
 
-Build **430A4B8A-5B0C-341E-8CBF-F2388BF576E4** from bca741f (no build fixes needed; 5626d4e after it is
+Build **430A4B8A-5B0C-341E-8CBF-F2388BF576E4** from ae51552 (no build fixes needed; 31f2fce after it is
 docs only).
 - **Default log:** mask 0x3 (info,fault), level info. 5 min idle: **0 lines**.
 - **Forced recovery under IO** (random reads on all 7): `lose 1`: the family timeout fired at
@@ -432,7 +432,7 @@ docs only).
 ### Batch G2 hardware results
 
 Before the install (build 430A4B8A, the G1 code), on build **4746DE60-BFFE-3991-B29A-822AD3810EBE**
-(ee94a31) and on the final build **21A171AA-980F-3D71-9714-E9503E8B0A25** (3679398, the 15 s halt
+(f73415b) and on the final build **21A171AA-980F-3D71-9714-E9503E8B0A25** (3679398, the 15 s halt
 cap); rollback copies 430A4B8A, 4746DE60.
 The 4K point's profile data is under `bench/profile/`.
 - **D65, one deep queue next to a QD1 drive** (430A4B8A, random 4K read, full LBA range): drive B at
@@ -505,7 +505,7 @@ The 4K point's profile data is under `bench/profile/`.
 
 ### FreeBSD 14.5.0 import hardware results
 
-Build **830E83B5-D729-3439-B6D9-592E227B457C** (branch import-fbsd-14.5, merge 72654ac); rollback
+Build **830E83B5-D729-3439-B6D9-592E227B457C** (branch import-fbsd-14.5, merge 43e8c2f); rollback
 copy 21A171AA. The G1 test scripts were reused.
 Upstream changed only a dprint string and loop-header whitespace, so this is a smoke test, not an
 A/B.
@@ -531,7 +531,7 @@ Rationale: drives that never spin down, with a tunable to change that; FreeBSD's
 behaviour and the deviation is macOS's SAM idle timer being cut off at the HBA. The HBA sees no
 mounts: it applies to every drive behind it. Design: `design.md` "S1".
 
-Build **95E0D6C9-AC58-399D-A2CB-370687C33590** (branch spindown-tunable, f1cc568), installed with
+Build **95E0D6C9-AC58-399D-A2CB-370687C33590** (branch spindown-tunable, c8bfb09), installed with
 `mac/install.sh` (first real use; sudo), rollback copy
 830E83B5. Two drives were removed before this batch (drive4, drive5): 5 drives
 (drive1, drive2, drive3, drive6, drive7). Test script (`spin.sh LABEL KNOB
@@ -607,7 +607,7 @@ each. 8 drives (ST18000NM000J, exFAT volumes /Volumes/<serial>), mode 0.
   0.76 s after the eject began (the eject returned at 0.26 s), then 1.
 - 2CCCBE79: "Power Off" was set on all 8 SAM devices, yet the eject took 0.27 s and the stop was
   "media present" (the driver already closed): completed here, the drive kept spinning (Start_Stop
-  442 -> 442, first read 0.021 s). Hence 515295d.
+  442 -> 442, first read 0.021 s). Hence 0ec0773.
 - (b) eject: drive7 and drive2 on 5EFAFE09, drive7 twice on 8A71718E: "Stops passed
   (ejected)" + 1 each, log `idle-type stop, SAM power state 4, no media reported (doEjectMedia)`
   and `START STOP UNIT (stop) sent: media ejected` (CDB `1b 00 00 00 00 00`); first 4K read 7.58 /

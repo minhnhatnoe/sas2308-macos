@@ -1158,7 +1158,7 @@ Work-loop gate held: not checked, completed here.
 **Not used: SAM's "Power Off" property.** With it, EjectTheMedium of the open sources sends the stop
 itself from the ejecting thread (inside DKIOCEJECT's open) and pauses 500 ms. Build 2CCCBE79 set it
 on all 8 disks: the eject still took 0.27 s and its stop still came from PM after the driver was
-closed, so macOS 27's SAM (565.0.1) does not act on it; dropped (515295d).
+closed, so macOS 27's SAM (565.0.1) does not act on it; dropped (0ec0773).
 
 | SAM's idle-type stop, system awake | mode 0 (default) | 1 | 2 |
 |---|---|---|---|
@@ -1739,7 +1739,7 @@ gave 12 conflict hunks in 6 files, half of them #include blocks. The review of t
 First real update, 2026-11-21: release/14.3.0 -> release/14.5.0 (4099b5c82880, tag
 `vendor/freebsd-mps/14.5.0`). Upstream changed 3 lines in two commits (cff07c11c, a typo in an
 `mps.c` dprint; b149250d3, style(9) in two `mps_sas.c` loop headers), nothing in `mpi/` or in the
-unported files. The merge (72654ac) had no conflicts and needed no decisions beyond keeping
+unported files. The merge (43e8c2f) had no conflicts and needed no decisions beyond keeping
 upstream; `tools/diff-vs-freebsd.sh -s` against the new base: 10978 upstream lines, 7393 common,
 1368 added, 3585 removed, 299 XNU lines, no new deviation. Kext **830E83B5** passed the smoke
 test: 7 drives, SMART PASSED on all 7, 0 default log lines in 5 min idle, a forced recovery under

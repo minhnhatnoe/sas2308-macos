@@ -1,8 +1,8 @@
 # SAS2308 port: decisions Q&A (every deviation from FreeBSD mps / CAM)
 
-Code reviewed: sas2308-dext **master ea18896** (read-only; branch log-noise ignored). References: FreeBSD 8c9ce319fef7
+Code reviewed: sas2308-dext **master face481** (read-only; branch log-noise ignored). References: FreeBSD 8c9ce319fef7
 `sys/dev/mps` (ref/freebsd-src), FreeBSD CAM from the same commit (`cam_xpt.c`, `cam_periph.c`, `scsi_da.c`, ...),
-Apple IOSCSIParallelFamily / SAM / IOPCIFamily sources (local copy, `src/`). Line numbers: ours as on master ea18896,
+Apple IOSCSIParallelFamily / SAM / IOPCIFamily sources (local copy, `src/`). Line numbers: ours as on master face481,
 FreeBSD as in that tree.
 
 **Skipped on purpose:** the check-condition completion log level and the "xfer 65536/0" TUR question (both on branch
@@ -58,7 +58,7 @@ _(scan id A2)_
 - Lead check: verified. FreeBSD `mps_sas_lsi.c:774-805` loop is absent after `mpssas_rescan_target` in ours (`core/mps_sas_lsi.c:509-515`); `mpssas_ata_id_complete` (`:718-728`) is the only release of the lent buffer for a timed-out IDENTIFY.
 - Status: RESOLVED (CHANGE)
 
-Answer: agree: CHANGE (bug, confirmed). The loop was dropped in the port (f074472, the mechanical port) with no recorded reason; `mpssas_ata_id_complete` (`mps_sas_lsi.c:718-728`) is the only release of the lent buffer for a timed-out IDENTIFY, and nothing makes the IOC return it.
+Answer: agree: CHANGE (bug, confirmed). The loop was dropped in the port (67dbd26, the mechanical port) with no recorded reason; `mpssas_ata_id_complete` (`mps_sas_lsi.c:718-728`) is the only release of the lent buffer for a timed-out IDENTIFY, and nothing makes the IOC return it.
 Fix: restore FreeBSD `mps_sas_lsi.c:774-805` verbatim after `mpssas_rescan_target` (our `mpssas_alloc_tm`/`mpssas_send_reset` exist with the same contracts). With D6 fixed the buffer is per-command again, so a stuck IDENTIFY only costs its own cm. Host test: mock IOC that never answers one SATA PASSTHROUGH -> after the add a TARGET_RESET goes out, the late completion frees the buffer, a following page-0 read and a second hot-add succeed.
 
 Check: Accepted: verbatim restore of FreeBSD `mps_sas_lsi.c:774-805`; the host test (stuck PASSTHROUGH -> TARGET_RESET -> late completion frees the buffer -> next add works) pins it.
@@ -536,9 +536,9 @@ _(scan id A16)_
 Answer: KEEP the poll (the temperature readout is a requested feature, for trends), CHANGE its failure mode. Fix: this read uses a short timeout (5 s) with its own timeout handler that marks the read failed and counts it (like the ATA ID path), never `mps_reinit`; skip polls while a reinit/discovery is pending; with D6 it no longer competes for one buffer. Keep it periodic at 30 s (the stats sampler and the temperature property depend on it).
 
 Check: CHALLENGE (failure mode). "Short timeout, never `mps_reinit`" leaks a normal command each time: a config request that times out stays owned by the IOC (INQUEUE) and nothing reclaims it, unlike the IDENTIFY case where FreeBSD kicks it with a target reset (D2); there is no target to reset for an IOC page. At one poll per 30 s a wedged-but-not-faulted IOC eats the 8-command reserve (D21) in 4 minutes and then starves config/IDENTIFY/REMOVE. A config timeout means a wedged IOC; FreeBSD's answer for every config read is `mps_wait_command` -> reinit. Proposal: after the first poll timeout, stop polling (one leaked cm at most, reclaimed by the next reinit), count it, log once; keep the 5 s timeout so the event queue is not blocked for 60 s. Was the readout requested as a feature? If not, off by default.
-Answer (round 3): accept. Final fix: 5 s timeout, no reinit; after the first poll timeout stop polling (at most one leaked cm, reclaimed by the next reinit), count it, log once at error; polling resumes after a reinit. Confirmed: the readout was requested (does the card throttle?), implemented in 666e9a8 ("IOC Temperature (C)" + SAS2308Statistics), so on by default.
+Answer (round 3): accept. Final fix: 5 s timeout, no reinit; after the first poll timeout stop polling (at most one leaked cm, reclaimed by the next reinit), count it, log once at error; polling resumes after a reinit. Confirmed: the readout was requested (does the card throttle?), implemented in e5bfe13 ("IOC Temperature (C)" + SAS2308Statistics), so on by default.
 
-Check (round 4): Fix verified: short timeout, no reinit, polling stops after the first timeout (one cm at most until the next reinit), resumes after reinit; feature request confirmed (666e9a8).
+Check (round 4): Fix verified: short timeout, no reinit, polling stops after the first timeout (one cm at most until the next reinit), resumes after reinit; feature request confirmed (e5bfe13).
 
 ### D32 maxio: MPS_XNU_MAXIO_PAGES 256 in the core, and a hard-coded 1 MiB in the kext
 _(scan id M8)_

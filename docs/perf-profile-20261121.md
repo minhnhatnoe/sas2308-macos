@@ -1,7 +1,7 @@
 # SAS2308HBA host-side cost per 4 KiB IO: profile of 085DA9D6 (2026-11-21)
 
 Question: why the host-bound 4 KiB point dropped from 170.3k IOPS (2026-11-20, build 67BF18CF) to
-157.6k (final run, 085DA9D6 = master 4ce58a7), i.e. from ~5.8 to ~6.3 us per IO at the serial
+157.6k (final run, 085DA9D6 = master fae7e39), i.e. from ~5.8 to ~6.3 us per IO at the serial
 bottleneck. Kext 085DA9D6 loaded throughout (same boot as the final run, up since ~23:25 on 11-20),
 log level 2, debug mask 35, 7 x ST18000NM000J (disk4-10, serials as in the final run), raw reads only.
 No driver change, no install, no reboot.
