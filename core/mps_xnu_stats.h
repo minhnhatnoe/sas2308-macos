@@ -94,6 +94,7 @@ struct mps_xnu_stats {
 	uint32_t	idle_stops_sent;	/* ... sent: the disk not in use, sas2308_idle_spindown 2 (S2) */
 	uint32_t	idle_stops_grace;	/* ... of the completed here: within sas2308_spindown_grace (S2) */
 	uint32_t	spindowns;		/* sas2308ctl spindown requests sent (S2) */
+	uint32_t	idle_stops_ejected;	/* idle stops sent because the media was ejected (EJ) */
 };
 
 #endif /* !_MPS_XNU_STATS_H_ */

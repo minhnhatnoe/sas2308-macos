@@ -64,16 +64,17 @@
 			     sas2308_send_ordered = FreeBSD's kern.cam.da.send_ordered (D46);
 			     sas2308_shutdown_stop 1 = MUR the IOC at restart / power off (FreeBSD: no stop, D50);
 			     sas2308_idle_spindown: macOS's idle spin-down (pmset disksleep) of the disks behind
-			     the HBA: 0 = never sent, 1 = always sent (S1), 2 = sent only to a disk not in use
-			     (no mounted volume, no open /dev/disk; S2; FreeBSD never stops a disk for idleness);
-			     sas2308_spindown_grace: seconds after a disk attaches during which mode 2 keeps it
-			     spinning (SAM stops every disk ~1 min after boot, volumes mount at the GUI login) -->
+			     the HBA: 0 = never sent (S1, the default), 1 = always sent, 2 = sent only to a disk
+			     not in use (no mounted volume, no open /dev/disk; S2); in 0 and 2 the same stop is
+			     sent when the disk is ejected (diskutil eject; EJ). FreeBSD never stops a disk for
+			     idleness. sas2308_spindown_grace: seconds after a disk attaches during which mode 2
+			     keeps it spinning (SAM stops every disk ~1 min after boot) -->
 			<key>sas2308_send_ordered</key>
 			<integer>1</integer>
 			<key>sas2308_shutdown_stop</key>
 			<integer>0</integer>
 			<key>sas2308_idle_spindown</key>
-			<integer>2</integer>
+			<integer>0</integer>
 			<key>sas2308_spindown_grace</key>
 			<integer>900</integer>
 			<!-- as Apple's AppleLSIFusionMPT (AppleLSIFusionSAS personality): the family copies

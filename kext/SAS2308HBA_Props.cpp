@@ -129,7 +129,7 @@ const SAS2308HBA::Knob SAS2308HBA::kKnobs[] = {
     { "sas2308_send_ordered", MPSK_KNOB_SEND_ORDERED },     /* kern.cam.da.send_ordered (D46) */
     { "sas2308_shutdown_stop", 0 },     /* MUR at systemWillShutdown, 0 = FreeBSD's none (D50) */
     { "sas2308_family_timer", MPSK_KNOB_FAMILY_TIMER },     /* 1 = family timer per IO (A/B, G2) */
-    { "sas2308_idle_spindown", MPSK_KNOB_IDLE_SPINDOWN },   /* 0 never, 1 always, 2 not in use (S1, S2) */
+    { "sas2308_idle_spindown", MPSK_KNOB_IDLE_SPINDOWN },   /* 0 never (default), 1 always, 2 not in use; eject: sent (S1, S2, EJ) */
     { "sas2308_spindown_grace", MPSK_KNOB_SPINDOWN_GRACE }, /* s after a nub's creation: mode 2 keeps it spinning */
 };
 const size_t SAS2308HBA::kKnobCount = sizeof(kKnobs) / sizeof(kKnobs[0]);
@@ -642,6 +642,7 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Idle stops sent", st.idle_stops_sent);    /* mode 2, disk not in use (S2) */
     SetNumber(d, "Idle stops in grace period", st.idle_stops_grace);   /* of the completed here (S2) */
     SetNumber(d, "Spin-downs requested", st.spindowns);     /* sas2308ctl spindown (S2) */
+    SetNumber(d, "Stops passed (ejected)", st.idle_stops_ejected);   /* diskutil eject, modes 0 and 2 (EJ) */
     SetNumber(d, "KASSERT hits", st.kassert_hits);   /* KASSERT / panic() survived, all controllers (D55) */
     SetNumber(d, "Debug mask", mask);
     OSString *state = OSString::withCString(gone ? "gone" : fSuspended ? "suspended" : resetting ? "resetting" : "operational");

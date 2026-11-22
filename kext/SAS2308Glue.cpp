@@ -319,17 +319,26 @@ SAS2308Glue::Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs
 }
 
 //-----------------------------------------------------------------------------
-//	StopUse - for SAM's idle stop with sas2308_idle_spindown 2 (S2): within
-//	sas2308_spindown_grace of the nub's creation (GRACE), else is the disk
-//	in use (IN_USE / FREE)? Asked here, before the gate and with no lock
-//	held: the class walks the IORegistry. Anything else: FREE (unused).
+//	StopUse - for SAM's idle stop with sas2308_idle_spindown 0 or 2: is
+//	macOS ejecting the disk's media (EJECTED, EJ)? Then, mode 2 only (S2):
+//	within sas2308_spindown_grace of the nub's creation (GRACE), else is
+//	the disk in use (IN_USE / FREE)? Asked here, before the gate and with
+//	no lock held: the class walks the IORegistry. Anything else: FREE
+//	(unused).
 //-----------------------------------------------------------------------------
 
 uint8_t
 SAS2308Glue::StopUse(const SAS2308GluePort::TaskDesc &d)
 {
-    if (!fMps || !mps_kext_is_idle_stop(d.cdb, d.cdbLen) || mps_kext_knob(fMps, MPSK_KNOB_IDLE_SPINDOWN) != 2)
+    if (!fMps || !mps_kext_is_idle_stop(d.cdb, d.cdbLen))
         return MPSK_STOP_FREE;
+    const uint32_t mode = mps_kext_knob(fMps, MPSK_KNOB_IDLE_SPINDOWN);
+    if (mode == 1)
+        return MPSK_STOP_FREE;
+    if (fPort->TargetEjected(d.target))
+        return MPSK_STOP_EJECTED;
+    if (mode != 2)
+        return MPSK_STOP_IN_USE;            /* mode 0: completed here; the core decides */
     const uint64_t grace = (uint64_t)mps_kext_knob(fMps, MPSK_KNOB_SPINDOWN_GRACE) * 1000000;
     if (grace) {
         Lock();

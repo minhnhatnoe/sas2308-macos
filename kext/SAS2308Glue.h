@@ -75,6 +75,12 @@ public:
      * one of its /dev/(r)disk nodes is open (S2). Called with no lock held.
      */
     virtual bool TargetInUse(uint32_t id) = 0;
+    /*
+     * macOS is ejecting or has ejected the disk's media (diskutil eject:
+     * DKIOCEJECT holds the block storage driver open, or no media is left
+     * under it; EJ). Called with no lock held.
+     */
+    virtual bool TargetEjected(uint32_t id) = 0;
 
 protected:
     ~SAS2308GluePort() {}

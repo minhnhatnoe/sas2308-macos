@@ -189,13 +189,15 @@ struct mps_kext_io_result {
 };
 
 /*
- * SAM's idle stop (S1, S2): START STOP UNIT with START 0, LOEJ 0, POWER
- * CONDITION 0. With sas2308_idle_spindown 2 the glue tells mps_kext_submit
- * whether the disk is in use (a mounted volume or an open /dev/(r)disk):
- * FREE: sent; IN_USE: completed here (as mode 0); GRACE: completed here,
- * the target's nub was created less than sas2308_spindown_grace ago.
+ * SAM's idle stop (S1, S2, EJ): START STOP UNIT with START 0, LOEJ 0, POWER
+ * CONDITION 0. In sas2308_idle_spindown 0 and 2 the glue tells
+ * mps_kext_submit what the class sees: EJECTED: macOS is ejecting / has
+ * ejected the media, sent in every mode. Mode 2 only: FREE: not in use
+ * (no mounted volume, no open /dev/(r)disk), sent; IN_USE: completed here
+ * (as mode 0); GRACE: completed here, the target's nub was created less
+ * than sas2308_spindown_grace ago. Mode 0 completes all but EJECTED here.
  */
-enum { MPSK_STOP_FREE, MPSK_STOP_IN_USE, MPSK_STOP_GRACE };
+enum { MPSK_STOP_FREE, MPSK_STOP_IN_USE, MPSK_STOP_GRACE, MPSK_STOP_EJECTED };
 int	 mps_kext_is_idle_stop(const uint8_t *cdb, uint8_t cdblen);
 
 enum { MPSK_SUBMIT_POSTED, MPSK_SUBMIT_HELD, MPSK_SUBMIT_DONE };
@@ -240,9 +242,10 @@ int	 mps_kext_timeout(struct mps_kext *k, void *td, void *os_task,
  * FAMILY_TIMER: 1 = the family's timer per IO (SetTimeoutForTask) with
  * the core callout as a backstop, the scheme before batch G2; 0 = the
  * core callout is the IO timer (FreeBSD mps). For A/B measurements.
- * IDLE_SPINDOWN: 0 = SAM's idle START STOP UNIT (START 0) is completed here
- * with GOOD status, the disk keeps spinning; 1 = it is sent (S1); 2 (the
- * default) = it is sent only if the disk is not in use, else as 0 (S2).
+ * IDLE_SPINDOWN: 0 (the default) = SAM's idle START STOP UNIT (START 0) is
+ * completed here with GOOD status, the disk keeps spinning; 1 = it is sent
+ * (S1); 2 = it is sent only if the disk is not in use, else as 0 (S2). In
+ * 0 and 2 the stop of a disk whose media is being ejected is sent (EJ).
  * SPINDOWN_GRACE: seconds after a target's nub is created during which mode
  * 2 completes every idle stop here (SAM stops each disk about a minute
  * after boot, before the GUI login mounts its volumes); 0 = none (S2).

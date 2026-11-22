@@ -114,6 +114,34 @@ static bool SAS2308IsBelow(IORegistryEntry *e, IORegistryEntry *top, IORegistryE
     return false;
 }
 
+/*
+ * One snapshot of our IORegistry subtree (every entry retained) and the
+ * target's nub in it: the IOSCSIParallelInterfaceDevice child whose
+ * Protocol Characteristics "SCSI Target Identifier" is targetID. NULL
+ * snapshot: no memory; NULL *nub: no nub for the ID.
+ */
+OSOrderedSet *
+SAS2308HBA::TargetSnapshot(uint32_t targetID, IORegistryEntry **nub)
+{
+    *nub = nullptr;
+    IORegistryIterator *it = IORegistryIterator::iterateOver(this, gIOServicePlane, kIORegistryIterateRecursively);
+    OSOrderedSet *all = it ? it->iterateAll() : nullptr;
+    OSSafeReleaseNULL(it);
+    OSObject *o;
+    for (unsigned i = 0; all && *nub == nullptr && (o = all->getObject(i)) != nullptr; i++) {
+        IORegistryEntry *e = OSDynamicCast(IORegistryEntry, o);
+        if (!e || !e->metaCast("IOSCSIParallelInterfaceDevice") || e->getParentEntry(gIOServicePlane) != this)
+            continue;
+        OSObject *pc = e->copyProperty(kIOPropertyProtocolCharacteristicsKey);
+        OSDictionary *d = OSDynamicCast(OSDictionary, pc);
+        OSNumber *n = d ? OSDynamicCast(OSNumber, d->getObject(kIOPropertySCSITargetIdentifierKey)) : nullptr;
+        if (n && n->unsigned32BitValue() == targetID)
+            *nub = e;
+        OSSafeReleaseNULL(pc);
+    }
+    return all;
+}
+
 int
 SAS2308HBA::TargetUse(uint32_t targetID, char *who, size_t whoLen)
 {
@@ -123,26 +151,11 @@ SAS2308HBA::TargetUse(uint32_t targetID, char *who, size_t whoLen)
         snprintf(who, whoLen, "not checked: work-loop gate held");
         return 1;
     }
-    IORegistryIterator *it = IORegistryIterator::iterateOver(this, gIOServicePlane, kIORegistryIterateRecursively);
-    OSOrderedSet *all = it ? it->iterateAll() : nullptr;
-    OSSafeReleaseNULL(it);
+    IORegistryEntry *nub;
+    OSOrderedSet *all = TargetSnapshot(targetID, &nub);
     if (!all) {
         snprintf(who, whoLen, "not checked: no memory");
         return 1;
-    }
-    /* the target's nub: IOSCSIParallelInterfaceDevice, Protocol Characteristics / SCSI Target Identifier */
-    IORegistryEntry *nub = nullptr;
-    OSObject *o;
-    for (unsigned i = 0; nub == nullptr && (o = all->getObject(i)) != nullptr; i++) {
-        IORegistryEntry *e = OSDynamicCast(IORegistryEntry, o);
-        if (!e || !e->metaCast("IOSCSIParallelInterfaceDevice") || e->getParentEntry(gIOServicePlane) != this)
-            continue;
-        OSObject *pc = e->copyProperty(kIOPropertyProtocolCharacteristicsKey);
-        OSDictionary *d = OSDynamicCast(OSDictionary, pc);
-        OSNumber *n = d ? OSDynamicCast(OSNumber, d->getObject(kIOPropertySCSITargetIdentifierKey)) : nullptr;
-        if (n && n->unsigned32BitValue() == targetID)
-            nub = e;
-        OSSafeReleaseNULL(pc);
     }
     if (!nub) {
         all->release();
@@ -150,6 +163,7 @@ SAS2308HBA::TargetUse(uint32_t targetID, char *who, size_t whoLen)
         return -1;
     }
     int use = 0;
+    OSObject *o;
     IORegistryEntry *e, *c;
     for (unsigned i = 0; !use && (o = all->getObject(i)) != nullptr; i++) {
         e = OSDynamicCast(IORegistryEntry, o);
@@ -173,6 +187,163 @@ SAS2308HBA::TargetUse(uint32_t targetID, char *who, size_t whoLen)
     }
     all->release();
     return use;
+}
+
+//-----------------------------------------------------------------------------
+//	TargetEjected - is macOS ejecting, or has it ejected, the media of the
+//	disk behind targetID (EJ)? Asked for SAM's idle-type stop (START 0,
+//	LOEJ 0, POWER CONDITION 0) in sas2308_idle_spindown 0 and 2: an ejected
+//	disk's stop is sent, every other one follows the mode.
+//	XNU: what `diskutil eject` does to these disks, from Apple's sources and
+//	seen on the Mac (2026-11-22, disk6, build 95E0D6C9): diskarbitrationd
+//	unmounts the volumes and issues DKIOCEJECT on the whole disk. That
+//	ioctl closes the whole-disk media for its IOMediaBSDClient, opens the
+//	IOBlockStorageDriver with the same client, calls ejectMedia() and closes
+//	the driver after it returns (IOMediaBSDClient.cpp, DKIOCEJECT).
+//	ejectMedia() of a fixed (not removable) disk does not tear the media
+//	down: it sends SYNCHRONIZE CACHE and calls doEjectMedia
+//	(IOBlockStorageDriver.cpp ejectMedia, _ejectable false), which makes
+//	SAM's EjectTheMedium change its power state to Sleep: the same START
+//	STOP UNIT (IMMED 1, START 0) as the idle timer's
+//	(IOSCSIBlockCommandsDevice.cpp:181-237, DevicePM.cpp:480-489). On the
+//	Mac the stop came in the same millisecond as the SYNCHRONIZE CACHE, the IOMedia
+//	objects stayed, and `diskutil mount` brought the volume back. The stop
+//	itself carries nothing to tell it from an idle one, so the state of the
+//	registry decides:
+//	  - the IOBlockStorageDriver is open by a client that is not its own
+//	    whole-disk IOMedia (DKIOCEJECT's open by the IOMediaBSDClient).
+//	    With "Power Off" on SAM's device (SetEjectSpinDown) EjectTheMedium
+//	    sends its stop synchronously, inside that open; without it the stop
+//	    comes from SAM's power-management thread and can miss the window.
+//	  - no active whole-disk IOMedia under the driver: removable media,
+//	    torn down by decommissionMedia before doEjectMedia.
+//	Not used: IOBlockStorageServices::reportMediaState. doEjectMedia
+//	clears fMediaPresent after EjectTheMedium returns and only a
+//	kIOMessageMediaStateHasChanged online, which SAM sends when it finds
+//	new removable media, sets it again (IOBlockStorageServices.cpp:132-145,
+//	294): for a fixed disk it stays "no media" after `diskutil mount`, and
+//	every later idle stop would be sent.
+//	Gate held: not ejected (see TargetUse). Returns 1 ejected, 0 not, -1 no
+//	nub; *who says why.												[PRIVATE]
+//-----------------------------------------------------------------------------
+
+int
+SAS2308HBA::TargetEjected(uint32_t targetID, char *who, size_t whoLen)
+{
+    snprintf(who, whoLen, "media present");
+    IOWorkLoop *wl = GetWorkLoop();
+    if (wl && wl->inGate()) {
+        snprintf(who, whoLen, "not checked: work-loop gate held");
+        return 0;
+    }
+    IORegistryEntry *nub;
+    OSOrderedSet *all = TargetSnapshot(targetID, &nub);
+    if (!all) {
+        snprintf(who, whoLen, "not checked: no memory");
+        return 0;
+    }
+    if (!nub) {
+        all->release();
+        snprintf(who, whoLen, "no nub");
+        return -1;
+    }
+    OSObject *o;
+    IOService *driver = nullptr, *media = nullptr;
+    for (unsigned i = 0; driver == nullptr && (o = all->getObject(i)) != nullptr; i++) {
+        IORegistryEntry *e = OSDynamicCast(IORegistryEntry, o);
+        if (e && e->metaCast("IOBlockStorageDriver") && SAS2308IsBelow(e, nub, this))
+            driver = OSDynamicCast(IOService, e);
+    }
+    if (!driver) {                          /* SAM's stack not up (yet): not an eject */
+        all->release();
+        snprintf(who, whoLen, "no block storage driver");
+        return 0;
+    }
+    for (unsigned i = 0; media == nullptr && (o = all->getObject(i)) != nullptr; i++) {
+        IOService *s = OSDynamicCast(IOService, o);
+        if (s && s->metaCast("IOMedia") && s->getParentEntry(gIOServicePlane) == driver && !s->isInactive())
+            media = s;
+    }
+    int ejected = 0;
+    if (!media) {
+        snprintf(who, whoLen, "no media under the block storage driver");
+        ejected = 1;
+    }
+    for (unsigned i = 0; !ejected && (o = all->getObject(i)) != nullptr; i++) {
+        IOService *c = OSDynamicCast(IOService, o);
+        if (!c || c == media || !SAS2308IsBelow(c, driver, this) || c == driver)
+            continue;
+        if (driver->isOpen(c)) {
+            snprintf(who, whoLen, "block storage driver open by %s (DKIOCEJECT)", c->getMetaClass()->getClassName());
+            ejected = 1;
+        }
+    }
+    all->release();
+    return ejected;
+}
+
+//-----------------------------------------------------------------------------
+//	SetEjectSpinDown - first publication of an IOBlockStorageServices (the
+//	nub SAM's block driver creates for IOStorageFamily,
+//	IOSCSIBlockCommandsDevice.cpp:1360-1371): if it is below this HBA, set
+//	"Power Off" on its provider, SAM's IOSCSIBlockCommandsDevice (EJ).
+//	XNU: SAM sets that property itself at kIOMessageSystemWillPowerOff
+//	(IOSCSIBlockCommandsDevicePM.cpp:145-146) and reads it only in
+//	EjectTheMedium (IOSCSIBlockCommandsDevice.cpp:203): with it, the eject
+//	of a fixed disk sends START STOP UNIT (IMMED 1, START 0) at once from
+//	the ejecting thread, waits 500 ms for the heads to park and then syncs
+//	PM to Sleep, which sends nothing more; without it the stop comes later
+//	from SAM's PM thread (changePowerStateToPriv). Synchronous, the stop
+//	falls inside DKIOCEJECT's open of the block storage driver, which is
+//	what TargetEjected looks for. The CDB is the same either way.
+//	Called on the notification thread, no lock held.				[PRIVATE]
+//-----------------------------------------------------------------------------
+
+bool
+SAS2308HBA::StorageServicesPublished(void *target, void *refCon, IOService *service, IONotifier *notifier)
+{
+    SAS2308HBA *self = (SAS2308HBA *)target;
+    IOService *sam = service ? service->getProvider() : nullptr;
+    if (!sam || !sam->metaCast("IOSCSIBlockCommandsDevice"))
+        return true;
+    bool ours = false;
+    IORegistryEntry *p = sam;
+    p->retain();
+    while (p && !ours) {
+        IORegistryEntry *up = p->copyParentEntry(gIOServicePlane);
+        ours = up == self;
+        p->release();
+        p = up;
+    }
+    OSSafeReleaseNULL(p);
+    if (!ours)
+        return true;
+    sam->setProperty(kSAMPowerOffKey, kOSBooleanTrue);
+    self->Klog(MPSK_XINFO, "%s: \"%s\" set, eject spins the disk down", sam->getName(), kSAMPowerOffKey);
+    return true;
+}
+
+void
+SAS2308HBA::StartEjectSpinDown(void)
+{
+    if (fStorageNotifier)
+        return;
+    OSDictionary *match = serviceMatching("IOBlockStorageServices");
+    if (match)
+        fStorageNotifier = addMatchingNotification(gIOFirstPublishNotification, match,
+                                                   &SAS2308HBA::StorageServicesPublished, this, nullptr, 0);
+    OSSafeReleaseNULL(match);
+    if (!fStorageNotifier)
+        Klog(MPSK_ERROR | MPSK_INIT, "no IOBlockStorageServices notification: an eject may leave the disk spinning");
+}
+
+void
+SAS2308HBA::StopEjectSpinDown(void)
+{
+    if (fStorageNotifier) {
+        fStorageNotifier->remove();         /* waits for a handler that runs */
+        fStorageNotifier = nullptr;
+    }
 }
 
 #if 0

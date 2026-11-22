@@ -65,6 +65,7 @@ public:
     bool CallCancel(int which) override;
     void Log(uint32_t cls, const char *line) override;
     bool TargetInUse(uint32_t id) override;
+    bool TargetEjected(uint32_t id) override;
 };
 
 class SAS2308HBA : public IOSCSIParallelInterfaceController
@@ -84,6 +85,7 @@ public:
     static constexpr const char *kIOLogKey      = "SAS2308LogToIOLog";  /* bool: IOLog instead of os_log */
     static constexpr const char *kResetStatsKey = "SAS2308ResetStats";
     static constexpr const char *kSpinDownKey   = "SAS2308SpinDown";    /* number: target ID to stop now (S2) */
+    static constexpr const char *kSAMPowerOffKey = "Power Off";     /* SAM's: eject stops the disk at once (EJ) */
     static constexpr const char *kStatsKey      = "SAS2308Statistics";
     static constexpr const char *kIocTemperatureKey = "IOC Temperature (C)";   /* IO Unit Page 7 */
     static constexpr const char *kAttachStateKey = "IOC state at attach";   /* doorbell before mps_attach (D50) */
@@ -188,6 +190,11 @@ private:
                           const uint8_t *sense, uint32_t senseLen);
     bool PortCreateTarget(uint32_t id);
     int TargetUse(uint32_t id, char *who, size_t whoLen);  /* -1 no such nub, 0 not in use, 1 in use (S2) */
+    int TargetEjected(uint32_t id, char *who, size_t whoLen);  /* -1 no such nub, 0 no, 1 media ejected (EJ) */
+    OSOrderedSet *TargetSnapshot(uint32_t id, IORegistryEntry **nub);
+    static bool StorageServicesPublished(void *target, void *refCon, IOService *service, IONotifier *notifier);
+    void StartEjectSpinDown(void);      /* "Power Off" on SAM's devices below us (EJ) */
+    void StopEjectSpinDown(void);
 
     /* ---- SAS2308HBA_Props.cpp */
     void Klog(uint32_t cls, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
@@ -229,6 +236,7 @@ private:
     bool           fShutdown = false;       /* systemWillShutdown stopped the IOC: stays stopped */
     bool           fShutdownStop = false;   /* MUR at systemWillShutdown (sas2308_shutdown_stop, D50) */
     IONotifier    *fHaltNotifier = nullptr; /* priority power interest: the halt began (F) */
+    IONotifier    *fStorageNotifier = nullptr;  /* IOBlockStorageServices published: "Power Off" (EJ) */
     unsigned long  fPowerState = kPowerStateOn;
 
     /* the core (fGlue.fMps) */

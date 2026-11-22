@@ -517,9 +517,9 @@ int mps_kext_attach(struct mps_kext *k, uint32_t debug_mask)
     memset_zero(k->otag, sizeof(*k->otag) * k->ntargets * MPSK_OTAG_SLOTS);
     k->send_ordered = (int)mps_kext_tunable(k, "sas2308_send_ordered", 1);
     k->family_timer = (int)mps_kext_tunable(k, "sas2308_family_timer", 0);
-    k->idle_spindown = (int)mps_kext_tunable(k, "sas2308_idle_spindown", 2);
+    k->idle_spindown = (int)mps_kext_tunable(k, "sas2308_idle_spindown", 0);
     if ((unsigned)k->idle_spindown > 2)
-        k->idle_spindown = 2;           /* not a mode: the default */
+        k->idle_spindown = 0;           /* not a mode: the default */
     k->spindown_grace = mps_kext_tunable(k, "sas2308_spindown_grace", 900);
     if (k->spindown_grace > MPSK_GRACE_MAX_S)
         k->spindown_grace = MPSK_GRACE_MAX_S;
@@ -746,17 +746,22 @@ static void mps_kext_queue_done(struct mps_kext *k, struct mps_kext_task *t)
 }
 
 /*
- * XNU: SAM's idle spin-down (S1, S2). macOS's block driver
+ * XNU: SAM's idle spin-down (S1, S2, EJ). macOS's block driver
  * (IOSCSIBlockCommandsDevicePM.cpp, HandlePowerChange) stops the disk when
  * its idle timer (pmset disksleep) takes it to Standby or Sleep:
  * START STOP UNIT with IMMED 1, POWER CONDITION 0, START 0. FreeBSD never
  * stops a disk for idleness: da/CAM send START STOP UNIT only for an
  * explicit request (camcontrol stop, the shutdown SSU of the SATA SSDs).
- * Wanted: disks that spin only while in use, as a tunable:
- * sas2308_idle_spindown 2 (the default) sends such a stop only if the disk
- * is not in use (no mounted volume, no open /dev/(r)disk: the glue asks
- * the class, which walks the IORegistry, stop_use) and completes it here
- * otherwise; 0 completes every one here (S1), 1 sends every one. A stop
+ * The goal: disks never spin down for idleness and stop when
+ * ejected: sas2308_idle_spindown 0 (the default) completes such a stop
+ * here; 2 sends it only if the disk is not in use (no mounted volume, no
+ * open /dev/(r)disk; S2) and not within sas2308_spindown_grace of the
+ * nub's creation; 1 sends every one. In modes 0 and 2 a stop for a disk
+ * whose media macOS is ejecting or has ejected (stop_use EJECTED: the glue
+ * asks the class, which walks the IORegistry) is sent: for a fixed disk
+ * `diskutil eject` sends exactly this stop (IOSCSIBlockCommandsDevice.cpp
+ * EjectTheMedium; see SAS2308HBA_Hotplug.cpp TargetEjected), and it is the
+ * only spin-down wanted. A stop
  * completed here gets GOOD status; SAM's own START (START 1) on the next
  * IO is sent and finds the disk spinning. Sent as before in every mode:
  * START 1, LOEJ, any POWER CONDITION (SAM's system sleep uses 5), and
@@ -778,6 +783,11 @@ static int mps_kext_idle_stop(struct mps_kext *k, uint32_t tid, const uint8_t *c
         return 0;
     if (tid >= k->ntargets || sc->sassc->targets[tid].handle == 0)
         return 0;                   /* no disk: mpssas_action_scsiio answers as for any command */
+    if (stop_use == MPSK_STOP_EJECTED) {
+        sc->xnu.stats.idle_stops_ejected++;
+        mps_dprint(sc, MPS_INFO, "target %u: START STOP UNIT (stop) sent: media ejected\n", tid);
+        return 0;
+    }
     if (k->idle_spindown == 2 && stop_use == MPSK_STOP_FREE) {
         sc->xnu.stats.idle_stops_sent++;
         return 0;

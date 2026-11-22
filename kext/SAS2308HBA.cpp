@@ -233,6 +233,13 @@ bool SAS2308HBAPort::TargetInUse(uint32_t id)
         fHba->Klog(MPSK_XINFO, "target %u: in use (%s)", id, who);
     return use > 0;
 }
+bool SAS2308HBAPort::TargetEjected(uint32_t id)
+{
+    char who[96];
+    const int ej = fHba->TargetEjected(id, who, sizeof(who));
+    fHba->Klog(ej > 0 ? MPSK_INFO : MPSK_XINFO, "target %u: idle-type stop, %s", id, who);
+    return ej > 0;
+}
 void SAS2308HBAPort::DestroyTarget(uint32_t id) { fHba->DestroyTargetForID(id); }
 bool SAS2308HBAPort::CallEnter(int which)
 {
@@ -563,6 +570,7 @@ SAS2308HBA::StartController(void)
 
     /* Before any target exists, so the target nubs join the power tree below us. */
     InitializePowerManagement(GetProvider());
+    StartEjectSpinDown();                           /* before any target: SAM's devices get "Power Off" (EJ) */
 
     fGlue.Lock();
     fGlue.ScheduleHotplug();                        /* targets seen before we were started */
@@ -589,6 +597,7 @@ void
 SAS2308HBA::StopController(void)
 {
     Klog(MPSK_INIT | MPSK_INFO, "stopping controller");
+    StopEjectSpinDown();
     StopPowerManagement();                          /* no setPowerState() from here on */
     if (fStatsTimer) {
         fStatsTimer->cancelTimeout();
@@ -622,6 +631,7 @@ SAS2308HBA::StopController(void)
 void
 SAS2308HBA::TerminateController(void)
 {
+    StopEjectSpinDown();
     StopPowerManagement();
     fGlue.StopCore();                               /* if StopController did not run */
     Klog(MPSK_INIT | MPSK_INFO, "terminated: DMA freed, unloading");
@@ -692,6 +702,7 @@ SAS2308HBA::willTerminate(IOService *provider, IOOptionBits options)
 void
 SAS2308HBA::free(void)
 {
+    StopEjectSpinDown();
     StopPowerManagement();
     ReleaseResources();
     fGlue.FreeLock();                               /* no entry point left (retain count 0): L7 */

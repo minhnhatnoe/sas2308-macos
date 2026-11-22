@@ -172,6 +172,9 @@ struct SAS2308_HIDDEN Family : SAS2308GluePort {
     std::set<uint32_t> inUse;               /* disks with a mounted volume / open node (S2) */
     int inUseCalls = 0;
     bool TargetInUse(uint32_t id) override { inUseCalls++; return inUse.count(id) != 0; }
+    std::set<uint32_t> ejected;             /* disks whose media macOS is ejecting / ejected (EJ) */
+    int ejectCalls = 0;
+    bool TargetEjected(uint32_t id) override { ejectCalls++; return ejected.count(id) != 0; }
 
     int hotplugBodies = 0, hotplugDepth = 0, hotplugNested = 0;
     static void HotplugBody(void *hba) {
@@ -1387,7 +1390,7 @@ int main()
             return m.scsiOps.size() != ops;
         };
         const uint32_t before = gHost.sc->xnu.stats.idle_stops;
-        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 0) == 0);  /* S2: 2 is the default */
+        CHECK(mps_kext_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN) == 0);       /* the default (EJ) */
         CHECK(ssu(0x01, 0x00));                     /* system state unknown (no priority interest): sent */
         mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
         CHECK(!ssu(0x01, 0x00));                    /* SAM's Standby / Sleep stop: completed here */
@@ -1446,7 +1449,7 @@ int main()
             return m.scsiOps.size() != ops;
         };
         struct mps_xnu_stats &st = gHost.sc->xnu.stats;
-        CHECK(mps_kext_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN) == 2);       /* the default */
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 2) == 0);  /* not the default (EJ: 0) */
         CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_SPINDOWN_GRACE, 0) == 0);  /* no boot grace (S2-grace) */
         mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
         f.inUse = {t9};                             /* t9 mounted, ta not */
@@ -1515,7 +1518,7 @@ int main()
             return m.scsiOps.size() != ops;
         };
         struct mps_xnu_stats &st = gHost.sc->xnu.stats;
-        CHECK(mps_kext_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN) == 2);
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 2) == 0);  /* not the default (EJ: 0) */
         CHECK(mps_kext_knob(f.k, MPSK_KNOB_SPINDOWN_GRACE) == 900);    /* the default, seconds */
         mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
         /* just attached, not in use: completed here, the disk not asked */
@@ -1606,6 +1609,88 @@ int main()
         mps_kext_halt_begin(f.k);
         CHECK(mps_kext_spindown(f.k, t9, &cam, &scsi) == ENODEV);
         CHECK(m.scsiOps.size() == ops && st.spindowns == 3);
+        f.Detach();
+    }
+
+    if (Want("EJ-eject")) {
+        /*
+         * Eject spins the disk down (EJ): SAM's idle-type stop (START 0,
+         * LOEJ 0, POWER CONDITION 0) is sent in every mode when macOS is
+         * ejecting / has ejected the disk's media (the class's
+         * TargetEjected: the block storage driver open by DKIOCEJECT, or no
+         * media under it), counted in idle_stops_ejected. The default mode
+         * is 0 again (never for idleness). Mode 2's grace and in-use rules
+         * come after it; mode 1 sends every stop without asking. Sleep, the
+         * halt: sent as before, not counted.
+         */
+        MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009), ta = f.Tid(0x000A);
+        auto ssu = [&](uint32_t tid, uint8_t b1, uint8_t b4) {
+            FakeTask *t = f.NewRead(tid, 0);
+            memset(t->cdb, 0, sizeof(t->cdb));
+            t->cdb[0] = 0x1B; t->cdb[1] = b1; t->cdb[4] = b4; t->cdbLen = 6; t->dir = MPSK_DIR_NONE; t->len = 0;
+            const size_t ops = m.scsiOps.size();
+            CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+            HostRunPending();
+            CHECK(t->completions == 1 && t->done == SAS2308GluePort::kDoneStatus && t->scsiStatus == 0);
+            return m.scsiOps.size() != ops;
+        };
+        struct mps_xnu_stats &st = gHost.sc->xnu.stats;
+        CHECK(mps_kext_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN) == 0);       /* the default again */
+        mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
+        const uint32_t local0 = st.idle_stops, ej0 = st.idle_stops_ejected;
+        /* mode 0: the ejected disk's stop is sent, the other's completed here */
+        f.ejected = {t9};
+        int calls = f.ejectCalls;
+        CHECK(ssu(t9, 0x01, 0x00));
+        CHECK(f.ejectCalls == calls + 1);
+        CHECK(st.idle_stops_ejected == ej0 + 1 && st.idle_stops == local0);
+        CHECK(m.scsiOps.back().handle == 0x0009 && m.scsiOps.back().op == 0x1B && (m.scsiOps.back().b4 & 0x03) == 0);
+        CHECK(!ssu(ta, 0x01, 0x00));
+        CHECK(f.ejectCalls == calls + 2);
+        CHECK(st.idle_stops_ejected == ej0 + 1 && st.idle_stops == local0 + 1);
+        /* not an idle stop: the disk is not asked */
+        calls = f.ejectCalls;
+        CHECK(ssu(t9, 0x00, 0x01));                 /* START 1 */
+        CHECK(ssu(t9, 0x01, 0x50));                 /* POWER CONDITION 5 */
+        FakeTask *rd = f.NewRead(t9);
+        CHECK(f.Submit(rd) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        CHECK(rd->completions == 1 && rd->done == SAS2308GluePort::kDoneStatus);
+        CHECK(f.ejectCalls == calls);
+        /* mounted again (media back): completed here */
+        f.ejected.clear();
+        CHECK(!ssu(t9, 0x01, 0x00));
+        CHECK(st.idle_stops_ejected == ej0 + 1);
+        /* mode 2: ejected wins over the grace (default 900 s, just attached) and over in use */
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 2) == 0);
+        CHECK(mps_kext_knob(f.k, MPSK_KNOB_SPINDOWN_GRACE) == 900);
+        const uint32_t grace0 = st.idle_stops_grace, sent0 = st.idle_stops_sent;
+        f.ejected = {t9};
+        f.inUse = {t9};
+        CHECK(ssu(t9, 0x01, 0x00));
+        CHECK(st.idle_stops_ejected == ej0 + 2 && st.idle_stops_grace == grace0 && st.idle_stops_sent == sent0);
+        CHECK(!ssu(ta, 0x01, 0x00));                /* not ejected: the grace as before */
+        CHECK(st.idle_stops_grace == grace0 + 1);
+        f.inUse.clear();
+        /* mode 1: sent without asking, not counted */
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 1) == 0);
+        calls = f.ejectCalls;
+        CHECK(ssu(t9, 0x01, 0x00));
+        CHECK(ssu(ta, 0x01, 0x00));
+        CHECK(f.ejectCalls == calls && st.idle_stops_ejected == ej0 + 2);
+        /* going to sleep: sent, not counted as an eject */
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 0) == 0);
+        mps_kext_system_power(f.k, MPSK_SYS_SLEEP);
+        CHECK(ssu(t9, 0x01, 0x00));
+        CHECK(st.idle_stops_ejected == ej0 + 2);
+        mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
+        /* the halt: sent, not counted */
+        mps_kext_halt_begin(f.k);
+        CHECK(ssu(t9, 0x01, 0x00));
+        CHECK(st.idle_stops_ejected == ej0 + 2);
         f.Detach();
     }
 
