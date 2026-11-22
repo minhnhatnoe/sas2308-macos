@@ -67,5 +67,6 @@ not, with `sas2308ctl stats` and the driver's log lines) are especially welcome.
 
 ## License
 
-BSD-2-Clause, see `LICENSE`, which also lists the third-party notices
-(FreeBSD mps, LSI/Avago MPI2 headers, `queue.h`, CAM decoder tables).
+BSD-2-Clause, see `LICENSE`. Third-party code (FreeBSD mps, LSI/Avago MPI2
+headers, `queue.h`, CAM decoder tables) keeps its own notice in its file
+headers; `core/VENDOR.txt` describes the FreeBSD import.

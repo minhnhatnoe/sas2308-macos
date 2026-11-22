@@ -25,16 +25,5 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 -------------------------------------------------------------------------------
-Third-party code in this repository keeps its own notice in each file:
-
-- core/mps*.c, core/mps*.h (except core/mps_xnu*, core/mps_mpi.h): FreeBSD
-  sys/dev/mps, BSD-2-Clause (Yahoo! Inc. for mps.c, mps_sas.c, mps_table.c,
-  mps_table.h and mpsvar.h; LSI Corporation, Avago Technologies and FreeBSD
-  contributors). Pristine copies are on the branch vendor/freebsd-mps; see
-  core/VENDOR.txt.
-- core/mpi/*: LSI/Avago MPI2 headers from FreeBSD sys/dev/mps/mpi,
-  BSD-2-Clause, unmodified.
-- core/compat/queue.h: trimmed FreeBSD sys/sys/queue.h, BSD-3-Clause (The
-  Regents of the University of California).
-- core/mps_xnu.c: its SCSI decoder tables follow FreeBSD
-  sys/cam/scsi/scsi_all.c, BSD-2-Clause (Justin T. Gibbs, Kenneth D. Merry).
+Third-party code in this repository keeps its own copyright and license notice
+in its file headers; the FreeBSD mps import is described in core/VENDOR.txt.
