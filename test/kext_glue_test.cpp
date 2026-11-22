@@ -1565,6 +1565,50 @@ int main()
         f.Detach();
     }
 
+    if (Want("S2-spindown")) {
+        /*
+         * sas2308ctl spindown: START STOP UNIT (START 0, IMMED 0) to the
+         * disk now, as camcontrol stop, through the core like the shutdown
+         * SSU (a ccb of its own, not a family task); waits for the answer.
+         * Sent in every sas2308_idle_spindown mode; refused for an ID with
+         * no disk and once the halt began.
+         */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009);
+        mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
+        struct mps_xnu_stats &st = gHost.sc->xnu.stats;
+        const uint32_t local0 = st.idle_stops, sent0 = st.idle_stops_sent;
+        uint32_t cam = 0; uint8_t scsi = 0xFF;
+        for (uint32_t mode = 0; mode <= 2; mode++) {
+            CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, mode) == 0);
+            const size_t ops = m.scsiOps.size();
+            CHECK(mps_kext_spindown(f.k, t9, &cam, &scsi) == 0);
+            CHECK(cam == CAM_REQ_CMP && scsi == 0);
+            CHECK(m.scsiOps.size() == ops + 1);
+            CHECK(m.scsiOps.back().handle == 0x0009 && m.scsiOps.back().op == 0x1B &&
+                  m.scsiOps.back().b1 == 0x00 && m.scsiOps.back().b4 == 0x00);
+        }
+        CHECK(st.spindowns == 3 && st.idle_stops == local0 && st.idle_stops_sent == sent0);
+        /* the family's IO is untouched */
+        FakeTask *rd = f.NewRead(t9);
+        CHECK(f.Submit(rd) == SAS2308Glue::kInProcess);
+        HostRunPending();
+        CHECK(rd->completions == 1 && rd->done == SAS2308GluePort::kDoneStatus);
+        /* no disk behind the ID, an ID out of range: nothing sent */
+        uint32_t empty = 0;
+        while (empty == t9 || gHost.sc->sassc->targets[empty].handle != 0) empty++;
+        const size_t ops = m.scsiOps.size();
+        CHECK(mps_kext_spindown(f.k, empty, &cam, &scsi) == ENXIO);
+        CHECK(mps_kext_spindown(f.k, 100000, &cam, &scsi) == ENXIO);
+        /* the halt (restart / power off): refused */
+        mps_kext_halt_begin(f.k);
+        CHECK(mps_kext_spindown(f.k, t9, &cam, &scsi) == ENODEV);
+        CHECK(m.scsiOps.size() == ops && st.spindowns == 3);
+        f.Detach();
+    }
+
     if (Want("D21")) {
         /*
          * The family keeps every OS task busy (each completion resubmitted

@@ -254,6 +254,18 @@ int	 mps_kext_set_knob(struct mps_kext *k, int knob, uint32_t value);
 uint64_t mps_kext_uptime_us(void);		/* the core's monotonic clock */
 uint32_t mps_kext_knob(struct mps_kext *k, int knob);
 
+/*
+ * ---- sas2308ctl spindown (S2): stop the disk now ------------------------
+ * START STOP UNIT, START 0, IMMED 0, to target tid, as camcontrol(8) stop;
+ * waits for the answer (no lock held, not in the work-loop gate). 0: GOOD;
+ * EIO: *cam_status / *scsi_status say why; ENXIO: no disk behind tid;
+ * ENODEV: the controller is stopping, halting, suspended or the system
+ * is going to sleep; ENOMEM. SAM is not told: the disk spins up on the next
+ * media access.
+ */
+int	 mps_kext_spindown(struct mps_kext *k, uint32_t tid, uint32_t *cam_status, uint8_t *scsi_status);
+#define	MPSK_SPINDOWN_TIMEOUT_MS 120000	/* camcontrol's default START STOP UNIT timeout */
+
 /* ---- debug triggers for hardware tests (sas2308ctl) --------------------- */
 enum { MPSK_DEBUG_REINIT = 1, MPSK_DEBUG_HOLD, MPSK_DEBUG_LOSE, MPSK_DEBUG_HALT };
 int	 mps_kext_debug(struct mps_kext *k, int what, uint32_t arg);

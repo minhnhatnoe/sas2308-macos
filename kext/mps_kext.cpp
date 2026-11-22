@@ -1137,6 +1137,79 @@ static void mps_kext_hold_end(void *arg)
     xpt_release_simq(k->sc.sassc->sim, 1);
 }
 
+/*
+ * sas2308ctl spindown (S2): stop the disk now. FreeBSD's manual equivalent
+ * is camcontrol(8) stop (scsistart(): START STOP UNIT, START 0, IMMED 0,
+ * SIMPLE tag, 120 s default timeout, through the pass device, so no da
+ * ORDERED-tag accounting); the ccb is sent the way mps_sas_lsi.c's shutdown
+ * SSU sends its own (mpssas_SSU_to_SATA_devices: scsi_start_stop on a ccb
+ * of the driver's, xpt_action), with mps_kext_tm's wait (the waiter count
+ * that mps_kext_stop_waiters drains, orphaned at a stop). For SATA disks
+ * the IOC's SAT layer turns it into STANDBY IMMEDIATE; the disk spins up by
+ * itself on the next media access. SAM is not told (its power state stays
+ * Active): its next IO simply waits for the spin-up. XNU: the request
+ * comes from setProperties (an administrator only, sas2308ctl), not from a
+ * periph; the user tool refuses disks with a mounted volume and the class
+ * refuses disks in use (S2) before calling this.
+ */
+int mps_kext_spindown(struct mps_kext *k, uint32_t tid, uint32_t *cam_status, uint8_t *scsi_status)
+{
+    struct mps_softc *sc = &k->sc;
+    int error;
+
+    *cam_status = 0;
+    *scsi_status = 0;
+    if (!k->attached)
+        return ENODEV;
+    struct mps_kext_tmreq *w = (struct mps_kext_tmreq *)mps_os_malloc(sizeof(*w), 1);
+    if (w == nullptr)
+        return ENOMEM;
+    memset_zero(w, sizeof(*w));
+    w->k = k;
+
+    mps_lock(sc);
+    if (k->stopping || k->sys_power == MPSK_SYS_SLEEP || sc->xnu.halting || sc->xnu.suspending ||
+        (sc->mps_flags & (MPS_FLAGS_SHUTDOWN | MPS_FLAGS_XNU_SUSPENDED | MPS_FLAGS_XNU_GONE)) != 0) {
+        mps_unlock(sc);
+        mps_os_free(w, sizeof(*w));
+        return ENODEV;
+    }
+    if (tid >= k->ntargets || sc->sassc->targets[tid].handle == 0) {
+        mps_unlock(sc);
+        mps_os_free(w, sizeof(*w));
+        return ENXIO;
+    }
+    k->tm_waiters++;
+    w->path.path_id = cam_sim_path(sc->sassc->sim);
+    w->path.target_id = tid;
+    w->path.lun_id = 0;
+    xpt_setup_ccb(&w->ccb.ccb_h, &w->path, CAM_PRIORITY_NORMAL);
+    scsi_start_stop(&w->ccb.csio, /*retries*/0, mps_kext_tm_done, MSG_SIMPLE_Q_TAG, /*start*/FALSE,
+                    /*load/eject*/0, /*immediate*/FALSE, SSD_FULL_SIZE, MPSK_SPINDOWN_TIMEOUT_MS);
+    w->ccb.ccb_h.ppriv_ptr0 = w;
+    sc->xnu.stats.spindowns++;
+    mps_dprint(sc, MPS_INFO, "target %u (handle 0x%04x): START STOP UNIT (stop) from sas2308ctl spindown\n",
+               tid, sc->sassc->targets[tid].handle);
+    xpt_action(&w->ccb);
+    if (mps_kext_tm_wait(k, &w->done, nullptr, 0, 0)) {
+        *cam_status = w->ccb.ccb_h.status & CAM_STATUS_MASK;
+        *scsi_status = w->ccb.csio.scsi_status;
+        error = *cam_status == CAM_REQ_CMP ? 0 : EIO;
+        mps_dprint(sc, error ? (MPS_INFO | MPS_FAULT) : MPS_INFO, "target %u: spindown done, CAM status 0x%x, "
+                   "SCSI status 0x%x\n", tid, *cam_status, *scsi_status);
+    } else {
+        w->orphan = 1;                      /* mps_free() completes it; mps_kext_tm_done frees it */
+        w = nullptr;
+        error = ENODEV;
+    }
+    if (--k->tm_waiters == 0)
+        wakeup(&k->tm_waiters);
+    mps_unlock(sc);
+    if (w)
+        mps_os_free(w, sizeof(*w));
+    return error;
+}
+
 int mps_kext_debug(struct mps_kext *k, int what, uint32_t arg)
 {
     struct mps_softc *sc = &k->sc;
