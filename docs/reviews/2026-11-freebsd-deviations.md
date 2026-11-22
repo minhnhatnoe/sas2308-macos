@@ -40,6 +40,7 @@ log-noise); items FINAL.md already fixed.
 | **G1. Code fixes and reverts to FreeBSD (after F)** | D29, D22, D15a, D55b, D58, L12, L13, L4, L11, L3, L17, L7, L10, D43 | per item in design.md "Batch G1" (each failed before: ack asserts, default mask, plist value, one diag reset, max tasks, ASan bad-free, NULL target array, unreleased freeze, no KASSERT, QMD fault, HIS ignored, lock gone after Fini, nested hotplug, pump while not in the gate) | standard regression; `lose 1` + `reinit` under IO on all 7; sleep/wake under IO; `shutdown -r now` with a mounted JHFS+ volume; default log at idle and in the recovery |
 | **G2. FreeBSD defaults decided by experiments (after G1)** | D46, D21, D50, D15b, D65, core-callout IO timer, wake log class | per item in design.md "Batch G2" (D46 ORDERED cadence, D21 hot-add under a full pool, D15 SSU 60 s, D50 attach from OPERATIONAL, C1/D4 without the family timer, D43 kick, G2-wake) | D65 QD1 next to QD1024/2000 and D15b spin-up (before the install); D46 A/B (H soak, random 4K QD32), IO timer A/B (F1 4K point), D50 restart without the MUR (attach state, DART), restarts with spun-down drives; regression |
 | **S1. No idle spin-down (feature request, after the 14.5.0 import)** | S1 (`sas2308_idle_spindown`, default 0) | glue `S1-spindown` (idle stop not sent; START 1, LOEJ, POWER CONDITION, knob 1, system sleep, unknown state, halt: sent) | `pmset -a disksleep 1`: tunable 0 drives keep spinning after 3 min idle, tunable 1 they spin down; one sleep/wake; one restart; regression on 5 drives |
+| **S2. Spin only while in use + `sas2308ctl spindown` (feature request)** | S2 mode 2 (default), S2 grace (`sas2308_spindown_grace` 900 s), S2 spindown | glue `S2-in-use`, `S2-grace`, `S2-spindown` | disksleep 1: unmounted drive spins down, mounted / raw-open drive keeps spinning; boot-time stops absorbed by the grace; `spindown all` refuses the mounted drive, stops the others, reads and mounts recover; sleep/wake, restart; SMART 192 unchanged; regression on 7 drives |
 
 Comment-only changes (no behaviour change) ride with whichever batch touches the file: listed in the last table.
 
@@ -163,6 +164,9 @@ Hardware-only items: D34 (full-rate shutdown + verify + SYNCHRONIZE CACHE trace)
 | G2 | build fixes (Mac build) | done | ee94a31 | n/a | n/a |
 | vendor | FreeBSD release/14.5.0 import (2 upstream commits, 3 lines, no conflicts, no new deviation) | done | 9c0a5f9, 72654ac | all host tests | smoke test on 830E83B5 (see "FreeBSD 14.5.0 import hardware results") |
 | S1 | S1 (no idle spin-down; `sas2308_idle_spindown`, default 0: SAM's idle stop completed here) | done | f1cc568 | glue `S1-spindown` | tunable 0: first read 0.23-0.30 s after SAM's idle stop (5 stops completed here); tunable 1: 10.9-11.5 s (see "Batch S1 hardware results") |
+| S2 | mode 2 (default): SAM's idle stop sent only to a disk not in use (IORegistry walk, IOService::isOpen) | code done, HW pending | f8e8901 | glue `S2-in-use` | not run: kext approval needed (see "Batch S2 hardware results") |
+| S2 | `sas2308_spindown_grace` (900 s after attach, mode 2 completes the idle stop here) | code done, HW pending | d8c495e | glue `S2-grace` | not run |
+| S2 | `sas2308ctl spindown <diskN\|all>` (camcontrol stop through the shutdown-SSU path) | code done, HW pending | d055c1a | glue `S2-spindown` | tool against the old kext: enumerates 8 disks, refuses mounted disk4 and partitions / internal disks |
 
 ### Batch A hardware results
 
@@ -571,6 +575,19 @@ failed). Mac stayed up; the next boots attached 8 drives (7 known + drive8), sta
   level on hardware that is gone; expected there, should not be a fault.
 - Still open: test 2 (unplug under IO with a mounted volume) and test 7's transient-blip half.
 
+### Batch S2 hardware results
+
+Rationale: feature request (spin only while in use, an immediate spin-down command); FreeBSD never
+stops a disk for idleness, `camcontrol stop` is its manual equivalent (design.md "S2"). Built on
+the Mac (FCE29EDC-ADAC-3CD7-8E14-97B601FD078D, `make check` clean), installed with mac/install.sh
+(backup ~/sas2308-rollback-95E0D6C9, kmutil rc 27). Not approved yet: the legacy-VNC step of the
+approval was not run, so 95E0D6C9 is still loaded and the
+hardware tests (a)-(c) are not run. Done without the new kext: Spotlight (LOADING.md), SMART
+baseline (192: 49 59 54 52 54 54 56 61 for drive6 drive2 drive7 drive8 drive3 drive5
+drive4 drive1), and the new `sas2308ctl spindown all` against the old kext (8 disks found,
+disk4 refused as mounted, the others "kext too old"; `disk4s2` and internal `disk3` refused).
+Raw outputs: Mac `~/hwS2`.
+
 ### Hardware tests still to run
 
 Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found with
@@ -662,6 +679,10 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
     `sasbench -b 4K -q 320 -p rand -t 300` on 6 raw drives (6 x 320 = 1920 tasks plus the seventh
     drive's re-add; 2046 OS tasks) and pull and re-insert the seventh drive. Expect the nub to come
     back, "Device re-adds given up" 0, "Config page failures" 0.
+16. **Batch S2, approve build FCE29EDC** (installed 2026-11-22, not yet approved). At the Mac (or
+    Screen Sharing with control): System Settings > Privacy & Security > "Allow" next to the
+    SAS2308HBA message (password twice), then "Restart". Or use a legacy-VNC approval
+    step. Then the S2 hardware tests (a)-(c) run unattended.
 
 ## Ranked table: changes (CHANGE)
 

@@ -86,6 +86,29 @@ Sleep / wake and restart are handled since M5b (IO held across sleep, IOC stoppe
 restart) but were never exercised on hardware: test them as in docs/design.md "Hardware test
 plan" before relying on them with mounted disks.
 
+## Disk spin-down (S2) and Spotlight on the SAS disks
+```
+~/sas2308-dext/tools/sas2308ctl stats | grep -Ei "idle|spin"   # idle stops completed here / sent / in grace, spin-downs
+sudo ~/sas2308-dext/tools/sas2308ctl set sas2308_idle_spindown 2   # 0 never spin down, 1 always (macOS), 2 only when not in use (default)
+sudo ~/sas2308-dext/tools/sas2308ctl set sas2308_spindown_grace 900  # s after attach with no spin-down (boot); 0 = none
+sudo ~/sas2308-dext/tools/sas2308ctl spindown disk5            # stop one disk now (refused if mounted / open)
+sudo ~/sas2308-dext/tools/sas2308ctl spindown all              # every disk behind the HBA that is not mounted
+pmset -g | grep disksleep                                     # macOS's idle timer (minutes) that sends the idle stops
+```
+Spotlight (set 2026-11-22, macOS 27): system-wide, external volumes are not indexed:
+`sudo defaults write /Library/Preferences/com.apple.SpotlightServer.plist ExternalVolumesIgnore -bool true`
+then `sudo launchctl kickstart -k system/com.apple.metadata.mds`. Verified: a fresh JHFS+ volume
+showed "Indexing and searching disabled" and got no .Spotlight-V100 (control without the key:
+"Indexing enabled" and .Spotlight-V100 created); the internal disk stays "Indexing enabled".
+Per volume: `sudo mdutil -i off /Volumes/F145TEST` (stored on the volume). Undo:
+`sudo defaults delete /Library/Preferences/com.apple.SpotlightServer.plist ExternalVolumesIgnore`,
+kickstart mds again, `sudo mdutil -i on /Volumes/F145TEST`.
+
+The exFAT volume drive8 (on the drive of the same serial, contents unknown, not ours) is kept
+from auto-mounting by `/etc/fstab`: `UUID=<volume-UUID> none exfat rw,noauto`
+(a GUI login would otherwise mount it read-write and macOS would write .fseventsd to it). Undo:
+delete that line (`sudo vifs`).
+
 ## Notes
 - Leaving SIP disabled lowers the Mac's protection system-wide (user approved this, 2026-11-18).
 - Each macOS update may require rebuilding (`make`) and re-approving.

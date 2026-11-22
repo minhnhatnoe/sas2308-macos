@@ -1048,6 +1048,7 @@ first IO after that brings it back to Active with START 1 (10.5 s spin-up, D15b)
 | any stop from kIOMessageSystemWillSleep until kIOMessageSystemWillPowerOn / HasPoweredOn (priority power interest; the root domain tells its priority clients before the power tree goes down) | sent | sent |
 | any stop once the halt began (restart / power off, batch F), the IOC is stopped / suspended / gone, or before the priority interest is registered (system state unknown) | sent | sent |
 
+S2 adds mode 2 (now the default; see "S2" below).
 SAM's power state still drops (it believes the disk stopped); its next IO sends START 1, which the
 spinning disk answers at once. D9's shutdown SSU is an internal command of the core and does not pass
 here. The HBA cannot see mounts, so this applies to every disk behind it, mounted or not, and to a
@@ -1061,6 +1062,58 @@ Verified (2026-11-21, build 95E0D6C9, 5 drives, `pmset -a disksleep 1`): tunable
 the drives' own idle state); tunable 1, first read 10.9-11.5 s (spin-up). Sleep/wake and restart
 (13 s) unchanged; regression 1262 IOPS, 1391.4 MB/s on 5 drives (per drive as before). Details: the
 deviations plan, "Batch S1 hardware results".
+
+## S2: spin only while in use, and `sas2308ctl spindown` (branch spin-in-use, 2026-11-22)
+
+Goal: disks that spin only while in use, plus a command that stops a disk now.
+FreeBSD never stops a disk for idleness (`camcontrol stop` is its manual equivalent), so both are
+port-only code with `XNU:` comments.
+
+`sas2308_idle_spindown` gets mode 2, the new default (Info.plist 2; boot-arg / `sas2308ctl set`
+as before). Modes 0 and 1 and every S1 rule for sleep / halt / unknown system state are unchanged.
+
+| SAM's idle stop (START 0, LOEJ 0, POWER CONDITION 0), system awake, mode 2 | |
+|---|---|
+| within `sas2308_spindown_grace` seconds (default 900, 0 = none, max 86400) of the target's nub creation | completed here; "Idle stops completed here" + 1 and "Idle stops in grace period" + 1; the disk is not asked |
+| disk in use | completed here, "Idle stops completed here" + 1 |
+| disk not in use | sent, "Idle stops sent" + 1 |
+
+**In use**, decided when the stop arrives (`SAS2308Glue::StopUse` before the gate, no lock held ->
+`SAS2308HBA::TargetUse`): one snapshot of the HBA's IORegistry subtree
+(`IORegistryIterator::iterateAll`, every entry retained); the target's nub is the
+IOSCSIParallelInterfaceDevice child whose Protocol Characteristics "SCSI Target Identifier" is the
+ID; every IOMedia below it (whole disk, partitions, an APFS container's disks) is checked with
+`IOService::isOpen(client)` against each of its service-plane children except partition schemes
+(`metaCast("IOPartitionScheme")`: the scheme keeps the whole-disk media open while attached). A
+mounted volume and an open `/dev/(r)diskN` both open the media through its IOMediaBSDClient
+(dkopen opens the media with the BSD client as the IOService client). If the work-loop gate is
+held (SAM's resend queue can call ProcessParallelTask from inside it) the walk is skipped and the
+disk counts as in use, because isOpen takes the IOService notification lock that an opener holds
+across the media's handleOpen. A stop that SAM sends while a disk is in use is completed here,
+SAM's power state drops anyway, and the next IO sends START 1 to a disk that is still spinning
+(S1).
+
+**Grace period** (requested after the S1 boot data: "Idle stops completed here 8" at 1 min uptime,
+because SAM sends one idle stop per disk right after attach, and volumes on this Mac mount only
+at the GUI login): the hotplug thread stamps the target (`SAS2308TargetTable::Stamp`) before
+CreateTargetForID, and in mode 2 a stop within the grace is completed here. Consequence: SAM
+believes such a disk is stopped and sends no further idle stop until the disk's next IO, so a disk
+that nobody touches after boot keeps spinning (use `sas2308ctl spindown`).
+
+**`sas2308ctl spindown <diskN|all>`**: the tool finds the whole-disk IOMedia below the HBA (the
+first IOSCSIParallelInterfaceDevice above it, no IOMedia between, gives the target ID), refuses a
+disk with a mounted volume (getmntinfo; each mount's IOMedia walked up to the disk, so APFS volumes
+count), then sets `SAS2308SpinDown` = target ID (setProperties, administrator only). The class
+refuses a disk in use (TargetUse, kIOReturnBusy) and calls `mps_kext_spindown`: START STOP UNIT
+START 0, IMMED 0, SIMPLE tag, 120 s, as camcontrol(8) stop, sent the way mps_sas_lsi.c's shutdown
+SSU sends its own (scsi_start_stop on a driver ccb, xpt_action), waited for with mps_kext_tm's
+waiter (drained by mps_kext_stop_waiters, orphaned at a stop). Refused after the halt began,
+while suspended or going to sleep (ENODEV), for an ID with no disk (ENXIO). SAM is told nothing:
+for these SATA disks the IOC's SAT layer issues STANDBY IMMEDIATE and the disk spins up on the next
+media access. Counter "Spin-downs requested".
+
+Host tests: glue `S2-in-use`, `S2-grace`, `S2-spindown` (each failed before). Hardware results:
+the deviations plan, "Batch S2 hardware results".
 
 ## What is implemented (M1 – M4)
 > **Names after M5.** The tables and sections below are the M1–M4 history and use the names of
