@@ -5,10 +5,13 @@ relatives), built on FreeBSD's `mps(4)` driver. The FreeBSD driver core runs
 nearly unchanged on a small compat layer; the kext connects it to
 IOSCSIParallelFamily.
 
-Status: a classic kext for macOS 27 on Apple silicon. It runs a 9207-8i in a
-Thunderbolt PCIe enclosure with SATA disks (hot plug, sleep/wake,
-benchmarks in `docs/benchmarks-20261120.md`). Loading it needs Reduced
-Security and SIP disabled (`docs/LOADING.md`). Read "Safety" below first.
+**Status: experimental.** A classic kext for macOS 27 on Apple silicon, tested
+on one setup only. It runs a 9207-8i in a Thunderbolt PCIe enclosure with SATA
+disks (hot plug, sleep/wake; current results in
+`docs/benchmarks-20261121-final.md`, the first run in `docs/benchmarks-20261120.md`).
+Loading it needs Reduced Security and SIP disabled (`docs/LOADING.md`). Read
+"Safety" below first; the hardware tests still to run are listed in
+`docs/reviews/2026-11-freebsd-deviations.md`.
 
 ## Safety
 
@@ -23,6 +26,10 @@ Security and SIP disabled (`docs/LOADING.md`). Read "Safety" below first.
 - This is a kernel driver: a bug can panic the Mac, corrupt data or lose it.
   Keep backups and do not use it for data you cannot lose.
 - No warranty: BSD-2-Clause, provided "as is" (`LICENSE`).
+- **The benchmark scripts destroy data.** `bench/` scripts write to the raw
+  disks (`/dev/rdiskN`) of every matching drive behind the HBA and overwrite
+  everything on them. They refuse to run unless `SAS2308_YES_DESTROY` names
+  exactly the selected disks; read `bench/README.md` before running any.
 
 ## Layout
 
@@ -34,7 +41,7 @@ Security and SIP disabled (`docs/LOADING.md`). Read "Safety" below first.
 | `kext/` | `SAS2308HBA.kext`: IOKit glue, power management, hot plug, properties |
 | `test/` | host tests: the core and the kext glue against an IOC model (Linux or macOS) |
 | `tools/` | `sas2308ctl` (log level, counters), `sasbench`, FreeBSD import and diff scripts |
-| `bench/` | benchmark scripts and raw results |
+| `bench/` | benchmark scripts and raw results (`bench/README.md`; the scripts overwrite disks) |
 | `docs/` | design notes, loading steps, benchmarks, review records (`docs/reviews/`) |
 
 ## Build and test
@@ -50,6 +57,13 @@ Security and SIP disabled (`docs/LOADING.md`). Read "Safety" below first.
 branch `vendor/freebsd-mps` holds the pristine files; `git diff
 vendor/freebsd-mps master -- core/` is the whole port. `core/VENDOR.txt` has
 the pin, the path map and the update procedure (`tools/import-freebsd.sh`).
+
+## Support
+
+Provided as is. Issues are welcome and answered on a best-effort basis; there
+is no promise of fixes or of support for other hardware. Reports from other
+setups (card, firmware, enclosure, drives, macOS version; what worked, what did
+not, with `sas2308ctl stats` and the driver's log lines) are especially welcome.
 
 ## License
 
