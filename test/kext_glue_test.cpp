@@ -1570,16 +1570,21 @@ int main()
 
     if (Want("S2-spindown")) {
         /*
-         * sas2308ctl spindown: START STOP UNIT (START 0, IMMED 0) to the
-         * disk now, as camcontrol stop, through the core like the shutdown
-         * SSU (a ccb of its own, not a family task); waits for the answer.
-         * Sent in every sas2308_idle_spindown mode; refused for an ID with
-         * no disk and once the halt began.
+         * sas2308ctl spindown: ATA STANDBY IMMEDIATE in ATA PASS-THROUGH(12)
+         * (A1 06 00 00 00 00 00 00 40 E0 00 00) to a SATA disk now, as
+         * camcontrol standby, through the core like the shutdown SSU (a ccb
+         * of its own, not a family task); waits for the answer. Not START
+         * STOP UNIT (camcontrol stop): the IOC's SAT layer then answers
+         * every media access NOT READY 04/02 until a START, which SAM does
+         * not send (EJ, seen on the Mac). Sent in every
+         * sas2308_idle_spindown mode; refused for a SAS disk (EOPNOTSUPP),
+         * an ID with no disk and once the halt began.
          */
-        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        MockIocModel m; m.devices = {0x0009, 0x000A}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.sataSerial[0x0009] = "ZR50AAAA";          /* 0x000A: a SAS disk */
         m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
         Family f; f.Attach(&m);
-        const uint32_t t9 = f.Tid(0x0009);
+        const uint32_t t9 = f.Tid(0x0009), ta = f.Tid(0x000A);
         mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
         struct mps_xnu_stats &st = gHost.sc->xnu.stats;
         const uint32_t local0 = st.idle_stops, sent0 = st.idle_stops_sent;
@@ -1590,8 +1595,14 @@ int main()
             CHECK(mps_kext_spindown(f.k, t9, &cam, &scsi) == 0);
             CHECK(cam == CAM_REQ_CMP && scsi == 0);
             CHECK(m.scsiOps.size() == ops + 1);
-            CHECK(m.scsiOps.back().handle == 0x0009 && m.scsiOps.back().op == 0x1B &&
-                  m.scsiOps.back().b1 == 0x00 && m.scsiOps.back().b4 == 0x00);
+            CHECK(m.scsiOps.back().handle == 0x0009 && m.scsiOps.back().op == 0xA1 &&
+                  m.scsiOps.back().b1 == 0x06 && m.scsiOps.back().b4 == 0x00 && m.scsiOps.back().b9 == 0xE0);
+        }
+        /* a SAS disk: refused, nothing sent */
+        {
+            const size_t ops = m.scsiOps.size();
+            CHECK(mps_kext_spindown(f.k, ta, &cam, &scsi) == 45);  /* EOPNOTSUPP in the core's (BSD) numbering */
+            CHECK(m.scsiOps.size() == ops);
         }
         CHECK(st.spindowns == 3 && st.idle_stops == local0 && st.idle_stops_sent == sent0);
         /* the family's IO is untouched */

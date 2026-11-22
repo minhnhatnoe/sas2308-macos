@@ -255,7 +255,7 @@ SAS2308HBA::setProperties(OSObject *properties)
         handled = true;
     }
     /*
-     * sas2308ctl spindown (S2): stop one disk now (mps_kext_spindown). The
+     * sas2308ctl spindown (S2, EJ): spin one disk down now (mps_kext_spindown). The
      * tool refuses disks with a mounted volume; here a disk in use (any open
      * of its media but the partition scheme's, TargetUse) is refused too.
      * Synchronous: the reply is the disk's answer (a stop takes seconds).
@@ -278,11 +278,12 @@ SAS2308HBA::setProperties(OSObject *properties)
             rc = mps_kext_spindown(fGlue.fMps, tid, &cam, &scsi);
             Leave();
             ret = rc == 0 ? kIOReturnSuccess : rc == ENXIO ? kIOReturnNoDevice : rc == ENOMEM ? kIOReturnNoMemory :
-                  rc == EIO ? kIOReturnIOError : kIOReturnNotReady;
+                  rc == EIO ? kIOReturnIOError : rc == EOPNOTSUPP ? kIOReturnUnsupported : kIOReturnNotReady;
         }
         KlogAlways(MPSK_INFO, "spindown of target %u from userland: %s%s (CAM status 0x%x, SCSI status 0x%x)", tid,
                    ret == kIOReturnSuccess ? "stopped" : ret == kIOReturnBusy ? "refused, in use: " :
-                   ret == kIOReturnNoDevice ? "refused, no disk" : ret == kIOReturnIOError ? "FAILED" : "refused",
+                   ret == kIOReturnNoDevice ? "refused, no disk" : ret == kIOReturnIOError ? "FAILED" :
+                   ret == kIOReturnUnsupported ? "refused, not a SATA disk" : "refused",
                    ret == kIOReturnBusy ? who : "", cam, scsi);
         if (ret != kIOReturnSuccess)
             return ret;

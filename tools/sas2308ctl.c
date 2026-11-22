@@ -12,7 +12,7 @@
  *                                       "+trace", "-xinfo", or a number like 0x13
  *   sudo sas2308ctl iolog on|off        IOLog (dmesg) instead of os_log
  *   sudo sas2308ctl reset-stats
- *   sudo sas2308ctl spindown <diskN|all>  stop the disk(s) now (START STOP UNIT, START 0);
+ *   sudo sas2308ctl spindown <diskN|all>  spin SATA disk(s) down now (ATA STANDBY IMMEDIATE);
  *                                       refused for a disk with a mounted volume or an
  *                                       open /dev node; it spins up on the next access
  *
@@ -174,7 +174,7 @@ static int SpinDownOne(io_service_t hba, io_registry_entry_t media, const char *
            kr == kIOReturnNotPrivileged ? "run as root" :
            kr == kIOReturnNoDevice ? "no disk behind the target" :
            kr == kIOReturnIOError ? "the disk failed the command (see the log)" :
-           kr == kIOReturnUnsupported ? "kext too old (no spindown)" : "controller not ready", kr);
+           kr == kIOReturnUnsupported ? "not a SATA disk, or kext too old (no spindown)" : "controller not ready", kr);
     return 1;
 }
 

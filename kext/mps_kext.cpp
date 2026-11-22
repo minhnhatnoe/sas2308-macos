@@ -1148,16 +1148,24 @@ static void mps_kext_hold_end(void *arg)
 }
 
 /*
- * sas2308ctl spindown (S2): stop the disk now. FreeBSD's manual equivalent
- * is camcontrol(8) stop (scsistart(): START STOP UNIT, START 0, IMMED 0,
- * SIMPLE tag, 120 s default timeout, through the pass device, so no da
- * ORDERED-tag accounting); the ccb is sent the way mps_sas_lsi.c's shutdown
- * SSU sends its own (mpssas_SSU_to_SATA_devices: scsi_start_stop on a ccb
- * of the driver's, xpt_action), with mps_kext_tm's wait (the waiter count
- * that mps_kext_stop_waiters drains, orphaned at a stop). For SATA disks
- * the IOC's SAT layer turns it into STANDBY IMMEDIATE; the disk spins up by
- * itself on the next media access. SAM is not told (its power state stays
- * Active): its next IO simply waits for the spin-up. XNU: the request
+ * sas2308ctl spindown (S2, EJ): spin a SATA disk down now. FreeBSD's
+ * manual equivalent is camcontrol(8) standby (atapm(): ATA STANDBY
+ * IMMEDIATE, AP_PROTO_NON_DATA, through scsi_ata_pass for a da device:
+ * ATA PASS-THROUGH(12), SIMPLE tag, 30 s default timeout, through the pass
+ * device, so no da ORDERED-tag accounting); the ccb is sent the way
+ * mps_sas_lsi.c's shutdown SSU sends its own (mpssas_SSU_to_SATA_devices:
+ * a ccb of the driver's, xpt_action), with mps_kext_tm's wait (the waiter
+ * count that mps_kext_stop_waiters drains, orphaned at a stop). The disk
+ * spins up by itself on the next media access, so SAM need not be told
+ * (its power state stays Active): its next IO waits for the spin-up.
+ * XNU: S2 sent camcontrol stop's START STOP UNIT (START 0) instead. The
+ * IOC's SAT layer then keeps the disk stopped and answers every media
+ * access NOT READY, LOGICAL UNIT NOT READY, INITIALIZING COMMAND REQUIRED
+ * (04/02) until a START (seen on the Mac, 2026-11-22: reads failed after
+ * SAM's retries, the volume did not mount). FreeBSD's CAM recovers from
+ * that by itself (scsi_all.c sense table: 04/02 SS_START, a START UNIT
+ * and a retry); SAM does not. SAS disks: refused (EOPNOTSUPP), nothing
+ * here spins one down so that SAM's next IO finds it ready. The request
  * comes from setProperties (an administrator only, sas2308ctl), not from a
  * periph; the user tool refuses disks with a mounted volume and the class
  * refuses disks in use (S2) before calling this.
@@ -1189,16 +1197,24 @@ int mps_kext_spindown(struct mps_kext *k, uint32_t tid, uint32_t *cam_status, ui
         mps_os_free(w, sizeof(*w));
         return ENXIO;
     }
+    if ((sc->sassc->targets[tid].devinfo & MPI2_SAS_DEVICE_INFO_SATA_DEVICE) == 0) {
+        mps_unlock(sc);
+        mps_os_free(w, sizeof(*w));
+        return EOPNOTSUPP;
+    }
     k->tm_waiters++;
     w->path.path_id = cam_sim_path(sc->sassc->sim);
     w->path.target_id = tid;
     w->path.lun_id = 0;
     xpt_setup_ccb(&w->ccb.ccb_h, &w->path, CAM_PRIORITY_NORMAL);
-    scsi_start_stop(&w->ccb.csio, /*retries*/0, mps_kext_tm_done, MSG_SIMPLE_Q_TAG, /*start*/FALSE,
-                    /*load/eject*/0, /*immediate*/FALSE, SSD_FULL_SIZE, MPSK_SPINDOWN_TIMEOUT_MS);
+    (void)scsi_ata_pass(&w->ccb.csio, /*retries*/0, mps_kext_tm_done, CAM_DIR_NONE, MSG_SIMPLE_Q_TAG,
+                        AP_PROTO_NON_DATA, /*ata_flags*/0, /*features*/0, /*sector_count*/0, /*lba*/0,
+                        ATA_STANDBY_IMMEDIATE, /*device*/0, /*icc*/0, /*auxiliary*/0, /*control*/0,
+                        /*data_ptr*/nullptr, /*dxfer_len*/0, nullptr, 0, /*minimum_cmd_size*/0,
+                        SSD_FULL_SIZE, MPSK_SPINDOWN_TIMEOUT_MS);
     w->ccb.ccb_h.ppriv_ptr0 = w;
     sc->xnu.stats.spindowns++;
-    mps_dprint(sc, MPS_INFO, "target %u (handle 0x%04x): START STOP UNIT (stop) from sas2308ctl spindown\n",
+    mps_dprint(sc, MPS_INFO, "target %u (handle 0x%04x): ATA STANDBY IMMEDIATE from sas2308ctl spindown\n",
                tid, sc->sassc->targets[tid].handle);
     xpt_action(&w->ccb);
     if (mps_kext_tm_wait(k, &w->done, nullptr, 0, 0)) {

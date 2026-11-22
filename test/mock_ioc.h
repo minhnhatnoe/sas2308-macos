@@ -128,7 +128,7 @@ struct MockIocModel {
     bool dropIdentify = false;                 /* lose IDENTIFY replies */
     std::set<uint16_t> identifyFail;           /* IDENTIFY of these handles fails */
     std::set<uint16_t> sataSsd;                /* IDENTIFY word 217 = 1 (non-rotating) */
-    struct ScsiOp { uint16_t handle; uint8_t op, b1, b4; };
+    struct ScsiOp { uint16_t handle; uint8_t op, b1, b4, b9; };
     std::vector<ScsiOp> scsiOps;               /* every SCSI IO request: handle, CDB bytes 0, 1, 4 (D9) */
     std::map<uint16_t, int> identifyFailN;     /* the next N IDENTIFYs of a handle fail */
     std::set<uint16_t> identifyStuck;          /* the next IDENTIFY of these handles gets no reply ... */
@@ -766,7 +766,7 @@ struct MockIocModel {
             for (uint16_t h : devices) known |= h == q->DevHandle;
             CHECK(known);
             ioCount[q->DevHandle]++;
-            scsiOps.push_back({q->DevHandle, q->CDB.CDB32[0], q->CDB.CDB32[1], q->CDB.CDB32[4]});
+            scsiOps.push_back({q->DevHandle, q->CDB.CDB32[0], q->CDB.CDB32[1], q->CDB.CDB32[4], q->CDB.CDB32[9]});
             nowUs += 37;                            /* the IO takes a little time: nonzero latency */
             lastSgl = WalkSgl(f, true, &lastChains);
             lastDataLength = q->DataLength; lastControl = q->Control;
@@ -821,11 +821,12 @@ struct MockIocModel {
                 pending.push_back(pd);
                 return;
             }
-            if (q->CDB.CDB32[0] == 0xA1 || q->CDB.CDB32[0] == 0x85) {
+            if ((q->CDB.CDB32[0] == 0xA1 || q->CDB.CDB32[0] == 0x85) && (q->CDB.CDB32[2] & 0x20)) {
                 /*
                  * ATA PASS-THROUGH with CK_COND (SMART): SAT returns the ATA
                  * registers as CHECK CONDITION, descriptor sense, RECOVERED
-                 * ERROR, 0x00/0x1D, ATA Status Return descriptor.
+                 * ERROR, 0x00/0x1D, ATA Status Return descriptor. Without
+                 * CK_COND a command that succeeds gets GOOD (SAT).
                  */
                 uint8_t *s = Ptr(((uint64_t)senseHigh << 32) | q->SenseBufferLowAddress, 22);
                 memset(s, 0, 22); s[0] = 0x72; s[1] = 0x01; s[2] = 0x00; s[3] = 0x1D; s[7] = 14;

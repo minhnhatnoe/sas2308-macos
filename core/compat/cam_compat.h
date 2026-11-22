@@ -358,6 +358,20 @@ void		 scsi_start_stop(struct ccb_scsiio *csio, uint32_t retries,
 		    void (*cbfcnp)(struct cam_periph *, union ccb *),
 		    uint8_t tag_action, int start, int load_eject,
 		    int immediate, uint8_t sense_len, uint32_t timeout);
+/* scsi_all.h / ata.h subset: ATA STANDBY IMMEDIATE to a SATA disk, as camcontrol standby (S2, EJ) */
+#define	ATA_PASS_12		0xA1
+#define	AP_PROTO_NON_DATA	(0x03 << 1)
+#define	ATA_DEV_LBA		0x40
+#define	ATA_STANDBY_IMMEDIATE	0xe0
+int		 scsi_ata_pass(struct ccb_scsiio *csio, uint32_t retries,
+		    void (*cbfcnp)(struct cam_periph *, union ccb *),
+		    uint32_t flags, uint8_t tag_action, uint8_t protocol,
+		    uint8_t ata_flags, uint16_t features,
+		    uint16_t sector_count, uint64_t lba, uint8_t command,
+		    uint8_t device, uint8_t icc, uint32_t auxiliary,
+		    uint8_t control, uint8_t *data_ptr, uint32_t dxfer_len,
+		    uint8_t *cdb_storage, size_t cdb_storage_len,
+		    int minimum_cmd_size, uint8_t sense_len, uint32_t timeout);
 
 void		 xpt_action(union ccb *ccb);
 int		 bus_dmamap_load_ccb(bus_dma_tag_t dmat, bus_dmamap_t map,

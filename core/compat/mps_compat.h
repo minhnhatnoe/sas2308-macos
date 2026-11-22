@@ -160,6 +160,9 @@ static __inline u_int max(u_int a, u_int b) { return (a > b ? a : b); }
 #ifndef EINPROGRESS
 #define EINPROGRESS	36
 #endif
+#ifndef EOPNOTSUPP
+#define EOPNOTSUPP	45
+#endif
 #ifndef ENOBUFS
 #define ENOBUFS		55
 #endif
