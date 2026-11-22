@@ -20,16 +20,21 @@ On the Mac, as the admin user (the scripts call sudo; you type the password). St
 a dry run: it prints every action and changes nothing.
 ```
 cd sas2308-dext                 # the repo clone; all paths below are relative to it
-tools/install.sh -n             # dry run: security state, bundle, backup path, volumes to unmount
-tools/install.sh                # make + make check, back up the installed bundle to
+make                            # build the kext (+ make -C kext check) and tools/sas2308ctl
+make install-dry-run            # tools/install.sh --dry-run: security state, bundle, backup path,
+                                # volumes to unmount
+make install                    # tools/install.sh: make + make check, back up the installed bundle to
                                 # ~/sas2308-rollback-<UUID8>, unmount the volumes on the SAS2308HBA
                                 # disks, copy to /Library/Extensions, chown, kmutil load -p
 tools/install.sh --verify --expect N   # after approval + restart: loaded UUID, N drives, counters
 tools/install.sh --rollback -n  # newest backup that differs from the installed one (or give a path)
-tools/uninstall.sh -n           # backup, unmount, kmutil unload, remove, clear-staging if staged
+tools/uninstall.sh -n           # dry run of the uninstall
+make uninstall                  # tools/uninstall.sh: backup, unmount, kmutil unload, remove,
+                                # clear-staging if staged
 ```
-`tools/install.sh path/to/SAS2308HBA.kext` installs a given bundle; `--force` reinstalls the
-installed UUID. When kmutil returns 27 the script prints the approval steps (below, 5-6).
+`make install` and `make uninstall` run the scripts without options; use the scripts directly
+for `-n`, `--verify`, `--rollback` and `--force`. `tools/install.sh path/to/SAS2308HBA.kext`
+installs a given bundle; `--force` reinstalls the installed UUID. When kmutil returns 27 the script prints the approval steps (below, 5-6).
 The manual steps below do the same and are the fallback.
 
 ## Install and load by hand (on the Mac, or over ssh)

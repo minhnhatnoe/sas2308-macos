@@ -40,16 +40,27 @@ Loading it needs Reduced Security and SIP disabled (`docs/LOADING.md`). Read
 | `core/mpi/` | LSI/Avago MPI2 headers, unmodified |
 | `kext/` | `SAS2308HBA.kext`: IOKit glue, power management, hot plug, properties |
 | `test/` | host tests: the core and the kext glue against an IOC model (Linux or macOS) |
-| `tools/` | `sas2308ctl` (log level, counters), `sasbench`, FreeBSD import and diff scripts |
+| `tools/` | `sas2308ctl` (log level, counters), `sasbench`, install and uninstall scripts, FreeBSD fetch, import and diff scripts |
 | `bench/` | benchmark scripts and raw results (`bench/README.md`; the scripts overwrite disks) |
 | `docs/` | design notes, loading steps, benchmarks, review records (`docs/reviews/`) |
+| `ref/` | not in the repository: `make freebsd-ref` creates `ref/freebsd-src` (ignored by git) |
 
 ## Build and test
 
-- Host tests (any Unix with a C/C++ compiler): `make -C test test`.
-- Kext (on the Mac, Command Line Tools with the macOS SDK): `make -C kext`,
-  `make -C kext check`; tools: `make -C tools`. Loading: `docs/LOADING.md`.
-- Install / roll back / uninstall on the Mac: `tools/install.sh -n` and `tools/uninstall.sh -n` (dry runs first).
+From the repository root (GNU make; `make help` lists the targets):
+
+- `make`: on the Mac (Command Line Tools with the macOS SDK) builds
+  `kext/build/SAS2308HBA.kext`, runs its static checks (`make -C kext check`)
+  and builds `tools/sas2308ctl`; elsewhere it runs the host tests.
+- `make test`: host tests (any Unix with a C/C++ compiler; `make -C test test`).
+- `make install-dry-run`, then `make install`; `make uninstall` (on the Mac,
+  `tools/install.sh` and `tools/uninstall.sh`). Loading needs the security
+  change in `docs/LOADING.md`, which also covers rollback and `--verify`.
+- `make freebsd-ref`: the FreeBSD source `core/VENDOR.txt` pins, as a shallow,
+  sparse clone of `sys/dev/mps` and `sys/cam` in `ref/freebsd-src` (about
+  24 MB; more paths with `tools/fetch-freebsd-ref.sh sys/sys`). It is created
+  on demand and is not part of the repository; the build and tests do not
+  need it.
 
 ## FreeBSD upstream
 
@@ -57,6 +68,9 @@ Loading it needs Reduced Security and SIP disabled (`docs/LOADING.md`). Read
 branch `vendor/freebsd-mps` holds the pristine files; `git diff
 vendor/freebsd-mps master -- core/` is the whole port. `core/VENDOR.txt` has
 the pin, the path map and the update procedure (`tools/import-freebsd.sh`).
+`make freebsd-ref` fetches the pinned upstream tree into `ref/freebsd-src`
+for reading or for `REF=` in `tools/diff-vs-freebsd.sh`; the import script
+creates it itself when it is missing.
 
 ## Support
 
