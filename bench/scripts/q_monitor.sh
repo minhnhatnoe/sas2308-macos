@@ -6,7 +6,7 @@
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$SCRIPT_DIR/../.." && pwd)
 OUT=${1:-$REPO/bench/out/run}
 CTL=${SAS2308CTL:-$REPO/tools/sas2308ctl}
-SC=/opt/homebrew/bin/smartctl
+SC=${SMARTCTL:-$(command -v smartctl || echo smartctl)}
 mkdir -p "$OUT"
 F="$OUT/monitor.csv"; T="$OUT/drivetemps.csv"; B="$OUT/.monbase"
 KEYS="IOC temperature (C)|IOs completed|Read bytes|Write bytes|Latency avg us|Latency max us|Held now|Held total|Tasks rejected|IO timeouts|Family timeouts|Recoveries|Reinits|IOC faults|Diag resets|Err check condition|Err SCSI status|Err terminated|Err transport|Err device gone|TM requests from OS|Stale replies|Bad replies|Chain free low|Chain alloc failures|State"

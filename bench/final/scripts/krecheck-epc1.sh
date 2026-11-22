@@ -5,7 +5,7 @@
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$SCRIPT_DIR/../../.." && pwd)
 [ $# -gt 0 ] || { echo "usage: $0 SERIAL..." >&2; exit 2; }
 OUT=${OUT:-$REPO/bench/out/krecheck/epc}; mkdir -p $OUT
-SC=/opt/homebrew/bin/smartctl
+SC=${SMARTCTL:-$(command -v smartctl || echo smartctl)}
 bash "$REPO/bench/scripts/sasdisks.sh" > $OUT/disks.txt 2>/dev/null
 cat $OUT/disks.txt
 for s in "$@"; do

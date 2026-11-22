@@ -1,7 +1,7 @@
 #!/bin/bash
 # Final performance suite (run with sudo). Every pattern of docs/benchmarks-20261120.md, shorter points.
 . "$(dirname "$0")/lib_final.sh"
-SC=/opt/homebrew/bin/smartctl
+SC=${SMARTCTL:-$(command -v smartctl || echo smartctl)}
 echo "PERF START $(date '+%F %T')" >> $LOG
 setup || exit 1
 # idle baseline (cold), 2 min

@@ -2,7 +2,7 @@
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$SCRIPT_DIR/../../.." && pwd)
 S6=${1:?usage: $0 SERIAL_OF_DISK6 SERIAL_OF_DISK5}; S5=${2:?usage: $0 SERIAL_OF_DISK6 SERIAL_OF_DISK5}
-OUT=${OUT:-$REPO/bench/out/krecheck/epc}; SC=/opt/homebrew/bin/smartctl; SB=${SASBENCH:-$REPO/tools/sasbench}
+OUT=${OUT:-$REPO/bench/out/krecheck/epc}; SC=${SMARTCTL:-$(command -v smartctl || echo smartctl)}; SB=${SASBENCH:-$REPO/tools/sasbench}
 d6=$(awk -v s="$S6" '$2==s {print $1}' $OUT/disks.txt); d5=$(awk -v s="$S5" '$2==s {print $1}' $OUT/disks.txt)
 case "$d6$d5" in disk6disk5) ;; *) echo "mapping changed $d6 $d5"; exit 1;; esac
 $SC -n standby,0 -i /dev/$d6 > $OUT/checkpower-$S6.txt 2>&1; echo "checkpower rc=$?"

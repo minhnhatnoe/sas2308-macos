@@ -10,6 +10,8 @@ bash "$SCRIPT_DIR/sasdisks.sh" > $OUT/disks.new || { echo "NO DISKS" >> $LOG; to
 n=$(wc -l < $OUT/disks.new | tr -d ' ')
 [ "$n" = 7 ] || { echo "REFUSE: $n drives" >> $LOG; touch $OUT/STOP $OUT/DONE; exit 1; }
 mv $OUT/disks.new $OUT/disks.txt; cat $OUT/disks.txt >> $LOG
+. "$SCRIPT_DIR/confirm.sh"
+confirm_destroy $OUT/disks.txt || { echo "REFUSE: SAS2308_YES_DESTROY does not name the disks" >> $LOG; touch $OUT/STOP $OUT/DONE; exit 1; }
 while read -r d s t; do case $d in disk0|disk1|disk2|disk3) echo "refuse $d" >> $LOG; touch $OUT/STOP $OUT/DONE; exit 1;; esac; diskutil unmountDisk /dev/$d >/dev/null 2>&1; done < $OUT/disks.txt
 m=$(mount | grep -cE "/dev/($(awk '{print $1}' $OUT/disks.txt | paste -sd'|' -))s"); echo "mounted on the 7: $m" >> $LOG
 [ "$m" = 0 ] || { echo "REFUSE: mounted" >> $LOG; touch $OUT/STOP $OUT/DONE; exit 1; }

@@ -10,6 +10,8 @@ D=($(awk '{print $1}' $OUT/disks.txt)); SER=($(awk '{print $2}' $OUT/disks.txt))
 NDISK=${#D[@]}
 [ "$NDISK" = 7 ] || { echo "refuse: $NDISK disks" >> $LOG; exit 1; }
 for d in "${D[@]}"; do case $d in disk0|disk1|disk2|disk3) echo "refuse system disk $d" >> $LOG; exit 1;; esac; done
+. "$SCRIPT_DIR/confirm.sh"
+confirm_destroy $OUT/disks.txt || { echo "refuse: SAS2308_YES_DESTROY does not name the disks" >> $LOG; exit 1; }
 # jobs MODE ZONE idx... -> "/dev/rdiskN,MODE,ZONE,SERIAL" ...
 jobs() { local m=$1 z=$2; shift 2; for i in "$@"; do printf '/dev/r%s,%s,%s,%s ' "${D[$i]}" "$m" "$z" "${SER[$i]}"; done; }
 ALL="0 1 2 3 4 5 6"

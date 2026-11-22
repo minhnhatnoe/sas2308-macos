@@ -8,7 +8,7 @@ OUT=${OUT:-$REPO/bench/out/krecheck}
 mkdir -p $OUT; rm -f $OUT/STOP $OUT/DONE
 [ -s $OUT/disks.ref ] || cp $REPO/bench/out/final/disks.ref $OUT/disks.ref
 . "$SCRIPT_DIR/lib_final.sh"
-SC=/opt/homebrew/bin/smartctl; TS=$OUT/ts.csv
+SC=${SMARTCTL:-$(command -v smartctl || echo smartctl)}; TS=$OUT/ts.csv
 echo "KRECHECK START $(date '+%F %T')" >> $LOG
 setup || exit 1
 ctx() { echo "$(date +%T) ctx $1: load $(sysctl -n vm.loadavg) top: $(ps -Ao pcpu,comm -r | sed -n 2,4p | awk '{printf "%s %s; ",$1,$2}')" >> $LOG

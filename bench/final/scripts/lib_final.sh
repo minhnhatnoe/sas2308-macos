@@ -5,6 +5,7 @@ FS=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd); REPO=$(cd "$FS/../../.." && pw
 OUT=${OUT:-$REPO/bench/out/final}; SB=${SASBENCH:-$REPO/tools/sasbench}; CTL=${SAS2308CTL:-$REPO/tools/sas2308ctl}
 SOC=${SOCSENS:-$FS/socsens}; FSB=${FSBENCH:-$FS/fsbench}; SASDISKS=$REPO/bench/scripts/sasdisks.sh
 R=$OUT/results.csv; LOG=$OUT/run.log; mkdir -p $OUT
+. "$REPO/bench/scripts/confirm.sh"   # setup() refuses unless SAS2308_YES_DESTROY names the drives
 stopped() { [ -e $OUT/STOP ] || [ -s $OUT/ALERTS.txt ]; }
 # re-derive the 7 drives (IORegistry child of SAS2308HBA + diskutil Protocol SAS, model, size, External),
 # refuse unless exactly 7, never disk0-3, same serial/target set as the first derivation; unmount them.
@@ -16,6 +17,7 @@ setup() {
   [ -s $OUT/disks.ref ] || cp $OUT/disks.new $OUT/disks.ref
   if ! cmp -s <(awk '{print $2,$3}' $OUT/disks.ref) <(awk '{print $2,$3}' $OUT/disks.new); then echo "$(date +%T) drive set changed" >> $LOG; cat $OUT/disks.new >> $LOG; touch $OUT/STOP; return 1; fi
   mv $OUT/disks.new $OUT/disks.txt
+  confirm_destroy $OUT/disks.txt || { echo "$(date +%T) REFUSE: SAS2308_YES_DESTROY does not name the disks" >> $LOG; return 1; }
   D=($(awk '{print $1}' $OUT/disks.txt)); SER=($(awk '{print $2}' $OUT/disks.txt))
   umount7
   local m=$(mount | grep -cE "/dev/($(echo ${D[@]} | tr ' ' '|'))s")
