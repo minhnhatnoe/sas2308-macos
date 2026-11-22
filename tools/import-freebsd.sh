@@ -7,9 +7,10 @@
 #   tools/import-freebsd.sh release/14.5.0        a release tag (the policy)
 #   tools/import-freebsd.sh <commit> <name>       any commit; tag vendor/freebsd-mps/<name>
 #
-# 1. Fetches the commit into ref/freebsd-src (blobless; created if missing)
-#    with the history since the current release (--shallow-exclude), plus one
-#    generation, so the log of step 4 is complete and has no shallow artifacts.
+# 1. Fetches the commit into ref/freebsd-src (blobless; cloned by
+#    tools/fetch-freebsd-ref.sh if missing) with the history since the current
+#    release (--shallow-exclude), plus one generation, so the log of step 4 is
+#    complete and has no shallow artifacts.
 # 2. In a temporary worktree of vendor/freebsd-mps, copies every file of the
 #    path map in core/VENDOR.txt from that commit (`git show`, no checkout),
 #    removes core/mpi/ files upstream dropped, and updates the header of
@@ -45,7 +46,11 @@ oldrel=$(vtxt | sed -n 's/^Release: *\(release\/[^ ]*\).*/\1/p')
 [ -n "$old" ] || { echo "no Commit: line in $vendor:core/VENDOR.txt" >&2; exit 1; }
 
 # 1. fetch
-if [ ! -d "$ref/.git" ]; then
+# a missing ref/freebsd-src is cloned at the current release (an empty
+# blobless repository when the vendor branch is at a commit, not a release)
+if [ ! -d "$ref/.git" ] && [ -n "$oldrel" ]; then
+	"$top/tools/fetch-freebsd-ref.sh" -t "$oldrel"
+elif [ ! -d "$ref/.git" ]; then
 	git init -q "$ref"
 	git -C "$ref" remote add origin "$url"
 	git -C "$ref" config remote.origin.promisor true
@@ -58,7 +63,10 @@ esac
 git -C "$ref" fetch -q --filter=blob:none --depth=1 origin "$old"
 if [ -n "$oldrel" ]; then
 	# the commits reachable from the new one but not from the old release
-	git -C "$ref" fetch -q --filter=blob:none --shallow-exclude="$oldrel" origin "$want"
+	git -C "$ref" fetch -q --filter=blob:none --shallow-exclude="$oldrel" origin "$want" || {
+		echo "fetch failed; if ref/freebsd-src already has $spec as a shallow tip" \
+			"(tools/fetch-freebsd-ref.sh -t), move ref/freebsd-src away and rerun" >&2
+		exit 1; }
 else
 	since=$(git -C "$ref" log -1 --format=%cs "$old")
 	git -C "$ref" fetch -q --filter=blob:none --shallow-since="$since" origin "$want"
