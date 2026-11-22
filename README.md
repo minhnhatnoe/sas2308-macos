@@ -49,7 +49,7 @@ Loading it needs Reduced Security and SIP disabled (`docs/LOADING.md`). Read
 - Host tests (any Unix with a C/C++ compiler): `make -C test test`.
 - Kext (on the Mac, Command Line Tools with the macOS SDK): `make -C kext`,
   `make -C kext check`; tools: `make -C tools`. Loading: `docs/LOADING.md`.
-- Install / roll back / uninstall on the Mac: `mac/install.sh -n` and `mac/uninstall.sh -n` (dry runs first).
+- Install / roll back / uninstall on the Mac: `tools/install.sh -n` and `tools/uninstall.sh -n` (dry runs first).
 
 ## FreeBSD upstream
 

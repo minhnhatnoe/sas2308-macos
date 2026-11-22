@@ -6,7 +6,7 @@ IOSCSIParallelFamily / SAM / IOPCIFamily sources. Full reasoning, every question
 FreeBSD in that tree. Out of scope: the check-condition log level and the TUR "xfer 65536/0" question (branch
 log-noise); items 2026-11-final.md already fixed.
 Raw outputs and helper scripts of the hardware tests below stayed on the test Mac and are not in this
-repo (the benchmark data is, under `bench/`). "Rollback" names the build `mac/install.sh` kept a copy of.
+repo (the benchmark data is, under `bench/`). "Rollback" names the build `tools/install.sh` kept a copy of.
 
 ## Summary
 
@@ -533,7 +533,7 @@ behaviour and the deviation is macOS's SAM idle timer being cut off at the HBA. 
 mounts: it applies to every drive behind it. Design: `design.md` "S1".
 
 Build **95E0D6C9-AC58-399D-A2CB-370687C33590** (branch spindown-tunable, c8bfb09), installed with
-`mac/install.sh` (first real use; sudo), rollback copy
+`tools/install.sh` (first real use; sudo), rollback copy
 830E83B5. Two drives were removed before this batch (drive4, drive5): 5 drives
 (drive1, drive2, drive3, drive6, drive7). Test script (`spin.sh LABEL KNOB
 DISKSLEEP`: knob, `pmset -a disksleep`, 240 s idle with SAM's CurrentPowerState every 20 s, then one
@@ -583,7 +583,7 @@ failed). Mac stayed up; the next boots attached 8 drives (7 known + drive8), sta
 
 Rationale: spin only while in use, plus an immediate spin-down command; FreeBSD never
 stops a disk for idleness, `camcontrol stop` is its manual equivalent (design.md "S2"). Built on
-the Mac (FCE29EDC-ADAC-3CD7-8E14-97B601FD078D, `make check` clean), installed with mac/install.sh
+the Mac (FCE29EDC-ADAC-3CD7-8E14-97B601FD078D, `make check` clean), installed with tools/install.sh
 (kmutil rc 27). It was not approved, so 95E0D6C9 stayed loaded and the hardware
 tests (a)-(c) were not run. Done without the new kext: Spotlight (LOADING.md), SMART
 baseline (192: 49 59 54 52 54 54 56 61 for drive6 drive2 drive7 drive8 drive3 drive5

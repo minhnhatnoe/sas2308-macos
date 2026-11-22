@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Minh Nhat Nguyen
 # shellcheck shell=bash
-# Shared helpers for mac/install.sh and mac/uninstall.sh (sourced, not run).
+# Shared helpers for tools/install.sh and tools/uninstall.sh (sourced, not run).
 # Written for macOS /bin/bash 3.2: no associative arrays, no mapfile.
 
 BUNDLE_ID=org.sas2308.driver.SAS2308HBA

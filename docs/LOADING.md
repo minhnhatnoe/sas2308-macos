@@ -20,15 +20,15 @@ On the Mac, as the admin user (the scripts call sudo; you type the password). St
 a dry run: it prints every action and changes nothing.
 ```
 cd sas2308-dext                 # the repo clone; all paths below are relative to it
-mac/install.sh -n               # dry run: security state, bundle, backup path, volumes to unmount
-mac/install.sh                  # make + make check, back up the installed bundle to
+tools/install.sh -n             # dry run: security state, bundle, backup path, volumes to unmount
+tools/install.sh                # make + make check, back up the installed bundle to
                                 # ~/sas2308-rollback-<UUID8>, unmount the volumes on the SAS2308HBA
                                 # disks, copy to /Library/Extensions, chown, kmutil load -p
-mac/install.sh --verify --expect N   # after approval + restart: loaded UUID, N drives, counters
-mac/install.sh --rollback -n    # newest backup that differs from the installed one (or give a path)
-mac/uninstall.sh -n             # backup, unmount, kmutil unload, remove, clear-staging if staged
+tools/install.sh --verify --expect N   # after approval + restart: loaded UUID, N drives, counters
+tools/install.sh --rollback -n  # newest backup that differs from the installed one (or give a path)
+tools/uninstall.sh -n           # backup, unmount, kmutil unload, remove, clear-staging if staged
 ```
-`mac/install.sh path/to/SAS2308HBA.kext` installs a given bundle; `--force` reinstalls the
+`tools/install.sh path/to/SAS2308HBA.kext` installs a given bundle; `--force` reinstalls the
 installed UUID. When kmutil returns 27 the script prints the approval steps (below, 5-6).
 The manual steps below do the same and are the fallback.
 
@@ -65,7 +65,7 @@ Level at boot: `sudo nvram boot-args="<existing args> sas2308_log=3"` (0–4) or
 `sas2308_debug=0x7ff` (raw mask), reboot. For a panic investigation add `sas2308_iolog=1`
 (lines go to IOLog: `sudo dmesg | grep SAS2308HBA`, and into the panic report).
 
-## Unload / roll back (by hand; `mac/uninstall.sh` does this)
+## Unload / roll back (by hand; `tools/uninstall.sh` does this)
 ```
 sudo kmutil unload -b org.sas2308.driver.SAS2308HBA     # with no disks mounted
 sudo rm -rf /Library/Extensions/SAS2308HBA.kext

@@ -3,18 +3,18 @@
 # Copyright (c) 2026 Minh Nhat Nguyen
 # Remove SAS2308HBA.kext from an Apple-silicon Mac.
 #
-#   mac/uninstall.sh -n     dry run: print every action, change nothing
-#   mac/uninstall.sh        uninstall
+#   tools/uninstall.sh -n     dry run: print every action, change nothing
+#   tools/uninstall.sh        uninstall
 #
 # Steps: back up the installed bundle to ~/sas2308-rollback-<UUID8> (so
-# mac/install.sh --rollback can bring it back), unmount the volumes on the
+# tools/install.sh --rollback can bring it back), unmount the volumes on the
 # SAS2308HBA disks, kmutil unload (refused while any of them is mounted),
 # remove /Library/Extensions/SAS2308HBA.kext, kmutil clear-staging when a
 # copy is staged, then a restart drops it from the Auxiliary Kernel Collection.
 # Run as your admin user; the script calls sudo (you type your password).
 set -u
-# shellcheck source=mac/lib.sh
-. "$(dirname "$0")/lib.sh"
+# shellcheck source=tools/install-lib.sh
+. "$(dirname "$0")/install-lib.sh"
 
 usage() { sed -n '2,12s/^# \{0,1\}//p' "$0"; exit "${1:-0}"; }
 
@@ -78,5 +78,5 @@ Kernel Collection without SAS2308HBA$([ $unloaded = 1 ] && echo " (it is already
 After the restart, kmutil showloaded --list-only | grep -i sas2308 should
 print nothing, and the SAS disks are gone until a driver is installed again.
 The SIP / boot policy changes stay; docs/LOADING.md says how to restore Full
-Security. Reinstall the backup with: mac/install.sh --rollback
+Security. Reinstall the backup with: tools/install.sh --rollback
 EOF

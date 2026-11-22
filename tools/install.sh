@@ -3,12 +3,12 @@
 # Copyright (c) 2026 Minh Nhat Nguyen
 # Install, roll back or verify SAS2308HBA.kext on an Apple-silicon Mac.
 #
-#   mac/install.sh -n                  dry run: print every action, change nothing
-#   mac/install.sh                     build kext/ (make, make check) and install it
-#   mac/install.sh path/to/SAS2308HBA.kext   install a given bundle
-#   mac/install.sh --rollback [path]   reinstall a backup (default: the newest
-#                                      ~/sas2308-rollback-* that differs from the installed one)
-#   mac/install.sh --verify [--expect N]   after the reboot: loaded UUID, drives, counters (read-only)
+#   tools/install.sh -n                  dry run: print every action, change nothing
+#   tools/install.sh                     build kext/ (make, make check) and install it
+#   tools/install.sh path/to/SAS2308HBA.kext   install a given bundle
+#   tools/install.sh --rollback [path]   reinstall a backup (default: the newest
+#                                        ~/sas2308-rollback-* that differs from the installed one)
+#   tools/install.sh --verify [--expect N]   after the reboot: loaded UUID, drives, counters (read-only)
 #
 # Options: -n/--dry-run, -f/--force (reinstall the same UUID), --expect N, -h/--help.
 # Run as your admin user; the script calls sudo (you type your password).
@@ -18,8 +18,8 @@
 # kmutil load -p, then one approval in System Settings and a restart.
 # Manual steps and recovery: docs/LOADING.md.
 set -u
-# shellcheck source=mac/lib.sh
-. "$(dirname "$0")/lib.sh"
+# shellcheck source=tools/install-lib.sh
+. "$(dirname "$0")/install-lib.sh"
 
 usage() { sed -n '2,17s/^# \{0,1\}//p' "$0"; exit "${1:-0}"; }
 
