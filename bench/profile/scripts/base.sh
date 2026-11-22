@@ -1,5 +1,5 @@
 # find our kext's load address: return addresses of calls from our kext into the family, 5 s under a short load
-. ~/sasbench/profile/lib_prof.sh
+. "$(dirname "$0")/lib_prof.sh"
 setup || exit 1
 $SB -b 4K -q 2 -t 12 $(jobs r outer 0 1) > /dev/null 2>&1 & SBP=$!; sleep 3
 dtrace -Z -q -n 'fbt:com.apple.iokit.IOSCSIParallelFamily:_ZN33IOSCSIParallelInterfaceController20CompleteParallelTask*:entry { @c[caller] = count(); }

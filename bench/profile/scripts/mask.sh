@@ -1,5 +1,5 @@
 # runtime A/B of the log checks (batch E candidate): debug mask 35 (now) / 0 / 631 (2026-11-20 run), F1 4 KiB 20 s each, restored to 35
-. ~/sasbench/profile/lib_prof.sh
+. "$(dirname "$0")/lib_prof.sh"
 setup || exit 1
 trap '$CTL mask 35 > /dev/null 2>&1' EXIT
 for m in 35 0 631 35 0 631; do

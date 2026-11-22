@@ -1,4 +1,4 @@
-. ~/sasbench/lib.sh
+. "$(dirname "$0")/lib.sh"
 warm B
 # B: scaling, outer, 1M seq q2
 for set in "1" "1 2" "1 2 3 4" "$ALL"; do n=$(echo $set | wc -w | tr -d ' ')

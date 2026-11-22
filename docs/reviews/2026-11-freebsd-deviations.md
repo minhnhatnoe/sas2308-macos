@@ -5,6 +5,8 @@ IOSCSIParallelFamily / SAM / IOPCIFamily sources. Full reasoning, every question
 `decisions-qa.md` (81 entries, D1-D81, all RESOLVED after 4 rounds). Line numbers: ours on master 4596c06,
 FreeBSD in that tree. Out of scope: the check-condition log level and the TUR "xfer 65536/0" question (branch
 log-noise); items FINAL.md already fixed.
+Paths such as `~/hwF` or `~/sas2308-rollback-<UUID8>` below are working directories on the test Mac
+at the time; those raw outputs are not in this repo (the benchmark data is, under `bench/`).
 
 ## Summary
 
@@ -61,7 +63,7 @@ bounded stop: 10 + 3 x 3 + 2 = 21 s worst case. Sleep keeps D15. Design: `design
 **Batch G1 rationale** (2026-11-21, after the final benchmark). The project's rule: keep FreeBSD's
 mps/CAM behaviour unless there is evidence (a measurement, an Apple source line or xnu constraint, a
 reproduced failure) for the deviation. The batch-G evaluations
-(working notes, not in this repo) checked each open item against that rule. G1 takes the ones that need no
+(working notes, not kept in this repo) checked each open item against that rule. G1 takes the ones that need no
 experiment: reverts with no evidence behind the deviation (D29 never ran; D22's `+error` showed
 FreeBSD's internal chatter, not CAM's periph errors; D15a's 30 s had no source; D55b's 3 tries were
 never used on hardware and Linux does not retry either; D58's arithmetic kept 7, not 8) and port
@@ -70,7 +72,7 @@ D15b, D65 and the core-callout IO timer) waits for its experiments. Design: `des
 
 **Batch G2 rationale** (2026-11-21). Same rule as G1: FreeBSD's behaviour is the default, and each
 item's experiment either backs it or is the evidence for the deviation (recorded either way;
-evaluations in working notes, not in this repo; the timer change is
+evaluations were working notes, not kept in this repo; the timer change is
 `docs/perf-profile-20261121.md` proposal 2). Switches are port tunables (boot-arg / personality key,
 `sas2308ctl set` at runtime), so the A/B runs needed no extra install. Design: `design.md` "Batch G2".
 
@@ -637,8 +639,8 @@ each. 8 drives (ST18000NM000J, exFAT volumes /Volumes/<serial>), mode 0, raw out
 
 ### Hardware tests still to run
 
-Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found with
-`~/sasbench/sasdisks.sh`; after each test `sas2308ctl stats` and
+Run on build DDA7E6AD or later, from the repo root on the Mac, `sudo tools/sas2308ctl level debug` first,
+drives found with `bench/scripts/sasdisks.sh`; after each test `sas2308ctl stats` and
 `/usr/bin/log show --last 10m --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'`.
 
 1. **D14 / M7, disk pull under IO.** Start `sasbench -b 4K -q 8 -p rand -t 300` on all 7 raw drives
@@ -647,8 +649,8 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
    never answers, `IOs still outstanding 60000 ms after its removal: controller reinit` and the
    destroy only after it; no panic. Re-insert: the drive comes back (same disk = its old target id),
    `Config page failures` 0.
-2. **D5, dock unplug under IO.** Mount one JHFS+ test volume, run `~/hwA/fsyncw <volume>/f 256 300`
-   on it and `sasbench` reads on 4 raw drives, then unplug the Thunderbolt cable of the dock. Expect:
+2. **D5, dock unplug under IO.** Mount one JHFS+ test volume, run `bench/final/scripts/fsbench <volume>/f 256 1048576 300 2 D5`
+   (1 MiB writes + F_FULLFSYNC, `make -C bench/final/scripts`) on it and `sasbench` reads on 4 raw drives, then unplug the Thunderbolt cable of the dock. Expect:
    no panic; log `terminating (controller gone)`, `surprise removal: controller disabled`, no
    `IOs still outstanding at termination`; the writers end with ENXIO/EIO; the volume is
    force-unmounted. Re-plug: the kext attaches again and finds the 7 drives.
@@ -663,7 +665,7 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
 5. **D3, forced target reset.** The batch B trigger `sas2308ctl lose 1` (under reads on a raw
    drive) now drives a recovery to a target reset and a reinit unattended (done above, raw reads
    only). Still to do by hand: the same with a mounted JHFS+ volume under F_FULLFSYNC writes on that
-   drive (`~/hwA/fsyncw`): no write error, `Unit attentions after reset retried` goes up.
+   drive (`bench/final/scripts/fsbench` mode 2): no write error, `Unit attentions after reset retried` goes up.
 6. **D10, OS task management from the family.** Nothing unattended makes SAM send AbortTask /
    LogicalUnitReset / TargetReset. If a tool or a stuck drive does: expect one `OS <type> on target
    N lun L tag T: <outcome>` log line per request (batch E, D23), a target or LUN reset as one TARGET_RESET (`TM target reset` +1, `TM requests from OS`
@@ -695,14 +697,15 @@ Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found wit
 11. **Batch E log levels on hot-plug** (with tests 1 and 2, default level info, i.e. without
     `level debug`; since batch G1 the default mask is FreeBSD's `info,fault`, the lines below are
     tagged `info|error`). Note the time, do the pull / re-insert and the dock unplug / re-plug, then
-    `bash ~/hwE/count.sh --start "<time>"`. Expect: a pull shows FreeBSD's info lines for the
+    count the lines by type: `/usr/bin/log show --style compact --start "<time>" --predicate
+    'subsystem == "org.sas2308.driver.SAS2308HBA"' | awk '{print $3}' | sort | uniq -c`. Expect: a pull shows FreeBSD's info lines for the
     removal and the re-add (no event field dumps, no `PHY[..]` lines); the dock unplug shows
     `controller gone (surprise removal)` and `surprise removal: controller disabled` as **Error**,
     no **Fault** line; a few dozen lines in all, not hundreds.
 
 12. **Batch F, a lost command inside the halt at power off.** Needs someone to press the power
     button afterwards. Mount the JHFS+ test volume on disk9, write a file, then
-    `sudo ~/sas2308-dext/tools/sas2308ctl lose 1; sudo shutdown -h now` (power off: SAM marks
+    `sudo tools/sas2308ctl lose 1; sudo shutdown -h now` (power off: SAM marks
     "Power Off" and spins the disks down with START STOP UNIT, timeout 0, during the halt). Expect
     the Mac to power off within ~35 s (unmount recovery) + <= 21 s (halt), no "Halt/Restart Timed
     Out" panic report after the next boot, the file verifies. Repeat without `lose` as the baseline.

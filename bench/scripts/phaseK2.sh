@@ -1,6 +1,5 @@
 # K2: flush tests with ioctl DKIOCSYNCHRONIZECACHE (F_FULLFSYNC is refused on raw devices)
-. ~/sasbench/lib.sh
-CTL=~/sas2308-dext/tools/sas2308ctl
+. "$(dirname "$0")/lib.sh"
 i=1
 run K2-wr4K-rand-qd1-nosync     -b 4K -q 1 -t 15 -p rand $(jobs w 2-50 $i)
 run K2-wr4K-rand-qd1-dkiocsync  -b 4K -q 1 -t 15 -p rand -F 2 $(jobs w 2-50 $i)

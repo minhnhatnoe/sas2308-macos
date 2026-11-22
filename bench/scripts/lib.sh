@@ -1,7 +1,11 @@
-# sourced by phase scripts (run as root)
-OUT=~/sasbench/out; SB=~/sasbench/sasbench; R=$OUT/results.csv; LOG=$OUT/run.log
+# sourced by the phase scripts: run them with sudo, e.g. `sudo bash bench/scripts/phaseA.sh`.
+# OUT = output directory (default bench/out/run); SASBENCH, SAS2308CTL override the tool paths.
+[ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd); REPO=$(cd "$SCRIPT_DIR/../.." && pwd)
+OUT=${OUT:-$REPO/bench/out/run}; SB=${SASBENCH:-$REPO/tools/sasbench}; CTL=${SAS2308CTL:-$REPO/tools/sas2308ctl}; R=$OUT/results.csv; LOG=$OUT/run.log
+mkdir -p $OUT
 [ -e $OUT/STOP ] && { echo "STOP present, phase skipped" >> $LOG; exit 9; }
-bash ~/sasbench/setup.sh > $OUT/setup.last 2>&1 || { echo "setup refused: $(tail -1 $OUT/setup.last)" >> $LOG; exit 1; }
+OUT=$OUT bash "$SCRIPT_DIR/setup.sh" > $OUT/setup.last 2>&1 || { echo "setup refused: $(tail -1 $OUT/setup.last)" >> $LOG; exit 1; }
 D=($(awk '{print $1}' $OUT/disks.txt)); SER=($(awk '{print $2}' $OUT/disks.txt))
 NDISK=${#D[@]}
 [ "$NDISK" = 7 ] || { echo "refuse: $NDISK disks" >> $LOG; exit 1; }

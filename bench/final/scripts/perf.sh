@@ -1,7 +1,7 @@
 #!/bin/bash
-# Final performance suite (root). Every pattern of docs/benchmarks-20261120.md, shorter points.
-. ~/sasbench/lib_final.sh
-SC=/opt/homebrew/bin/smartctl; SOC=$B/socsens
+# Final performance suite (run with sudo). Every pattern of docs/benchmarks-20261120.md, shorter points.
+. "$(dirname "$0")/lib_final.sh"
+SC=/opt/homebrew/bin/smartctl
 echo "PERF START $(date '+%F %T')" >> $LOG
 setup || exit 1
 # idle baseline (cold), 2 min
@@ -18,8 +18,8 @@ PART=${D[5]}s2
 if diskutil info $PART 2>/dev/null | grep -q "Journaled HFS+" && diskutil mount $PART >> $LOG 2>&1; then
   MP=$(diskutil info $PART | awk -F': *' '/Mount Point/ {print $2}')
   echo "KFS on $PART at $MP" >> $LOG
-  for m in 0 1 2 3; do $B/fsbench "$MP/fsbench.dat" 64 4096 15 $m KFS-4K-mode$m >> $OUT/kfs.txt 2>&1; done
-  for m in 0 2; do $B/fsbench "$MP/fsbench.dat" 64 1048576 15 $m KFS-1M-mode$m >> $OUT/kfs.txt 2>&1; done
+  for m in 0 1 2 3; do $FSB "$MP/fsbench.dat" 64 4096 15 $m KFS-4K-mode$m >> $OUT/kfs.txt 2>&1; done
+  for m in 0 2; do $FSB "$MP/fsbench.dat" 64 1048576 15 $m KFS-1M-mode$m >> $OUT/kfs.txt 2>&1; done
   rm -f "$MP/fsbench.dat"; diskutil unmount $PART >> $LOG 2>&1
 else echo "KFS skipped: $PART not JHFS+ or mount failed" >> $LOG; fi
 

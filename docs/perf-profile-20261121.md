@@ -26,8 +26,8 @@ No driver change, no install, no reboot.
   tasks cost nothing there.
 - **Attribution:** batches A-F do not explain a 0.3-0.5 us/IO regression. Confidence is high for ≥0.15
   us/IO coming from kext code, low for what the rest is. The A/B against EF9A8035 was **not run**: the
-  install needs the approval in System Settings, and the Linux host has no VNC
-  approval client. The open explanations are the baseline itself (another build, 67BF18CF with 64
+  install needs the approval in System Settings, and no approval client (keyboard or Screen
+  Sharing) was available. The open explanations are the baseline itself (another build, 67BF18CF with 64
   commands, and another boot), the environment (audiomxd at 72 % and configd at 42 % CPU since this
   boot), and cost outside the kext.
 - **Largest lever (new):** take the DART unmap out of the gated completion path, expected gain
@@ -35,7 +35,7 @@ No driver change, no install, no reboot.
 
 ## Method
 
-Scripts in `bench/profile/scripts/` (copied to the Mac's `~/sasbench/profile/`, run as root):
+Scripts in `bench/profile/scripts/` (run with sudo; output in `bench/out/profile/<TAG>`, or `OUT=`):
 
 | script | what |
 |---|---|
@@ -219,14 +219,15 @@ code. Proposal 1 makes their contention cheaper, because the gate is held less.
 
 ## How to re-measure
 
-1. On the Mac: `cd ~/sasbench/profile; sudo env TAG=<UUID8> bash repro.sh`. The 7 drives are
+1. On the Mac, from the repo root: `make -C tools sasbench sas2308ctl`, then
+   `sudo env TAG=<UUID8> bash bench/profile/scripts/repro.sh`. The 7 drives are
    re-derived by `sasdisks.sh`; the script refuses anything but exactly 7 unmounted Exos behind
    SAS2308HBA.
-2. Find the kext base for this boot: `sudo env TAG=<UUID8> bash base.sh`. In `base.txt`, take the
+2. Find the kext base for this boot: `sudo env TAG=<UUID8> bash bench/profile/scripts/base.sh`. In `base.txt`, take the
    `CompleteParallelTask` caller and the `SetTimeout` caller and subtract the return sites (085DA9D6:
    0x141dc and 0x14870, both give the same base). For another build, find the `blraa` after
    `DeliverCompletions`/`ProcessTask` with `objdump -d` (see `gate.py`/`stk.py` helpers).
-3. `sudo env TAG=<UUID8> bash profile.sh <base+0xc000> <base+0x32400>`, then `t3.sh`, then
+3. `sudo env TAG=<UUID8> bash bench/profile/scripts/profile.sh <base+0xc000> <base+0x32400>`, then `t3.sh`, then
    `cpu.sh <workloop>` (the top pointer under "closeGate by workloop" in `dt-t3.txt`).
 4. On any machine with Python 3: `roles.py dt-prof.txt syms.txt BASE IOS`, plus `gate.py` and `wl.py`. IOS = window
    IOPS from `prof-int.csv` x 20.

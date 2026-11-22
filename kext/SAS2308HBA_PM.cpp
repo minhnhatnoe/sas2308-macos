@@ -124,7 +124,7 @@ SAS2308HBA::StopPowerManagement(void)
 //-----------------------------------------------------------------------------
 //	setPowerState - synchronous; returns kIOPMAckImplied.			[PUBLIC]
 //	Synchronous on purpose (D49): drain + MUR + reinit measured well under
-//	a second (498 ms wake, measured on the test setup), and the bounded worst case (10 s
+//	a second (498 ms wake, 2026-11-19), and the bounded worst case (10 s
 //	drain + the stop) is inside the PM thread's tolerance; an asynchronous
 //	ack would add a second state machine for no measured benefit.
 //-----------------------------------------------------------------------------

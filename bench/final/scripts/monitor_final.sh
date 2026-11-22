@@ -1,10 +1,12 @@
 #!/bin/bash
-# Background sampler for the final run (root, bash 3.2): driver stats every 15 s -> monitor.csv;
+# Background sampler for the final run (run with sudo, bash 3.2): driver stats every 15 s -> monitor.csv;
 # SMART 194 of each drive + SoC sensors every 60 s -> drivetemps.csv, soc.csv.
 # Watchdog: IOC temp >= 90, drive >= 60, state != operational, or any increase of a watched counter
 # -> ALERT line in ALERTS.txt, and sasbench is killed (SIGTERM: a backgrounded sasbench ignores SIGINT) if OUT/abort_on_alert exists.
-OUT=${1:-~/sasbench/final}
-CTL=~/sas2308-dext/tools/sas2308ctl; SC=/opt/homebrew/bin/smartctl; SOC=~/sasbench/socsens
+[ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$SCRIPT_DIR/../../.." && pwd)
+OUT=${1:-$REPO/bench/out/final}
+CTL=${SAS2308CTL:-$REPO/tools/sas2308ctl}; SC=/opt/homebrew/bin/smartctl; SOC=${SOCSENS:-$SCRIPT_DIR/socsens}
 F="$OUT/monitor.csv"; T="$OUT/drivetemps.csv"; S="$OUT/soc.csv"; Bf="$OUT/.monbase"
 KEYS="IOC temperature (C)|IOs completed|Read bytes|Write bytes|Latency avg us|Latency max us|Held now|Held total|Tasks rejected|IO timeouts|Family timeouts|Recoveries|Reinits|IOC faults|Diag resets|Err check condition|Err SCSI status|Err terminated|Err transport|Err device gone|TM requests from OS|TM requests failed|TM timeouts|TM late replies|Held timeouts|Lost completion kicks|KASSERT hits|Controller dead|Stale replies|Chain free low|Chain alloc failures|Recovered sense (not errors)|State"
 WATCH="IO timeouts|Family timeouts|Recoveries|Reinits|IOC faults|Diag resets|Err transport|Err terminated|Err device gone|Stale replies|TM requests from OS|TM requests failed|TM timeouts|Held timeouts|Lost completion kicks|KASSERT hits|Controller dead|Chain alloc failures"

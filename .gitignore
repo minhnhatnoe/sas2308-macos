@@ -9,3 +9,7 @@ test/obj/
 test/kext_targets_test
 test/kext_glue_test
 test/kext_pcie_test
+tools/sasbench
+bench/final/scripts/socsens
+bench/final/scripts/fsbench
+bench/out/

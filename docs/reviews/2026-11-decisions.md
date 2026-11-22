@@ -228,9 +228,9 @@ _(scan id A9)_
 - Prelim: J (the justification is wrong); risk M; long wakes and a full rediscovery on every wake.
 - Status: RESOLVED (CHANGE + HW-TEST)
 
-Answer: KEEP the diag reset, CHANGE the comment. Measured: wake under IO reinitialised in 498 ms with 7 drives, same target ids (measured on the test setup), so the cost the question worries about is small on the 9207. Reason to keep: across Mac sleep the Thunderbolt tunnel goes down and the dock's PCIe link is retrained; whether the IOC kept its state is not knowable cheaply, and the diag reset handles both cases with one tested path. Comment fix: "follows Linux mpt3sas in shape (block, stop the IOC, reset on resume); Linux tries a soft reset (MUR) first, we always diag-reset: measured 0.5 s wake, one recovery path". D8 (identity across the rediscovery) is the real risk and is fixed there.
+Answer: KEEP the diag reset, CHANGE the comment. Measured: wake under IO reinitialised in 498 ms with 7 drives, same target ids (2026-11-19), so the cost the question worries about is small on the 9207. Reason to keep: across Mac sleep the Thunderbolt tunnel goes down and the dock's PCIe link is retrained; whether the IOC kept its state is not knowable cheaply, and the diag reset handles both cases with one tested path. Comment fix: "follows Linux mpt3sas in shape (block, stop the IOC, reset on resume); Linux tries a soft reset (MUR) first, we always diag-reset: measured 0.5 s wake, one recovery path". D8 (identity across the rediscovery) is the real risk and is fixed there.
 
-Check: CHALLENGE. "Whether the IOC kept its state is not knowable cheaply" is not right: it is one doorbell read, and FreeBSD already has the code that acts on it: `mps_transition_ready` (attach path) leaves a READY IOC alone, MURs an OPERATIONAL one and diag-resets only on FAULT or an unknown state. Our suspend MURs the IOC to READY; if the dock kept power it is still READY at wake. Using FreeBSD's attach sequence (transition_ready -> IOCFacts -> IOCInit -> port enable) on resume is closer to FreeBSD than always calling `mps_reinit`'s diag reset, and it avoids a PHY/link reset of every drive on every wake (fewer UAs, D3; no forced re-IDENTIFY of SATA disks, D8). The 498 ms in measured on the test setup is the reinit time, not the cost of the UA/IDENTIFY consequences, and it was measured before D3 existed. Keep the diag reset as the fallback when the doorbell is FAULT/unknown or the MUR path fails. If you keep always-diag-reset anyway, D3 and D8 become prerequisites and the comment must say so.
+Check: CHALLENGE. "Whether the IOC kept its state is not knowable cheaply" is not right: it is one doorbell read, and FreeBSD already has the code that acts on it: `mps_transition_ready` (attach path) leaves a READY IOC alone, MURs an OPERATIONAL one and diag-resets only on FAULT or an unknown state. Our suspend MURs the IOC to READY; if the dock kept power it is still READY at wake. Using FreeBSD's attach sequence (transition_ready -> IOCFacts -> IOCInit -> port enable) on resume is closer to FreeBSD than always calling `mps_reinit`'s diag reset, and it avoids a PHY/link reset of every drive on every wake (fewer UAs, D3; no forced re-IDENTIFY of SATA disks, D8). The 498 ms measured on 2026-11-19 is the reinit time, not the cost of the UA/IDENTIFY consequences, and it was measured before D3 existed. Keep the diag reset as the fallback when the doorbell is FAULT/unknown or the MUR path fails. If you keep always-diag-reset anyway, D3 and D8 become prerequisites and the comment must say so.
 Answer (round 3): accept. Verified our suspend MURs the IOC to READY, and `mps_transition_ready` already handles READY / OPERATIONAL (MUR) / FAULT-unknown (diag reset). Final fix: resume runs FreeBSD's attach sequence (transition_ready -> IOCFacts -> IOCInit -> port enable -> rediscovery) with `mps_reinit`'s diag reset as the fallback when that fails; comment says the 498 ms figure was the reinit only. HW test: 5 sleep/wake cycles under IO, log which path ran, count UAs (D3) and re-IDENTIFYs.
 
 Check (round 4): Fix verified: `mps_transition_ready` (READY: nothing, OPERATIONAL: MUR, FAULT/unknown: diag reset) is FreeBSD's attach logic, diag-reset fallback kept; HW test logs which path ran and counts UAs/re-IDENTIFYs.
@@ -583,7 +583,7 @@ _(scan id A28)_
 - Prelim: Q; risk L (needs the hardware sleep and shutdown plan).
 - Status: RESOLVED (HW-TEST)
 
-Answer: OPEN-NEEDS-HW-TEST (partly done). Done: `shutdown -r` with mounted JHFS+ volumes and unsynced writes, fsck clean, no hang (measured on the test setup); sleep/wake under IO (498 ms). Still needed: shutdown while all 7 drives write at full rate with write cache on, then verify-pass the written ranges after boot (0 mismatches) and check whether macOS's SYNCHRONIZE CACHE reached each drive before the MUR (debug trace). Constants stay until that run.
+Answer: OPEN-NEEDS-HW-TEST (partly done). Done: `shutdown -r` with mounted JHFS+ volumes and unsynced writes, fsck clean, no hang (2026-11-19); sleep/wake under IO (498 ms). Still needed: shutdown while all 7 drives write at full rate with write cache on, then verify-pass the written ranges after boot (0 mismatches) and check whether macOS's SYNCHRONIZE CACHE reached each drive before the MUR (debug trace). Constants stay until that run.
 
 Check: Accepted: the full-rate shutdown + verify run and the SYNCHRONIZE CACHE trace are the right test; constants stay until then.
 
@@ -803,7 +803,7 @@ Check: Accepted.
 ### D49 Sleep: Linux-style quiesce/MUR/diag-reset, synchronous inside setPowerState; FreeBSD refuses suspend
 _(scan id C20)_
 - Ours: `kext/SAS2308HBA_PM.cpp:95-112,141-185`, `kext/SAS2308HBA.h:74`
-- Reference: FreeBSD `mps_pci.c:389-399` (`mps_pci_suspend`/`resume` return EINVAL, which vetoes suspend); Linux `scsih_suspend`/`resume` (`scratchpad/src/scsih.c`)
+- Reference: FreeBSD `mps_pci.c:389-399` (`mps_pci_suspend`/`resume` return EINVAL, which vetoes suspend); Linux `scsih_suspend`/`resume` (`drivers/scsi/mpt3sas/mpt3sas_scsih.c`)
 - We do: drain up to 10 s, then MUR, all inside setPowerState, returning kIOPMAckImplied. Doze maps to off. `fSuspended` is set even when the MUR failed (`:154-156`). A failed resume is logged at INFO ("controller not running", `:183-184`).
 - Reference does: FreeBSD has no sleep support. Linux quiesces the midlayer and does a hard reset on resume.
 - Documented: design.md "Power management (sleep / wake)".
@@ -811,7 +811,7 @@ _(scan id C20)_
 - Prelim: K for the design (it has to deviate: there is no FreeBSD model); J for (a) and (b); risk L.
 - Status: RESOLVED (KEEP (a, comment) / CHANGE (b))
 
-Answer: (a) KEEP synchronous, with the reason in a comment: measured drain + MUR + reinit well under a second (498 ms wake, measured on the test setup), and the bounded 10 s worst case is inside the PM thread's tolerance; an async ack adds a second state machine for no measured benefit. (b) agree: CHANGE: a resume that could not run is a FAULT line; and don't set `fSuspended` when the MUR failed (`SAS2308HBA_PM.cpp:154-156`) without saying so (log + statistic).
+Answer: (a) KEEP synchronous, with the reason in a comment: measured drain + MUR + reinit well under a second (498 ms wake, 2026-11-19), and the bounded 10 s worst case is inside the PM thread's tolerance; an async ack adds a second state machine for no measured benefit. (b) agree: CHANGE: a resume that could not run is a FAULT line; and don't set `fSuspended` when the MUR failed (`SAS2308HBA_PM.cpp:154-156`) without saying so (log + statistic).
 
 Check: Accepted.
 

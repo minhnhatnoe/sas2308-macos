@@ -1,8 +1,8 @@
 #!/bin/bash
-# Thermal soak (root): 2 min idle baseline, 30 min all 7 drives 1 MiB sequential 50/50 R/W over the
+# Thermal soak (run with sudo): 2 min idle baseline, 30 min all 7 drives 1 MiB sequential 50/50 R/W over the
 # full LBA range at QD8 per drive, 5 min cool-down. Sample every 30 s -> soak.csv.
-. ~/sasbench/lib_final.sh
-SC=/opt/homebrew/bin/smartctl; SOC=$B/socsens; C=$OUT/soak.csv; LOADS=${1:-1800}
+. "${FINAL_SCRIPTS:-$(dirname "$0")}/lib_final.sh"
+SC=/opt/homebrew/bin/smartctl; C=$OUT/soak.csv; LOADS=${1:-1800}
 echo "SOAK START $(date '+%F %T')" >> $LOG
 setup || exit 1
 echo "time,phase,ioc_C,$(echo ${SER[@]} | tr ' ' ','),tdie_max,tdie_avg,soc_all_max,pressure,drv_MBps,drv_IOPS,lat_avg_ms_interval,lat_max_ms_cum,io_timeouts,family_timeouts,reinits,tm_os,err_scsi,err_xport" > $C

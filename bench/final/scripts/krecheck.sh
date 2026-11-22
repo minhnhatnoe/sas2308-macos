@@ -1,11 +1,13 @@
 #!/bin/bash
-# K recheck (root, bash 3.2): QD1 4 KiB re-read of a small region (drive read cache) on drive2 (idx 1)
+# K recheck (run with sudo, bash 3.2): QD1 4 KiB re-read of a small region (drive read cache) on drive2 (idx 1)
 # and drive1 (idx 0): idle spread, region-size sweep, outer vs middle, CPU-load control, and the
 # recovery after the final run's K write sequence (perf.sh lines 78-87). Read flags = K-rd4K-qd1-* rows.
-B=~/sasbench; OUT=$B/krecheck
+[ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$SCRIPT_DIR/../../.." && pwd)
+OUT=${OUT:-$REPO/bench/out/krecheck}
 mkdir -p $OUT; rm -f $OUT/STOP $OUT/DONE
-[ -s $OUT/disks.ref ] || cp $B/final/disks.ref $OUT/disks.ref
-. $B/lib_final.sh
+[ -s $OUT/disks.ref ] || cp $REPO/bench/out/final/disks.ref $OUT/disks.ref
+. "$SCRIPT_DIR/lib_final.sh"
 SC=/opt/homebrew/bin/smartctl; TS=$OUT/ts.csv
 echo "KRECHECK START $(date '+%F %T')" >> $LOG
 setup || exit 1

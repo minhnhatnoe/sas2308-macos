@@ -19,7 +19,7 @@ alone already implies Permissive Security; step 3 is still needed for third-part
 On the Mac, as the admin user (the scripts call sudo; you type the password). Start with
 a dry run: it prints every action and changes nothing.
 ```
-cd ~/sas2308-dext
+cd sas2308-dext                 # the repo clone; all paths below are relative to it
 mac/install.sh -n               # dry run: security state, bundle, backup path, volumes to unmount
 mac/install.sh                  # make + make check, back up the installed bundle to
                                 # ~/sas2308-rollback-<UUID8>, unmount the volumes on the SAS2308HBA
@@ -32,9 +32,9 @@ mac/uninstall.sh -n             # backup, unmount, kmutil unload, remove, clear-
 installed UUID. When kmutil returns 27 the script prints the approval steps (below, 5-6).
 The manual steps below do the same and are the fallback.
 
-## Install and load by hand (over ssh, from the Linux host or on the Mac)
+## Install and load by hand (on the Mac, or over ssh)
 ```
-cd ~/sas2308-dext/kext && make                      # rebuild
+cd kext && make                                      # rebuild (from the repo root)
 make check                                           # plist, signature, kmutil symbols, exported symbols
 sudo rm -rf /Library/Extensions/SAS2308HBA.kext      # only if an older copy exists (check with ls first)
 sudo cp -R build/SAS2308HBA.kext /Library/Extensions/
@@ -54,11 +54,12 @@ details in design.md "Logging"):
 sudo launchctl kickstart -k system/com.apple.logd                           # once per boot
 /usr/bin/log show --last 30m --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"'         # default: level 2 (info)
 /usr/bin/log show --last 30m --debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"' # + xinfo/trace lines (if persisted)
-make -C ~/sas2308-dext/tools                                                # builds sas2308ctl
-~/sas2308-dext/tools/sas2308ctl show                                        # level + mask
-~/sas2308-dext/tools/sas2308ctl stats                                       # counters (or: ioreg -r -c SAS2308HBA -k SAS2308Statistics)
-sudo ~/sas2308-dext/tools/sas2308ctl level debug                            # 0-4 / error warn info debug trace
-sudo ~/sas2308-dext/tools/sas2308ctl mask +trace                            # FreeBSD class list or 0xMASK
+# from the repo root:
+make -C tools                                                               # builds sas2308ctl
+tools/sas2308ctl show                                                       # level + mask
+tools/sas2308ctl stats                                                      # counters (or: ioreg -r -c SAS2308HBA -k SAS2308Statistics)
+sudo tools/sas2308ctl level debug                                           # 0-4 / error warn info debug trace
+sudo tools/sas2308ctl mask +trace                                           # FreeBSD class list or 0xMASK
 ```
 Level at boot: `sudo nvram boot-args="<existing args> sas2308_log=3"` (0–4) or
 `sas2308_debug=0x7ff` (raw mask), reboot. For a panic investigation add `sas2308_iolog=1`
@@ -111,11 +112,11 @@ its own eject or idle stop.
 
 ## Disk spin-down (S1, S2, EJ) and Spotlight on the SAS disks
 ```
-~/sas2308-dext/tools/sas2308ctl stats | grep -Ei "idle|spin|stops"   # idle stops completed here / sent / in grace, ejects, spin-downs
-sudo ~/sas2308-dext/tools/sas2308ctl set sas2308_idle_spindown 0   # 0 never for idleness (default), 1 always (macOS), 2 only when not in use; Eject stops the disk in 0 and 2
-sudo ~/sas2308-dext/tools/sas2308ctl set sas2308_spindown_grace 900  # mode 2: s after attach with no spin-down (boot); 0 = none
-sudo ~/sas2308-dext/tools/sas2308ctl spindown disk5            # stop one disk now: an eject (refused if mounted)
-sudo ~/sas2308-dext/tools/sas2308ctl spindown all              # every disk behind the HBA that is not mounted
+tools/sas2308ctl stats | grep -Ei "idle|spin|stops"                  # idle stops completed here / sent / in grace, ejects, spin-downs
+sudo tools/sas2308ctl set sas2308_idle_spindown 0                  # 0 never for idleness (default), 1 always (macOS), 2 only when not in use; Eject stops the disk in 0 and 2
+sudo tools/sas2308ctl set sas2308_spindown_grace 900                 # mode 2: s after attach with no spin-down (boot); 0 = none
+sudo tools/sas2308ctl spindown disk5                           # stop one disk now: an eject (refused if mounted)
+sudo tools/sas2308ctl spindown all                             # every disk behind the HBA that is not mounted
 pmset -g | grep disksleep                                     # macOS's idle timer (minutes) that sends the idle stops
 ```
 Spotlight (set 2026-11-22, macOS 27): system-wide, external volumes are not indexed:

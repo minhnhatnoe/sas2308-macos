@@ -1,10 +1,12 @@
 #!/bin/bash
-# q2048 queue-depth points (run as root). OUT=~/sasbench/q2048
-OUT=~/sasbench/q2048; SB=~/sasbench/sasbench; CTL=~/sas2308-dext/tools/sas2308ctl
+# q2048 queue-depth points (run with sudo). OUT = output directory (default bench/out/q2048)
+[ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$SCRIPT_DIR/../.." && pwd)
+OUT=${OUT:-$REPO/bench/out/q2048}; SB=${SASBENCH:-$REPO/tools/sasbench}; CTL=${SAS2308CTL:-$REPO/tools/sas2308ctl}
 R=$OUT/results.csv; LOG=$OUT/run.log
 mkdir -p $OUT; rm -f $OUT/STOP $OUT/DONE $OUT/stats-Q-rw4K-qd64-* $OUT/stats-Q-verify-64K-*
 echo "start $(date +%T)" >> $LOG
-bash ~/sasbench/sasdisks.sh > $OUT/disks.new || { echo "NO DISKS" >> $LOG; touch $OUT/STOP $OUT/DONE; exit 1; }
+bash "$SCRIPT_DIR/sasdisks.sh" > $OUT/disks.new || { echo "NO DISKS" >> $LOG; touch $OUT/STOP $OUT/DONE; exit 1; }
 n=$(wc -l < $OUT/disks.new | tr -d ' ')
 [ "$n" = 7 ] || { echo "REFUSE: $n drives" >> $LOG; touch $OUT/STOP $OUT/DONE; exit 1; }
 mv $OUT/disks.new $OUT/disks.txt; cat $OUT/disks.txt >> $LOG
@@ -15,7 +17,7 @@ D=($(awk '{print $1}' $OUT/disks.txt)); SER=($(awk '{print $2}' $OUT/disks.txt))
 jobs() { local m=$1 z=$2; shift 2; for i in "$@"; do printf '/dev/r%s,%s,%s,%s ' "${D[$i]}" "$m" "$z" "${SER[$i]}"; done; }
 ALL="0 1 2 3 4 5 6"
 touch $OUT/abort_on_alert
-bash ~/sasbench/q_monitor.sh $OUT > /dev/null 2>&1 &
+bash "$SCRIPT_DIR/q_monitor.sh" $OUT > /dev/null 2>&1 &
 MON=$!
 run() { local label=$1; shift
   if [ -e $OUT/STOP ] || [ -s $OUT/ALERTS.txt ]; then echo "STOP/ALERT, skip $label" >> $LOG; return 9; fi

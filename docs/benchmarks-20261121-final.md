@@ -413,7 +413,13 @@ Plot of the whole run: `bench/final/temps.png`; 30 s ASCII view of the soak: `be
   `soc.csv`, `soak.csv`, `soak-int.csv`, `idle-cold*.csv`, `xwrite-60s.csv`, `h-*.csv`, `kfs.txt`,
   `wcache.txt`, `trace-sync*.txt`, `stats/` (driver stats around the Q points), `stats-*.txt`,
   `show-*.txt`, `seeds`, `disks.txt`, `run.log.gz`, `soak-temps.txt` (ASCII plot).
-- `bench/final/scripts/` - the scripts as run.
+- `bench/final/scripts/` - the scripts as run. To run them again (on the Mac, from the repo root):
+  `make -C tools sasbench sas2308ctl; make -C bench/final/scripts` (socsens, fsbench), then
+  `sudo bash bench/final/scripts/run_all.sh` (or `perf.sh`, `soak.sh`, `recheck.sh`, `krecheck.sh`).
+  They refuse to run without root, find the tools and each other relative to the repo, and write
+  to `bench/out/final` (`bench/out/krecheck` for `krecheck*.sh`); `sudo env OUT=/some/dir bash ...`
+  writes elsewhere (no spaces in the paths). `krecheck-epc*.sh` take the drive serial numbers as
+  arguments.
 
 ## K recheck (2026-11-21)
 Question: are the K read-cache rows (QD1 4 KiB re-reads of a small region on drive2; 2026-11-20

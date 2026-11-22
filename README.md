@@ -8,7 +8,21 @@ IOSCSIParallelFamily.
 Status: a classic kext for macOS 27 on Apple silicon. It runs a 9207-8i in a
 Thunderbolt PCIe enclosure with SATA disks (hot plug, sleep/wake,
 benchmarks in `docs/benchmarks-20261120.md`). Loading it needs Reduced
-Security and SIP disabled (`docs/LOADING.md`). Use at your own risk.
+Security and SIP disabled (`docs/LOADING.md`). Read "Safety" below first.
+
+## Safety
+
+- Loading it needs SIP disabled and Reduced Security with user-managed kernel
+  extensions (Permissive Security). That turns off protections for the whole
+  Mac: system files and kernel extensions can then be changed by anything
+  running as root. Turn them back on (`docs/LOADING.md`) when you stop using it.
+- Tested only on one setup: Mac mini (Mac18,5, macOS 27.0), LSI SAS 9207-8i
+  (SAS2308, IT firmware 20.00.07.00) in a Thunderbolt 3 PCIe dock (JHL7440),
+  7-8 Seagate Exos X18 ST18000NM000J SATA drives. Other cards, enclosures,
+  expanders, SAS drives and macOS versions are untested.
+- This is a kernel driver: a bug can panic the Mac, corrupt data or lose it.
+  Keep backups and do not use it for data you cannot lose.
+- No warranty: BSD-2-Clause, provided "as is" (`LICENSE`).
 
 ## Layout
 

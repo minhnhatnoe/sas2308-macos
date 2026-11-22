@@ -1,9 +1,11 @@
 #!/bin/bash
-# Background sampler (run as root; bash 3.2 compatible): driver stats every 15 s, drive temps
+# Background sampler (run with sudo; bash 3.2 compatible): driver stats every 15 s, drive temps
 # every 60 s. Watchdog: IOC temp >= 90, non-operational state, or any increase of a watched
 # error counter -> ALERT line; kills sasbench if out/abort_on_alert exists.
-OUT=${1:-~/sasbench/out}
-CTL=~/sas2308-dext/tools/sas2308ctl
+[ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$SCRIPT_DIR/../.." && pwd)
+OUT=${1:-$REPO/bench/out/run}
+CTL=${SAS2308CTL:-$REPO/tools/sas2308ctl}
 SC=/opt/homebrew/bin/smartctl
 mkdir -p "$OUT"
 F="$OUT/monitor.csv"; T="$OUT/drivetemps.csv"; B="$OUT/.monbase"

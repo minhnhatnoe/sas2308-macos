@@ -1,4 +1,4 @@
-. ~/sasbench/lib.sh
+. "$(dirname "$0")/lib.sh"
 warm A
 for i in $ALL; do
   run "A-read-outer-${D[$i]}"  -b 1M -q 2 -t 20 $(jobs r outer $i)

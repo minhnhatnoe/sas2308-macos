@@ -409,6 +409,10 @@ All 7 drives at once, 120 s per point, zone 2-50 % for random IO, outer zone for
 
 ## Files
 - `tools/sasbench.c` — the benchmark (usage in its header).
+- To run them again (on the Mac, from the repo root): `make -C tools sasbench sas2308ctl`, then e.g.
+  `sudo bash bench/scripts/phaseA.sh`. They refuse to run without root, find the tools and each
+  other relative to the repo, and write to `bench/out/run` (`bench/out/q2048` for `q_bench*.sh`);
+  `sudo env OUT=/some/dir bash ...` writes elsewhere (no spaces in the paths).
 - `bench/scripts/` — `sasdisks.sh` (drive qualification), `setup.sh`, `monitor.sh`, `lib.sh` and
   the phase scripts exactly as run (`phaseA`, `phaseG`, `phaseGcheck`, `phaseBCDEF`,
   `phaseCache`, `phaseK2`, `phaseK3`, `phaseK4`, `phaseH`). The quoted SYNCHRONIZE CACHE trace

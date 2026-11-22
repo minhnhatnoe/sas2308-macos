@@ -1,6 +1,7 @@
 # H: soak, $1 minutes
-bash ~/sasbench/phaseK2.sh
-. ~/sasbench/lib.sh
+[ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
+bash "$(dirname "$0")/phaseK2.sh"
+. "$(dirname "$0")/lib.sh"
 SECS=$(( ${1:-60} * 60 ))
 warm H
 echo "== H soak ${1:-60} min $(date +%T)" >> $LOG

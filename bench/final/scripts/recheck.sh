@@ -1,6 +1,6 @@
 #!/bin/bash
-# post-run rechecks (root): read-cache-hit QD1 on two drives, and the SYNCHRONIZE CACHE trace capture
-. ~/sasbench/lib_final.sh
+# post-run rechecks (run with sudo): read-cache-hit QD1 on two drives, and the SYNCHRONIZE CACHE trace capture
+. "$(dirname "$0")/lib_final.sh"
 setup || exit 1
 for i in 1 0; do
   run "R-rd4K-qd1-16KiB-region-${SER[$i]}" -b 4K -q 1 -t 10 $(jobs r 3-3.000001 $i)

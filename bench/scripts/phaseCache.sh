@@ -1,5 +1,4 @@
-. ~/sasbench/lib.sh
-CTL=~/sas2308-dext/tools/sas2308ctl
+. "$(dirname "$0")/lib.sh"
 warm K
 i=1
 # write cache: QD1 4K sequential writes, no sync / F_FULLFSYNC / DKIOCSYNCHRONIZECACHE

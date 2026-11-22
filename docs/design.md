@@ -934,8 +934,8 @@ plan, "Batch F hardware results".
 ## Batch G1: code fixes and reverts to FreeBSD (branch fix-batch-G1, 2026-11-21)
 
 Rule: keep FreeBSD's mps/CAM behaviour unless there is evidence for the deviation.
-Per-item evaluations (current vs FreeBSD with file:lines, proposal, risk, host test):
-working notes, not in this repo. Every host test
+Per-item evaluations (current vs FreeBSD with file:lines, proposal, risk, host test) were
+working notes, not kept in this repo; the outcome per item is in `docs/reviews/2026-11-freebsd-deviations.md`. Every host test
 below failed against the unfixed code (or did not build) and passes after.
 
 | ID | Change | Host test |
@@ -970,8 +970,8 @@ the evaluations (L16c, D56, D58's post-queue lines, D63) stay as they are.
 ## Batch G2: experiment-decided FreeBSD defaults (branch fix-batch-G2, 2026-11-21)
 
 Rule: FreeBSD's mps/CAM behaviour is the default; an experiment either backs it or
-produces the evidence for a deviation, and the evidence is recorded either way. Evaluations:
-working notes, not in this repo (D15, D21, D46, D65, D50); the timer
+produces the evidence for a deviation, and the evidence is recorded either way. The per-item
+evaluations (D15, D21, D46, D50, D65) were working notes, not kept in this repo; the timer
 change is `docs/perf-profile-20261121.md` proposal 2. Hardware numbers: the deviations plan, "Batch
 G2 hardware results".
 
@@ -1464,6 +1464,26 @@ boot (until logd was restarted). Cause:
   (msgbuf, `sudo dmesg`) or the counters. No kext-side fix: `resolve_dso` accepts a line only
   when its PC is in the image that holds the format, so every line from the kext (IOLog included)
   carries a kext PC, which unslides to 0 wherever iBoot puts the AuxKC above the boot KC.
+- macOS-wide for Auxiliary-KC kexts, not our build (2026-11-22, macOS 27.0 26A425). A minimal
+  test kext (IOKit, matches IOResources so it loads at boot from the AuxKC like ours; built with
+  clang/ld using the Xcode IOKit Driver template settings, ad-hoc signed; `os_log` in `start()` and
+  every 30 s for 20 ticks, to the default log and to its own subsystem) was installed next to
+  SAS2308HBA for one boot, measured without touching logd, then removed. Its Mach-O has the same
+  shape as ours (MH_KEXT_BUNDLE arm64e, the same 12 load commands in the same order, no
+  LC_BUILD_VERSION, vmaddr 0 based, same kmod_info/_start/_stop, ad-hoc CodeDirectory); the
+  differences (-O2 vs -Os, -fvisibility=hidden, no -dead_strip, the cc_kext runtime, extra
+  sections, Info.plist DT* keys) do not change where the image is placed. Results with both kexts
+  loaded: `KextManagerCopyLoadedKextInfo` and `kmutil showloaded` give load and exec address 0 for
+  both (IOPCIFamily in the boot KC: a real address); every persisted line of both has
+  `senderProgramCounter` 0; the test kext lost `start()` and ticks 1-3 (boot +4 .. +94 s) and kept
+  ticks 4-20, so logd learned the kexts between boot +108 s and +123 s; our 6 later level-toggle
+  lines persisted but were attributed to the test kext (its image path and UUID, shown as
+  `<compose failure [UUID]>`): with two AuxKC kexts at address 0, logd maps every PC-0 line to one
+  of them. So `senderImagePath CONTAINS "SAS2308HBA"` matched 0 lines; a predicate on the image
+  path does not work around it. After the removal (SAS2308HBA alone): toggles at boot +130 to
+  +360 s, a `KextManagerCopyLoadedKextInfo` call and `kmutil showloaded` (user and root) left 0
+  lines persisted through +7 min; neither call makes logd learn the kext. No build-side fix; the
+  logd restart workaround stands.
 
 **Change the level.**
 - Default: `SAS2308LogLevel` in the Info.plist personality (2).

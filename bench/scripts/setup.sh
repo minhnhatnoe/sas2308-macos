@@ -1,7 +1,9 @@
 #!/bin/bash
-# Re-derive the drive list, refuse unless 7, unmount them. Writes out/disks.txt.
-OUT=~/sasbench/out; mkdir -p $OUT
-bash ~/sasbench/sasdisks.sh > $OUT/disks.new || { echo "NO DISKS"; exit 1; }
+# Re-derive the drive list, refuse unless 7, unmount them. Writes $OUT/disks.txt (run with sudo).
+[ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$SCRIPT_DIR/../.." && pwd)
+OUT=${OUT:-$REPO/bench/out/run}; mkdir -p $OUT
+bash "$SCRIPT_DIR/sasdisks.sh" > $OUT/disks.new || { echo "NO DISKS"; exit 1; }
 n=$(wc -l < $OUT/disks.new | tr -d ' ')
 cat $OUT/disks.new
 if [ "$n" != 7 ]; then echo "REFUSE: $n drives qualify"; exit 1; fi

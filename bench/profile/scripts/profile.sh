@@ -1,7 +1,7 @@
 # step 2: one long F1 4 KiB load (7 drives, QD2, outer); dtrace windows of 20 s, idle gaps between,
 # IOs counted around each window. Args: LO HI (our kext text range for prof.d, hex).
-. ~/sasbench/profile/lib_prof.sh
-LO=${1:-0}; HI=${2:-0}; P=$B/profile
+. "$(dirname "$0")/lib_prof.sh"
+LO=${1:-0}; HI=${2:-0}; P=$PS
 setup || exit 1
 $SB -o $R -l F-seqread-4K-q2-prof -b 4K -q 2 -t 200 -T $OUT/prof-int.csv -i 5 $(jobs r outer $ALL) > $OUT/sb-prof.txt 2>&1 &
 SBP=$!; sleep 8

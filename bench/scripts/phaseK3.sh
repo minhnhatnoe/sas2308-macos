@@ -1,6 +1,5 @@
 # K3: confirm SYNCHRONIZE CACHE reaches the driver (trace class for ~3 s, then mask back to 631)
-. ~/sasbench/lib.sh
-CTL=~/sas2308-dext/tools/sas2308ctl
+. "$(dirname "$0")/lib.sh"
 /usr/bin/log stream --timeout 10s --level debug --predicate 'subsystem == "org.sas2308.driver.SAS2308HBA"' > $OUT/trace-sync3.txt 2>&1 &
 LP=$!; sleep 2
 $CTL mask 1655 >> $LOG 2>&1

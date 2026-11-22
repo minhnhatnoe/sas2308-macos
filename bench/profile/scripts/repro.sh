@@ -1,5 +1,5 @@
 # step 1: the F1 4 KiB point (sasbench -b 4K -q 2, 7 drives, outer), 3 x 30 s, plus 1 drive QD2 and QD1
-. ~/sasbench/profile/lib_prof.sh
+. "$(dirname "$0")/lib_prof.sh"
 setup || exit 1
 one() { local label=$1; shift
   $CTL stats > $OUT/stats-$label-pre.txt 2>&1; local t0=$(date +%s)

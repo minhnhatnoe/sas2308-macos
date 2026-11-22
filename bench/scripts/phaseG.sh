@@ -1,5 +1,5 @@
 # G: integrity. $1 = tag (early/final). Seeds from out/seeds (written here).
-. ~/sasbench/lib.sh
+. "$(dirname "$0")/lib.sh"
 TAG=$1; SEED1=$(date +%s); SEED2=$((SEED1+1))
 echo "$TAG $SEED1 $SEED2" >> $OUT/seeds
 warm G

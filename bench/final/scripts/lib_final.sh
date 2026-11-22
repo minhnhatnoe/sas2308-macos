@@ -1,11 +1,15 @@
-# sourced by the final-run phase scripts (run as root, bash 3.2)
-B=~/sasbench; OUT=${OUT:-$B/final}; SB=$B/sasbench; CTL=~/sas2308-dext/tools/sas2308ctl
+# sourced by the final-run phase scripts (bash 3.2): run them with sudo.
+# OUT = output directory (default bench/out/final); SASBENCH, SAS2308CTL, SOCSENS, FSBENCH override the tool paths.
+[ "$(id -u)" -eq 0 ] || { echo "run with sudo" >&2; exit 1; }
+FS=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd); REPO=$(cd "$FS/../../.." && pwd)
+OUT=${OUT:-$REPO/bench/out/final}; SB=${SASBENCH:-$REPO/tools/sasbench}; CTL=${SAS2308CTL:-$REPO/tools/sas2308ctl}
+SOC=${SOCSENS:-$FS/socsens}; FSB=${FSBENCH:-$FS/fsbench}; SASDISKS=$REPO/bench/scripts/sasdisks.sh
 R=$OUT/results.csv; LOG=$OUT/run.log; mkdir -p $OUT
 stopped() { [ -e $OUT/STOP ] || [ -s $OUT/ALERTS.txt ]; }
 # re-derive the 7 drives (IORegistry child of SAS2308HBA + diskutil Protocol SAS, model, size, External),
 # refuse unless exactly 7, never disk0-3, same serial/target set as the first derivation; unmount them.
 setup() {
-  bash $B/sasdisks.sh > $OUT/disks.new 2>/dev/null || { echo "$(date +%T) NO DISKS" >> $LOG; touch $OUT/STOP; return 1; }
+  bash $SASDISKS > $OUT/disks.new 2>/dev/null || { echo "$(date +%T) NO DISKS" >> $LOG; touch $OUT/STOP; return 1; }
   local n=$(wc -l < $OUT/disks.new | tr -d ' ')
   [ "$n" = 7 ] || { echo "$(date +%T) REFUSE: $n drives qualify" >> $LOG; touch $OUT/STOP; return 1; }
   while read -r d s t; do case $d in disk0|disk1|disk2|disk3) echo "refuse system disk $d" >> $LOG; touch $OUT/STOP; return 1;; esac; done < $OUT/disks.new
