@@ -136,6 +136,7 @@ struct mps_kext {
     int                     send_ordered;   /* kern.cam.da.send_ordered (sas2308_send_ordered) */
     int                     family_timer;   /* sas2308_family_timer: the family's timer per IO (G2 A/B) */
     int                     idle_spindown;  /* sas2308_idle_spindown: 0 never, 1 always, 2 if not in use (S1, S2) */
+    uint32_t                spindown_grace; /* sas2308_spindown_grace, s: mode 2 after a nub's creation (S2) */
     int                     sys_power;      /* MPSK_SYS_*: the class's view of the system (S1) */
 };
 
@@ -519,6 +520,9 @@ int mps_kext_attach(struct mps_kext *k, uint32_t debug_mask)
     k->idle_spindown = (int)mps_kext_tunable(k, "sas2308_idle_spindown", 2);
     if ((unsigned)k->idle_spindown > 2)
         k->idle_spindown = 2;           /* not a mode: the default */
+    k->spindown_grace = mps_kext_tunable(k, "sas2308_spindown_grace", 900);
+    if (k->spindown_grace > MPSK_GRACE_MAX_S)
+        k->spindown_grace = MPSK_GRACE_MAX_S;
     k->attached = 1;
     callout_init_mtx(&k->hold_callout, &sc->mps_mtx, 0);
     /* daregister: the ORDERED tag callout runs whether or not send_ordered is set */
@@ -778,7 +782,14 @@ static int mps_kext_idle_stop(struct mps_kext *k, uint32_t tid, const uint8_t *c
         sc->xnu.stats.idle_stops_sent++;
         return 0;
     }
+    if (k->idle_spindown == 2 && stop_use == MPSK_STOP_GRACE)
+        sc->xnu.stats.idle_stops_grace++;
     return 1;
+}
+
+uint64_t mps_kext_uptime_us(void)
+{
+    return mps_os_uptime_us();
 }
 
 int mps_kext_is_idle_stop(const uint8_t *cdb, uint8_t cdblen)
@@ -877,7 +888,8 @@ int mps_kext_submit(struct mps_kext *k, void *td, void *os_task, uint64_t os_tag
         sc->xnu.stats.idle_stops++;
         mps_dprint(sc, MPS_XINFO, "target %u: idle START STOP UNIT completed here, not sent "
                    "(sas2308_idle_spindown %d%s)\n", tid, k->idle_spindown,
-                   k->idle_spindown == 2 ? ": disk in use" : "");
+                   k->idle_spindown != 2 ? "" : stop_use == MPSK_STOP_GRACE ? ": within sas2308_spindown_grace" :
+                   ": disk in use");
         mps_unlock(sc);
         ccb->ccb_h.status = CAM_REQ_CMP;    /* GOOD, nothing transferred */
         mps_kext_result(t, res);
@@ -1181,6 +1193,12 @@ int mps_kext_set_knob(struct mps_kext *k, int knob, uint32_t value)
         else
             __atomic_store_n(&k->family_timer, (int)value, __ATOMIC_RELAXED);
         break;
+    case MPSK_KNOB_SPINDOWN_GRACE:
+        if (value > MPSK_GRACE_MAX_S)
+            error = EINVAL;
+        else
+            __atomic_store_n(&k->spindown_grace, value, __ATOMIC_RELAXED);
+        break;
     default:
         error = EINVAL;
     }
@@ -1194,6 +1212,7 @@ uint32_t mps_kext_knob(struct mps_kext *k, int knob)
     case MPSK_KNOB_SEND_ORDERED: return (uint32_t)k->send_ordered;
     case MPSK_KNOB_FAMILY_TIMER: return (uint32_t)__atomic_load_n(&k->family_timer, __ATOMIC_RELAXED);
     case MPSK_KNOB_IDLE_SPINDOWN: return (uint32_t)k->idle_spindown;
+    case MPSK_KNOB_SPINDOWN_GRACE: return __atomic_load_n(&k->spindown_grace, __ATOMIC_RELAXED);
     default: return 0;
     }
 }

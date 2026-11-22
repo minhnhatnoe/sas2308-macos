@@ -42,6 +42,7 @@ public:
         uint32_t gen;               /* generation of the nub created / being created */
         uint32_t wantGen;           /* generation of a wanted create */
         uint8_t  flags;             /* kCreated, kWantCreate, kWantDestroy, kBusy */
+        uint64_t createdUs;         /* when its nub's creation began (uptime, S2's grace) */
     };
     enum : uint8_t {
         kCreated     = 1,           /* CreateTargetForID() succeeded, not destroyed */
@@ -185,6 +186,9 @@ public:
     bool Created(uint32_t id) const { return id < fCount && (fE[id].flags & kCreated); }
     /* the generation of the nub created or being created for `id' */
     uint32_t Gen(uint32_t id) const { return id < fCount ? fE[id].gen : 0; }
+    /* when the hotplug thread began creating the nub for `id' (S2) */
+    void Stamp(uint32_t id, uint64_t us) { if (id < fCount) fE[id].createdUs = us; }
+    uint64_t Stamped(uint32_t id) const { return id < fCount ? fE[id].createdUs : 0; }
     bool Pending() const
     {
         for (uint32_t i = 0; i < fCount; i++)

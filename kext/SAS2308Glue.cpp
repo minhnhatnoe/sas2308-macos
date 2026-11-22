@@ -319,8 +319,9 @@ SAS2308Glue::Post(void *task, const SAS2308GluePort::TaskDesc &d, uint32_t nsegs
 }
 
 //-----------------------------------------------------------------------------
-//	StopUse - for SAM's idle stop with sas2308_idle_spindown 2 (S2): is the
-//	disk in use (MPSK_STOP_*)? Asked here, before the gate and with no lock
+//	StopUse - for SAM's idle stop with sas2308_idle_spindown 2 (S2): within
+//	sas2308_spindown_grace of the nub's creation (GRACE), else is the disk
+//	in use (IN_USE / FREE)? Asked here, before the gate and with no lock
 //	held: the class walks the IORegistry. Anything else: FREE (unused).
 //-----------------------------------------------------------------------------
 
@@ -329,6 +330,14 @@ SAS2308Glue::StopUse(const SAS2308GluePort::TaskDesc &d)
 {
     if (!fMps || !mps_kext_is_idle_stop(d.cdb, d.cdbLen) || mps_kext_knob(fMps, MPSK_KNOB_IDLE_SPINDOWN) != 2)
         return MPSK_STOP_FREE;
+    const uint64_t grace = (uint64_t)mps_kext_knob(fMps, MPSK_KNOB_SPINDOWN_GRACE) * 1000000;
+    if (grace) {
+        Lock();
+        const uint64_t created = fTargets.Stamped(d.target);
+        Unlock();
+        if (mps_kext_uptime_us() - created < grace)
+            return MPSK_STOP_GRACE;
+    }
     return fPort->TargetInUse(d.target) ? MPSK_STOP_IN_USE : MPSK_STOP_FREE;
 }
 
@@ -895,6 +904,9 @@ SAS2308Glue::Hotplug(void)
 
         bool ok = true;
         if (w.action == SAS2308TargetTable::kCreate) {
+            Lock();
+            fTargets.Stamp(w.targetID, mps_kext_uptime_us());   /* S2's grace: SAM may stop it during the probe */
+            Unlock();
             ok = fPort->CreateTarget(w.targetID);
         } else {
             /*

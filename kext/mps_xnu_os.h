@@ -192,9 +192,10 @@ struct mps_kext_io_result {
  * SAM's idle stop (S1, S2): START STOP UNIT with START 0, LOEJ 0, POWER
  * CONDITION 0. With sas2308_idle_spindown 2 the glue tells mps_kext_submit
  * whether the disk is in use (a mounted volume or an open /dev/(r)disk):
- * FREE: sent; IN_USE: completed here (as mode 0).
+ * FREE: sent; IN_USE: completed here (as mode 0); GRACE: completed here,
+ * the target's nub was created less than sas2308_spindown_grace ago.
  */
-enum { MPSK_STOP_FREE, MPSK_STOP_IN_USE };
+enum { MPSK_STOP_FREE, MPSK_STOP_IN_USE, MPSK_STOP_GRACE };
 int	 mps_kext_is_idle_stop(const uint8_t *cdb, uint8_t cdblen);
 
 enum { MPSK_SUBMIT_POSTED, MPSK_SUBMIT_HELD, MPSK_SUBMIT_DONE };
@@ -242,9 +243,15 @@ int	 mps_kext_timeout(struct mps_kext *k, void *td, void *os_task,
  * IDLE_SPINDOWN: 0 = SAM's idle START STOP UNIT (START 0) is completed here
  * with GOOD status, the disk keeps spinning; 1 = it is sent (S1); 2 (the
  * default) = it is sent only if the disk is not in use, else as 0 (S2).
+ * SPINDOWN_GRACE: seconds after a target's nub is created during which mode
+ * 2 completes every idle stop here (SAM stops each disk about a minute
+ * after boot, before the GUI login mounts its volumes); 0 = none (S2).
  */
-enum { MPSK_KNOB_SEND_ORDERED = 1, MPSK_KNOB_FAMILY_TIMER, MPSK_KNOB_IDLE_SPINDOWN };
+enum { MPSK_KNOB_SEND_ORDERED = 1, MPSK_KNOB_FAMILY_TIMER, MPSK_KNOB_IDLE_SPINDOWN,
+       MPSK_KNOB_SPINDOWN_GRACE };
 int	 mps_kext_set_knob(struct mps_kext *k, int knob, uint32_t value);
+#define	MPSK_GRACE_MAX_S	86400	/* sas2308_spindown_grace: at most a day */
+uint64_t mps_kext_uptime_us(void);		/* the core's monotonic clock */
 uint32_t mps_kext_knob(struct mps_kext *k, int knob);
 
 /* ---- debug triggers for hardware tests (sas2308ctl) --------------------- */

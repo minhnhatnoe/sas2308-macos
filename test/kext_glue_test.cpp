@@ -1447,6 +1447,7 @@ int main()
         };
         struct mps_xnu_stats &st = gHost.sc->xnu.stats;
         CHECK(mps_kext_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN) == 2);       /* the default */
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_SPINDOWN_GRACE, 0) == 0);  /* no boot grace (S2-grace) */
         mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
         f.inUse = {t9};                             /* t9 mounted, ta not */
         const uint32_t local0 = st.idle_stops, sent0 = st.idle_stops_sent;
@@ -1487,6 +1488,80 @@ int main()
         /* the halt: sent */
         mps_kext_halt_begin(f.k);
         CHECK(ssu(t9, 0x01, 0x00));
+        f.Detach();
+    }
+
+    if (Want("S2-grace")) {
+        /*
+         * sas2308_spindown_grace (default 900 s): in mode 2, an idle stop
+         * within that time of the target's nub creation is completed here
+         * without asking whether the disk is in use (SAM stops every disk
+         * about a minute after boot, before the GUI login mounts its
+         * volumes); counted in idle_stops_grace too. 0: no grace. Mode 0
+         * and 1 and the sleep rule do not look at it.
+         */
+        MockIocModel m; m.devices = {0x0009}; m.maxTargets = 32; m.strictEventMasks = false;
+        m.tmSmidLo = 1; m.tmSmidHi = 1 + MockIocModel::kHighPriorityCredit;
+        Family f; f.Attach(&m);
+        const uint32_t t9 = f.Tid(0x0009);
+        auto ssu = [&](uint32_t tid) {
+            FakeTask *t = f.NewRead(tid, 0);
+            memset(t->cdb, 0, sizeof(t->cdb));
+            t->cdb[0] = 0x1B; t->cdb[1] = 0x01; t->cdbLen = 6; t->dir = MPSK_DIR_NONE; t->len = 0;
+            const size_t ops = m.scsiOps.size();
+            CHECK(f.Submit(t) == SAS2308Glue::kInProcess);
+            HostRunPending();
+            CHECK(t->completions == 1 && t->done == SAS2308GluePort::kDoneStatus && t->scsiStatus == 0);
+            return m.scsiOps.size() != ops;
+        };
+        struct mps_xnu_stats &st = gHost.sc->xnu.stats;
+        CHECK(mps_kext_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN) == 2);
+        CHECK(mps_kext_knob(f.k, MPSK_KNOB_SPINDOWN_GRACE) == 900);    /* the default, seconds */
+        mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
+        /* just attached, not in use: completed here, the disk not asked */
+        int calls = f.inUseCalls;
+        const uint32_t local0 = st.idle_stops, grace0 = st.idle_stops_grace, sent0 = st.idle_stops_sent;
+        CHECK(!ssu(t9));
+        CHECK(f.inUseCalls == calls);
+        CHECK(st.idle_stops == local0 + 1 && st.idle_stops_grace == grace0 + 1 && st.idle_stops_sent == sent0);
+        /* grace 0: the in-use rule at once */
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_SPINDOWN_GRACE, 0) == 0);
+        CHECK(ssu(t9));
+        CHECK(f.inUseCalls == calls + 1 && st.idle_stops_sent == sent0 + 1 && st.idle_stops_grace == grace0 + 1);
+        /* the grace counts from the nub's creation: 3 s later, 2 s of grace are over, 4 s are not */
+        f.Run(3000);
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_SPINDOWN_GRACE, 2) == 0);
+        CHECK(ssu(t9));
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_SPINDOWN_GRACE, 4) == 0);
+        CHECK(!ssu(t9));
+        CHECK(st.idle_stops_grace == grace0 + 2);
+        /* a disk that arrives now has its own grace */
+        m.devices.push_back(0x000A);
+        m.PostTopologyEvent({0x000A}, MPI2_EVENT_SAS_TOPO_RC_TARG_ADDED);
+        HostRunPending();
+        const uint32_t ta = f.Tid(0x000A);
+        CHECK(f.nubs.count(ta));
+        f.Run(1000);
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_SPINDOWN_GRACE, 2) == 0);
+        CHECK(ssu(t9));                             /* over for t9 */
+        CHECK(!ssu(ta));                            /* not for ta */
+        /* in use within the grace: a grace stop (the disk not asked) */
+        f.inUse = {ta};
+        calls = f.inUseCalls;
+        CHECK(!ssu(ta));
+        CHECK(f.inUseCalls == calls && st.idle_stops_grace == grace0 + 4);
+        /* modes 0 and 1: no grace stops */
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 0) == 0);
+        CHECK(!ssu(ta));
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 1) == 0);
+        CHECK(ssu(ta));
+        CHECK(st.idle_stops_grace == grace0 + 4);
+        /* going to sleep within the grace: sent */
+        CHECK(mps_kext_set_knob(f.k, MPSK_KNOB_IDLE_SPINDOWN, 2) == 0);
+        mps_kext_system_power(f.k, MPSK_SYS_SLEEP);
+        CHECK(ssu(ta));
+        CHECK(st.idle_stops_grace == grace0 + 4);
+        mps_kext_system_power(f.k, MPSK_SYS_AWAKE);
         f.Detach();
     }
 
