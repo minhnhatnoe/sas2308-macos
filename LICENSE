@@ -28,7 +28,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Third-party code in this repository keeps its own notice in each file:
 
 - core/mps*.c, core/mps*.h (except core/mps_xnu*, core/mps_mpi.h): FreeBSD
-  sys/dev/mps, BSD-2-Clause (LSI Corporation, Avago Technologies and FreeBSD
+  sys/dev/mps, BSD-2-Clause (Yahoo! Inc. for mps.c, mps_sas.c, mps_table.c,
+  mps_table.h and mpsvar.h; LSI Corporation, Avago Technologies and FreeBSD
   contributors). Pristine copies are on the branch vendor/freebsd-mps; see
   core/VENDOR.txt.
 - core/mpi/*: LSI/Avago MPI2 headers from FreeBSD sys/dev/mps/mpi,
