@@ -2032,7 +2032,7 @@ static void RecoveredSenseTests()
     size_t mark = LogMark();
     const struct mps_xnu_stats before = g.Stats();
     for (uint8_t op : {(uint8_t)0xA1, (uint8_t)0x85}) {
-        uint8_t cdb[16] = {op, 0x06, 0x20};         /* CK_COND, as smartctl sends it */
+        uint8_t cdb[16] = {op};
         Io *io = g.NewIo(g.Tid(0x0009), 0, CAM_DIR_NONE, cdb, op == 0xA1 ? 12 : 16, {});
         CHECK(g.Go(io) == kPosted);
         g.Pump();
@@ -2048,7 +2048,7 @@ static void RecoveredSenseTests()
     for (size_t i = mark; i < gHost.log.size(); i++) CHECK(!(gHost.log[i].cls & MPS_ERROR));
     g.sc->mps_debug = mps_xnu_level_mask(MPS_LEVEL_INFO);   /* default level: silent */
     mark = LogMark();
-    uint8_t cdb[12] = {0xA1, 0x06, 0x20};
+    uint8_t cdb[12] = {0xA1};
     Io *io = g.NewIo(g.Tid(0x0009), 0, CAM_DIR_NONE, cdb, 12, {});
     CHECK(g.Go(io) == kPosted);
     g.Pump();

@@ -12,9 +12,10 @@
  *                                       "+trace", "-xinfo", or a number like 0x13
  *   sudo sas2308ctl iolog on|off        IOLog (dmesg) instead of os_log
  *   sudo sas2308ctl reset-stats
- *   sudo sas2308ctl spindown <diskN|all>  spin SATA disk(s) down now (ATA STANDBY IMMEDIATE);
- *                                       refused for a disk with a mounted volume or an
- *                                       open /dev node; it spins up on the next access
+ *   sas2308ctl spindown <diskN|all>     stop the disk(s) now: macOS's eject of the whole
+ *                                       disk (DADiskEject, as `diskutil eject`), whose stop
+ *                                       the kext passes on (EJ); refused for a disk with a
+ *                                       mounted volume; the next access spins it up
  *
  * Changes go through IORegistryEntrySetCFProperty -> SAS2308HBA::setProperties,
  * which requires an administrator (root) caller. They last until the kext
@@ -23,6 +24,7 @@
  * Build: make -C tools   (Command Line Tools, no Xcode needed)
  */
 #include <CoreFoundation/CoreFoundation.h>
+#include <DiskArbitration/DiskArbitration.h>
 #include <IOKit/IOKitLib.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,7 +39,7 @@ static void Usage(void)
                     "       sas2308ctl reinit | hold <ms> | lose <n> | halt  (debug triggers for hardware tests;\n"
                     "                  halt: restart's timeout caps, the controller stops at the next reinit)\n"
                     "       sas2308ctl set <tunable> <n>  (sas2308_* port tunables, e.g. sas2308_send_ordered 0)\n"
-                    "       sas2308ctl spindown <diskN|all>  (stop the disk now; not if a volume is mounted)\n");
+                    "       sas2308ctl spindown <diskN|all>  (eject + stop the disk now; not if a volume is mounted)\n");
     exit(2);
 }
 
@@ -153,28 +155,64 @@ static double Now(void)
     return ts.tv_sec + ts.tv_nsec / 1e9;
 }
 
-/* stop `media' (a disk of `hba'); returns 1 on failure or refusal */
+/* DADiskEject's answer */
+struct EjectResult { int done; DAReturn status; char why[256]; };
+
+static void EjectDone(DADiskRef disk, DADissenterRef dissenter, void *context)
+{
+    struct EjectResult *r = (struct EjectResult *)context;
+    (void)disk;
+    r->done = 1;
+    r->status = dissenter ? DADissenterGetStatus(dissenter) : kDAReturnSuccess;
+    CFStringRef s = dissenter ? DADissenterGetStatusString(dissenter) : NULL;
+    if (!s || !CFStringGetCString(s, r->why, sizeof(r->why), kCFStringEncodingUTF8))
+        r->why[0] = 0;
+}
+
+/*
+ * stop `media' (a disk of `hba'); returns 1 on failure or refusal.
+ * The stop is macOS's own eject (DADiskEject, what `diskutil eject` does):
+ * DKIOCEJECT -> SAM's EjectTheMedium, whose START STOP UNIT the kext passes
+ * on for an ejected disk (EJ, design.md). A START STOP UNIT of our own (S2
+ * sent camcontrol stop's) leaves the IOC's SAT layer answering every read
+ * NOT READY 04/02 until a START, which SAM only sends when it believes the
+ * disk stopped (seen on the Mac, 2026-11-22). After the eject SAM does, and
+ * the next access (a read, `diskutil mount`) sends START and spins it up.
+ */
 static int SpinDownOne(io_service_t hba, io_registry_entry_t media, const char *bsd, int tid)
 {
     char where[1200];
+    (void)hba;
     if (MountedOn(media, where, sizeof(where))) {
         printf("  %s (target %d): not stopped: mounted (%s)\n", bsd, tid, where);
         return 1;
     }
-    CFNumberRef num = CFNumberCreate(NULL, kCFNumberIntType, &tid);
+    DASessionRef session = DASessionCreate(kCFAllocatorDefault);
+    DADiskRef disk = session ? DADiskCreateFromBSDName(kCFAllocatorDefault, session, bsd) : NULL;
+    if (!disk) {
+        printf("  %s (target %d): not stopped: DiskArbitration has no such disk\n", bsd, tid);
+        if (session) CFRelease(session);
+        return 1;
+    }
+    struct EjectResult r = { 0, 0, "" };
     const double t0 = Now();
-    kern_return_t kr = IORegistryEntrySetCFProperty(hba, CFSTR("SAS2308SpinDown"), num);
-    CFRelease(num);
-    if (kr == KERN_SUCCESS) {
-        printf("  %s (target %d): stopped (%.1f s)\n", bsd, tid, Now() - t0);
+    DASessionScheduleWithRunLoop(session, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
+    DADiskEject(disk, kDADiskEjectOptionDefault, EjectDone, &r);
+    while (!r.done && Now() - t0 < 60)
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1, true);
+    DASessionUnscheduleFromRunLoop(session, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
+    CFRelease(disk);
+    CFRelease(session);
+    if (r.done && r.status == kDAReturnSuccess) {
+        printf("  %s (target %d): ejected, stop sent (%.1f s); `diskutil mount` or a read spins it up\n",
+               bsd, tid, Now() - t0);
         return 0;
     }
-    printf("  %s (target %d): not stopped: %s (0x%x)\n", bsd, tid,
-           kr == kIOReturnBusy ? "in use (a volume mounted or a /dev node open)" :
-           kr == kIOReturnNotPrivileged ? "run as root" :
-           kr == kIOReturnNoDevice ? "no disk behind the target" :
-           kr == kIOReturnIOError ? "the disk failed the command (see the log)" :
-           kr == kIOReturnUnsupported ? "not a SATA disk, or kext too old (no spindown)" : "controller not ready", kr);
+    printf("  %s (target %d): not stopped: %s (0x%x)%s%s\n", bsd, tid,
+           !r.done ? "no answer from DiskArbitration in 60 s" :
+           r.status == kDAReturnBusy ? "in use (a volume mounted or a /dev node open)" :
+           r.status == kDAReturnNotPrivileged ? "not permitted" : "eject failed",
+           r.status, r.why[0] ? ": " : "", r.why);
     return 1;
 }
 

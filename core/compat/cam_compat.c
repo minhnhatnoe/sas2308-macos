@@ -228,53 +228,6 @@ scsi_start_stop(struct ccb_scsiio *csio, uint32_t retries,
 	csio->tag_action = tag_action;
 }
 
-/*
- * scsi_all.c scsi_ata_pass, the 12-byte ATA PASS-THROUGH only (28-bit LBA,
- * sector count and features < 256, no ICC / auxiliary, CDB in the ccb):
- * what camcontrol's atapm() builds (minimum_cmd_size 0). Anything that needs
- * the 16- or 32-byte form returns 1, as FreeBSD's does when the CDB does
- * not fit.
- */
-int
-scsi_ata_pass(struct ccb_scsiio *csio, uint32_t retries,
-    void (*cbfcnp)(struct cam_periph *, union ccb *),
-    uint32_t flags, uint8_t tag_action, uint8_t protocol,
-    uint8_t ata_flags, uint16_t features, uint16_t sector_count,
-    uint64_t lba, uint8_t command, uint8_t device, uint8_t icc,
-    uint32_t auxiliary, uint8_t control, uint8_t *data_ptr,
-    uint32_t dxfer_len, uint8_t *cdb_storage, size_t cdb_storage_len,
-    int minimum_cmd_size, uint8_t sense_len, uint32_t timeout)
-{
-	uint8_t *cdb = csio->cdb_io.cdb_bytes;
-
-	(void)retries; (void)device; (void)cdb_storage; (void)cdb_storage_len;
-	if (minimum_cmd_size > 12 || lba > 0x0fffffffULL || sector_count > 255 ||
-	    features > 255 || icc != 0 || auxiliary != 0)
-		return (1);
-	bzero(cdb, 12);
-	cdb[0] = ATA_PASS_12;
-	cdb[1] = protocol;
-	cdb[2] = ata_flags;
-	cdb[3] = features;
-	cdb[4] = sector_count;
-	cdb[5] = lba & 0xff;
-	cdb[6] = (lba >> 8) & 0xff;
-	cdb[7] = (lba >> 16) & 0xff;
-	cdb[8] = ((lba >> 24) & 0xf) | ATA_DEV_LBA;
-	cdb[9] = command;
-	cdb[11] = control;
-	csio->ccb_h.func_code = XPT_SCSI_IO;	/* cam_fill_csio */
-	csio->ccb_h.flags = flags;
-	csio->ccb_h.cbfcnp = cbfcnp;
-	csio->ccb_h.timeout = timeout;
-	csio->data_ptr = data_ptr;
-	csio->dxfer_len = dxfer_len;
-	csio->sense_len = sense_len;
-	csio->cdb_len = 12;
-	csio->tag_action = tag_action;
-	return (0);
-}
-
 /* ---- queue freezing and the held queue ---------------------------------------- */
 
 static struct cam_sim *

@@ -84,7 +84,6 @@ public:
     static constexpr const char *kDebugMaskKey  = "SAS2308DebugMask";   /* FreeBSD mps_debug mask or class list */
     static constexpr const char *kIOLogKey      = "SAS2308LogToIOLog";  /* bool: IOLog instead of os_log */
     static constexpr const char *kResetStatsKey = "SAS2308ResetStats";
-    static constexpr const char *kSpinDownKey   = "SAS2308SpinDown";    /* number: target ID to stop now (S2) */
     static constexpr unsigned long kSAMPowerStateActive = 4;    /* SAM's kSBCPowerStateActive (EJ) */
     static constexpr const char *kStatsKey      = "SAS2308Statistics";
     static constexpr const char *kIocTemperatureKey = "IOC Temperature (C)";   /* IO Unit Page 7 */

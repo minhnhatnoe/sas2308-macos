@@ -19,7 +19,6 @@
 #include <libkern/libkern.h>
 #include <pexpert/pexpert.h>
 #include <stdarg.h>
-#include <sys/errno.h>
 
 #ifndef SAS2308_BUNDLE_ID
 #define SAS2308_BUNDLE_ID "org.sas2308.driver.SAS2308HBA"
@@ -252,41 +251,6 @@ SAS2308HBA::setProperties(OSObject *properties)
                    rc == 0 ? "done" : "refused");
         if (rc != 0)
             return kIOReturnBadArgument;
-        handled = true;
-    }
-    /*
-     * sas2308ctl spindown (S2, EJ): spin one disk down now (mps_kext_spindown). The
-     * tool refuses disks with a mounted volume; here a disk in use (any open
-     * of its media but the partition scheme's, TargetUse) is refused too.
-     * Synchronous: the reply is the disk's answer (a stop takes seconds).
-     */
-    if (OSNumber *n = OSDynamicCast(OSNumber, d->getObject(kSpinDownKey))) {
-        const uint32_t tid = n->unsigned32BitValue();
-        char who[96];
-        const int use = TargetUse(tid, who, sizeof(who));
-        IOReturn ret = kIOReturnSuccess;
-        uint32_t cam = 0;
-        uint8_t scsi = 0;
-        int rc = 0;
-        if (use < 0) {
-            ret = kIOReturnNoDevice;
-        } else if (use > 0) {
-            ret = kIOReturnBusy;
-        } else if (!Enter()) {
-            ret = kIOReturnNotReady;
-        } else {
-            rc = mps_kext_spindown(fGlue.fMps, tid, &cam, &scsi);
-            Leave();
-            ret = rc == 0 ? kIOReturnSuccess : rc == ENXIO ? kIOReturnNoDevice : rc == ENOMEM ? kIOReturnNoMemory :
-                  rc == EIO ? kIOReturnIOError : rc == EOPNOTSUPP ? kIOReturnUnsupported : kIOReturnNotReady;
-        }
-        KlogAlways(MPSK_INFO, "spindown of target %u from userland: %s%s (CAM status 0x%x, SCSI status 0x%x)", tid,
-                   ret == kIOReturnSuccess ? "stopped" : ret == kIOReturnBusy ? "refused, in use: " :
-                   ret == kIOReturnNoDevice ? "refused, no disk" : ret == kIOReturnIOError ? "FAILED" :
-                   ret == kIOReturnUnsupported ? "refused, not a SATA disk" : "refused",
-                   ret == kIOReturnBusy ? who : "", cam, scsi);
-        if (ret != kIOReturnSuccess)
-            return ret;
         handled = true;
     }
     if (d->getObject(kResetStatsKey)) {
@@ -642,7 +606,6 @@ SAS2308HBA::PublishStats(bool force)
     SetNumber(d, "Idle stops completed here", st.idle_stops);   /* mode 0, or 2 and in use (S1, S2) */
     SetNumber(d, "Idle stops sent", st.idle_stops_sent);    /* mode 2, disk not in use (S2) */
     SetNumber(d, "Idle stops in grace period", st.idle_stops_grace);   /* of the completed here (S2) */
-    SetNumber(d, "Spin-downs requested", st.spindowns);     /* sas2308ctl spindown (S2) */
     SetNumber(d, "Stops passed (ejected)", st.idle_stops_ejected);   /* diskutil eject, modes 0 and 2 (EJ) */
     SetNumber(d, "KASSERT hits", st.kassert_hits);   /* KASSERT / panic() survived, all controllers (D55) */
     SetNumber(d, "Debug mask", mask);
