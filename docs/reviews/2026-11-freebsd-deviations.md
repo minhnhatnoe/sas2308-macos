@@ -555,6 +555,22 @@ timed 4K read at a random LBA per drive in parallel, then a second one).
   0 errors; 0 IO timeouts, reinits, recoveries, KASSERT hits.
 - Logging: `log config --mode persist:debug` for the subsystem during (b) to sleep, reset afterwards.
 
+### Dock unplug, idle (by hand, 2026-11-21 18:47)
+
+First real dock unplug (part of tests 2 and 7, without IO and without a mounted volume), build
+95E0D6C9. The 5 drives were unmounted and stopped first (`sas2308_idle_spindown 1`, `pmset -a
+disksleep 1`, SAM to standby on all 5), then the Thunderbolt cable was pulled, the dock powered
+off and recabled. All in the same millisecond (18:47:59.337): `register 0x00 reads 0xffffffff and
+the PCI config space does not answer: controller gone (surprise removal)`, `controller disabled`,
+bus mastering off, targets 0-4 destroyed, `terminating (controller gone)`, `stopping controller`.
+No `checking whether the controller is still there` line was seen first (the config read already
+failed). Mac stayed up; the next boots attached 8 drives (7 known + drive8), state operational,
+0 errors. SMART against the 09:32 baseline: Power-Off_Retract_Count unchanged on all 7 known drives
+(no emergency retract), Power_Cycle_Count +1 each, 5/197/198 = 0, 187/188/199 unchanged.
+- Follow-up (cosmetic): `stopping controller` then logs `Cannot transition IOC to ready` at fault
+  level on hardware that is gone; expected there, should not be a fault.
+- Still open: test 2 (unplug under IO with a mounted volume) and test 7's transient-blip half.
+
 ### Hardware tests still to run
 
 Run on build DDA7E6AD or later, `sas2308ctl level debug` first, drives found with
